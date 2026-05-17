@@ -1,467 +1,506 @@
 'use client'
-import React, { useEffect, useRef, useState } from 'react'
-import useSWR from 'swr'
+import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
-import { Plus, Printer, MapPin, ChevronDown } from 'lucide-react'
-import { Table, Column } from '@/components/ui/Table'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Modal } from '@/components/ui/Modal'
-import { TrackingTimeline } from '@/components/modules/encomiendas/TrackingTimeline'
+import {
+  Package, Plus, Search, X, ChevronRight, ChevronLeft,
+  Printer, Check, Loader2, Eye, RefreshCw
+} from 'lucide-react'
+import { encomiendaService, type RegistrarEncomiendaDTO } from '@/services/encomiendas.service'
 import { BuscadorCliente } from '@/components/modules/clientes/BuscadorCliente'
-import { encomiendaService } from '@/services/encomiendas.service'
-import { useAuthStore } from '@/stores/authStore'
-import { Encomienda } from '@/types'
-import type { Cliente } from '@/types'
+import type { Encomienda, Cliente, Agencia } from '@/types'
+import api from '@/services/api'
+import type { ApiResponse } from '@/types'
+import { format } from 'date-fns'
 
-// ─── Constantes de empresa ────────────────────────────────────────────────────
-
-const EMPRESA = {
-  nombre:    'EXPRESS QUINUAPATA VRAEM S.A.C.',
-  ruc:       '20601234567',
-  direccion: 'Jr. Lima 245, Mercado Andrés F. Vivanco',
-  ciudad:    'Huamanga, Ayacucho',
-  telefono:  '066-312456',
-  email:     'huamanga@quinuapata.com',
+// ── Estado badge ──────────────────────────────────────────────────────────────
+const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
+  REGISTRADO:      { label: 'Registrado',      color: 'bg-blue-100 text-blue-800' },
+  RECEPCIONADO:    { label: 'Recepcionado',     color: 'bg-indigo-100 text-indigo-800' },
+  ALMACENADO:      { label: 'Almacenado',       color: 'bg-yellow-100 text-yellow-800' },
+  CARGADO:         { label: 'Cargado',          color: 'bg-orange-100 text-orange-800' },
+  EN_TRANSITO:     { label: 'En tránsito',      color: 'bg-purple-100 text-purple-800' },
+  LLEGADO_AGENCIA: { label: 'Llegó agencia',    color: 'bg-cyan-100 text-cyan-800' },
+  DISPONIBLE:      { label: 'Disponible',       color: 'bg-teal-100 text-teal-800' },
+  ENTREGADO:       { label: 'Entregado',        color: 'bg-green-100 text-green-800' },
+  OBSERVADO:       { label: 'Observado',        color: 'bg-red-100 text-red-800' },
+  DEVUELTO:        { label: 'Devuelto',         color: 'bg-gray-100 text-gray-800' },
 }
 
-// ─── Tipos ───────────────────────────────────────────────────────────────────
+const FORMA_COBRO_LABELS: Record<string, string> = {
+  EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia',
+  YAPE: 'Yape', PLIN: 'Plin', POR_COBRAR: 'Por cobrar',
+}
 
-interface Agencia { id: number; nombre: string; ciudad: string }
+type TipoEntidad = 'PERSONA_DNI' | 'PERSONA_CE' | 'EMPRESA_RUC'
+function tipoToDoc(t: TipoEntidad): string {
+  if (t === 'EMPRESA_RUC') return 'RUC'
+  if (t === 'PERSONA_CE')  return 'CE'
+  return 'DNI'
+}
 
-// ─── Voucher de encomienda (80mm térmico) ─────────────────────────────────────
-
-function Voucher({ enc, remitente, destinatario, agenciaOrigen, agenciaDestino, operador, onClose }: {
+// ── Comprobante modal ─────────────────────────────────────────────────────────
+interface ComprobanteData {
   enc: Encomienda
-  remitente: Cliente
-  destinatario: Cliente
-  agenciaOrigen: string
-  agenciaDestino: string
-  operador: string
-  onClose: () => void
-}) {
+  remitenteNombre: string
+  remitenteDoc: string
+  destinatarioNombre: string
+  destinatarioTel: string
+}
+
+function ComprobanteModal({ data, onClose }: { data: ComprobanteData; onClose: () => void }) {
   const [qrUrl, setQrUrl] = useState('')
-
   useEffect(() => {
-    QRCode.toDataURL(enc.codigoTracking, {
-      width: 96, margin: 1, color: { dark: '#000000', light: '#ffffff' }
-    }).then(setQrUrl)
-  }, [enc.codigoTracking])
-
-  const fecha = new Date(enc.fechaRegistro ?? Date.now())
-  const fmt = (n: number) => String(n).padStart(2, '0')
-  const fechaStr = `${fmt(fecha.getDate())}/${fmt(fecha.getMonth()+1)}/${fecha.getFullYear()}`
-  const horaStr  = `${fmt(fecha.getHours())}:${fmt(fecha.getMinutes())}`
+    QRCode.toDataURL(data.enc.codigoTracking, { width: 140, margin: 1 }).then(setQrUrl)
+  }, [data.enc.codigoTracking])
 
   const imprimir = () => {
-    const ventana = window.open('', '_blank', 'width=360,height=700')
-    if (!ventana) return
-    ventana.document.write(`<!DOCTYPE html><html><head>
-      <meta charset="utf-8"/>
-      <title>${enc.codigoTracking}</title>
-      <style>
-        @page { size: 80mm auto; margin: 0; }
-        * { box-sizing: border-box; }
-        body {
-          font-family: 'Courier New', Courier, monospace;
-          font-size: 11px;
-          width: 80mm;
-          margin: 0 auto;
-          padding: 6px 8px;
-          color: #000;
-        }
-        .center  { text-align: center; }
-        .bold    { font-weight: bold; }
-        .big     { font-size: 15px; font-weight: bold; letter-spacing: 3px; }
-        .small   { font-size: 9px; }
-        .row     { display: flex; justify-content: space-between; margin: 1.5px 0; }
-        .row .val{ text-align: right; max-width: 55%; word-break: break-word; }
-        hr       { border: none; border-top: 1px dashed #555; margin: 5px 0; }
-        .total   { font-size: 13px; font-weight: bold; }
-        img.qr   { display: block; margin: 4px auto; width: 80px; height: 80px; }
-      </style>
-    </head><body>
-      <div class="center bold">${EMPRESA.nombre}</div>
-      <div class="center small">RUC: ${EMPRESA.ruc}</div>
-      <div class="center small">${EMPRESA.direccion}</div>
-      <div class="center small">${EMPRESA.ciudad} | ${EMPRESA.telefono}</div>
-      <hr/>
-      <div class="center small">COMPROBANTE DE ENCOMIENDA</div>
-      <div class="center big">${enc.codigoTracking}</div>
-      ${qrUrl ? `<img class="qr" src="${qrUrl}" alt="QR"/>` : ''}
-      <div class="center small">Escanee para rastrear su encomienda</div>
-      <hr/>
-      <div class="row"><span>Fecha:</span><span class="val">${fechaStr} ${horaStr}</span></div>
-      <div class="row"><span>Origen:</span><span class="val">${agenciaOrigen}</span></div>
-      <div class="row"><span>Destino:</span><span class="val">${agenciaDestino}</span></div>
-      <hr/>
-      <div class="bold small">REMITENTE</div>
-      <div class="row"><span>Nombre:</span><span class="val">${remitente.nombres} ${remitente.apellidos}</span></div>
-      <div class="row"><span>DNI:</span><span class="val">${remitente.numDoc}</span></div>
-      <div class="bold small" style="margin-top:4px">DESTINATARIO</div>
-      <div class="row"><span>Nombre:</span><span class="val">${destinatario.nombres} ${destinatario.apellidos}</span></div>
-      <div class="row"><span>DNI:</span><span class="val">${destinatario.numDoc}</span></div>
-      ${destinatario.telefono ? `<div class="row"><span>Tel:</span><span class="val">${destinatario.telefono}</span></div>` : ''}
-      <hr/>
-      <div class="row"><span>Contenido:</span><span class="val">${enc.descripcion}</span></div>
-      ${enc.pesoKg   ? `<div class="row"><span>Peso:</span><span class="val">${enc.pesoKg} kg</span></div>` : ''}
-      ${enc.observaciones ? `<div class="row"><span>Nota:</span><span class="val">${enc.observaciones}</span></div>` : ''}
-      <hr/>
-      <div class="row total"><span>PRECIO:</span><span>S/ ${Number(enc.precioEnvio).toFixed(2)}</span></div>
-      <hr/>
-      <div class="row small"><span>Operador:</span><span class="val">${operador}</span></div>
-      <hr/>
-      <div class="center small" style="margin-top:4px">
-        Conserve este comprobante para rastrear su encomienda.<br/>
-        Gracias por confiar en Express Quinuapata VRAEM.
-      </div>
-    </body></html>`)
-    ventana.document.close()
-    setTimeout(() => { ventana.print(); ventana.close() }, 400)
+    const win = window.open('', '_blank', 'width=340,height=600')
+    if (!win) return
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+@page { size: 80mm auto; margin: 0; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Courier New',monospace; font-size:9px; width:80mm; padding:6px; }
+.center { text-align:center; } .bold { font-weight:bold; }
+.big { font-size:12px; font-weight:bold; }
+.hr { border-top:1px dashed #000; margin:4px 0; }
+.row { display:flex; justify-content:space-between; margin:1px 0; }
+.label { font-weight:bold; min-width:80px; }
+.qr { display:block; margin:6px auto; }
+.footer { font-size:7.5px; font-style:italic; text-align:center; margin-top:4px; }
+</style></head><body>
+<div class="center bold">EXPRESS QUINUAPATA VRAEM S.A.C.</div>
+<div class="center">RUC: 20601234567</div>
+<div class="center">Jr. Lima 245, Mercado Andrés F. Vivanco</div>
+<div class="center">Huamanga - Ayacucho  Telf: 066-312456</div>
+<div class="hr"></div>
+<div class="center bold">COMPROBANTE DE ENCOMIENDA</div>
+<div class="center big">${data.enc.codigoTracking}</div>
+${qrUrl ? `<img class="qr" src="${qrUrl}" width="100" height="100"/>` : ''}
+<div class="hr"></div>
+<div class="row"><span class="label">REMITENTE:</span><span>${data.remitenteNombre}</span></div>
+<div class="row"><span class="label">Documento:</span><span>${data.remitenteDoc}</span></div>
+<div class="row"><span class="label">DESTINATARIO:</span><span>${data.destinatarioNombre}</span></div>
+${data.destinatarioTel ? `<div class="row"><span class="label">Tel. dest.:</span><span>${data.destinatarioTel}</span></div>` : ''}
+<div class="hr"></div>
+<div class="row"><span class="label">Contenido:</span><span>${data.enc.descripcion}</span></div>
+${data.enc.pesoKg ? `<div class="row"><span class="label">Peso:</span><span>${data.enc.pesoKg} kg</span></div>` : ''}
+<div class="row"><span class="label">Monto:</span><span>S/ ${(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}</span></div>
+<div class="row"><span class="label">Forma pago:</span><span>${FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}</span></div>
+<div class="hr"></div>
+<div class="row"><span class="label">Fecha:</span><span>${data.enc.fechaRegistro ? format(new Date(data.enc.fechaRegistro), 'dd/MM/yyyy HH:mm') : '-'}</span></div>
+<div class="hr"></div>
+<div class="footer">Conserve este comprobante para rastrear su encomienda</div>
+<div class="footer">Estado: ${ESTADO_CONFIG[data.enc.estado]?.label ?? data.enc.estado}</div>
+</body></html>`)
+    win.document.close()
+    setTimeout(() => { win.print(); win.close() }, 400)
   }
 
   return (
-    <div className="space-y-3">
-      {/* Vista previa 80mm */}
-      <div className="mx-auto bg-white border border-dashed border-gray-400 rounded p-3 font-mono text-[11px] text-gray-900"
-           style={{ width: 302, maxWidth: '100%' }}>
-        <div className="text-center font-bold text-[12px]">{EMPRESA.nombre}</div>
-        <div className="text-center text-[9px] text-gray-500">RUC: {EMPRESA.ruc}</div>
-        <div className="text-center text-[9px] text-gray-500">{EMPRESA.direccion} · {EMPRESA.telefono}</div>
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="text-center text-[9px] text-gray-400">COMPROBANTE DE ENCOMIENDA</div>
-        <div className="text-center font-bold text-[14px] tracking-widest mt-0.5">{enc.codigoTracking}</div>
-        {qrUrl && <img src={qrUrl} className="mx-auto my-1.5" width={80} height={80} alt="QR" />}
-        <div className="text-center text-[8px] text-gray-400 mb-1">Escanee para rastrear</div>
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="flex justify-between"><span>Fecha:</span><span>{fechaStr} {horaStr}</span></div>
-        <div className="flex justify-between"><span>Origen:</span><span className="text-right max-w-[55%] leading-tight">{agenciaOrigen}</span></div>
-        <div className="flex justify-between"><span>Destino:</span><span className="text-right max-w-[55%] leading-tight font-semibold">{agenciaDestino}</span></div>
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="text-[9px] font-bold text-gray-500 mb-0.5">REMITENTE</div>
-        <div className="flex justify-between"><span>Nombre:</span><span>{remitente.nombres} {remitente.apellidos}</span></div>
-        <div className="flex justify-between"><span>DNI:</span><span>{remitente.numDoc}</span></div>
-        <div className="text-[9px] font-bold text-gray-500 mt-1.5 mb-0.5">DESTINATARIO</div>
-        <div className="flex justify-between"><span>Nombre:</span><span>{destinatario.nombres} {destinatario.apellidos}</span></div>
-        <div className="flex justify-between"><span>DNI:</span><span>{destinatario.numDoc}</span></div>
-        {destinatario.telefono && <div className="flex justify-between"><span>Tel:</span><span>{destinatario.telefono}</span></div>}
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="flex justify-between"><span>Contenido:</span><span className="text-right max-w-[55%] leading-tight">{enc.descripcion}</span></div>
-        {enc.pesoKg  && <div className="flex justify-between"><span>Peso:</span><span>{enc.pesoKg} kg</span></div>}
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="flex justify-between font-bold text-[13px]">
-          <span>PRECIO:</span><span>S/ {Number(enc.precioEnvio).toFixed(2)}</span>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="font-semibold text-gray-900">Encomienda registrada</h3>
+          <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="flex justify-between text-[9px] text-gray-500"><span>Operador:</span><span>{operador}</span></div>
-        <hr className="border-dashed border-gray-400 my-1.5" />
-        <div className="text-center text-[8px] text-gray-400 leading-snug">
-          Conserve este comprobante para rastrear su encomienda.<br />
-          Gracias por confiar en Express Quinuapata VRAEM.
+        <div className="p-4 bg-gray-50 flex justify-center">
+          <div style={{ width: 226, fontFamily: 'Courier New,monospace', fontSize: 8, padding: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
+            <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 9 }}>EXPRESS QUINUAPATA VRAEM S.A.C.</p>
+            <p style={{ textAlign: 'center' }}>RUC: 20601234567</p>
+            <hr style={{ borderStyle: 'dashed', margin: '3px 0' }} />
+            <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 10 }}>{data.enc.codigoTracking}</p>
+            {qrUrl && <img src={qrUrl} width={80} height={80} style={{ display: 'block', margin: '4px auto' }} alt="QR" />}
+            <hr style={{ borderStyle: 'dashed', margin: '3px 0' }} />
+            <div><b>REMITENTE: </b>{data.remitenteNombre}</div>
+            <div><b>DESTINATARIO: </b>{data.destinatarioNombre}</div>
+            <hr style={{ borderStyle: 'dashed', margin: '3px 0' }} />
+            <div><b>Contenido: </b>{data.enc.descripcion}</div>
+            <div><b>Monto: </b>S/ {(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)} — {FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}</div>
+          </div>
         </div>
-      </div>
-
-      <div className="flex gap-3">
-        <Button variant="secondary" onClick={onClose} className="flex-1">Cerrar</Button>
-        <Button variant="primary" icon={Printer} onClick={imprimir} className="flex-1">
-          Imprimir (80mm)
-        </Button>
+        <div className="flex gap-3 p-4">
+          <button onClick={onClose} className="flex-1 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cerrar</button>
+          <button onClick={imprimir} className="flex-1 py-2 text-sm bg-[#1F3864] text-white rounded-lg hover:bg-[#16294d] flex items-center justify-center gap-2">
+            <Printer size={14} /> Imprimir 80mm
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+// ── Wizard ─────────────────────────────────────────────────────────────────────
+const PASOS = ['Remitente', 'Destinatario', 'Paquete', 'Cobro', 'Obs.', 'Confirmar']
 
-export default function EncomiendaPage() {
-  const { data, mutate }      = useSWR('/api/encomiendas/lista')
-  const { data: agenciasRaw } = useSWR('/api/agencias')
+interface FormState {
+  tipoRemitente: TipoEntidad; remitente: Cliente | null
+  tipoDestinatario: TipoEntidad; destinatario: Cliente | null
+  descripcion: string; pesoKg: string; agenciaDestinoId: string
+  monto: string; formaCobro: string; observaciones: string
+}
+const INIT: FormState = {
+  tipoRemitente: 'PERSONA_DNI', remitente: null,
+  tipoDestinatario: 'PERSONA_DNI', destinatario: null,
+  descripcion: '', pesoKg: '', agenciaDestinoId: '',
+  monto: '', formaCobro: 'EFECTIVO', observaciones: '',
+}
 
-  const encomiendas: Encomienda[] = data || []
-  const agencias: Agencia[]       = agenciasRaw?.data ?? agenciasRaw ?? []
-
-  const [modalOpen, setModalOpen]     = useState(false)
-  const [detalleSel, setDetalleSel]   = useState<Encomienda | null>(null)
-  const [saving, setSaving]           = useState(false)
-  const { user } = useAuthStore()
-  // Voucher
-  const [voucher, setVoucher] = useState<{
-    enc: Encomienda; remitente: Cliente; destinatario: Cliente
-    agenciaOrigen: string; agenciaDestino: string; operador: string
-  } | null>(null)
-
-  // Estado del formulario
-  const [remitente, setRemitente]           = useState<Cliente | null>(null)
-  const [destinatario, setDestinatario]     = useState<Cliente | null>(null)
-  const [agenciaDestinoId, setAgenciaDestinoId] = useState<string>('')
-  const [descripcion, setDescripcion]       = useState('')
-  const [pesoKg, setPesoKg]                 = useState('')
-  const [observaciones, setObservaciones]   = useState('')
-
-  const { data: historialData } = useSWR(
-    detalleSel ? `/api/encomiendas/${detalleSel.id}/historial` : null
+function TipoSelector({ value, onChange }: { value: TipoEntidad; onChange: (v: TipoEntidad) => void }) {
+  return (
+    <div className="flex gap-2 mb-3 flex-wrap">
+      {(['PERSONA_DNI', 'PERSONA_CE', 'EMPRESA_RUC'] as TipoEntidad[]).map(t => (
+        <button key={t} type="button" onClick={() => onChange(t)}
+          className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+            value === t ? 'bg-[#1F3864] text-white border-[#1F3864]' : 'bg-white text-gray-600 border-gray-300 hover:border-[#1F3864]'
+          }`}>
+          {t === 'PERSONA_DNI' ? 'DNI' : t === 'PERSONA_CE' ? 'CE' : 'RUC/Empresa'}
+        </button>
+      ))}
+    </div>
   )
+}
 
-  const abrirModal = () => {
-    setRemitente(null); setDestinatario(null); setAgenciaDestinoId('')
-    setDescripcion(''); setPesoKg(''); setObservaciones('')
-    setModalOpen(true)
-  }
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2 px-4 py-2.5">
+      <span className="text-xs font-semibold text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-xs text-gray-800">{value}</span>
+    </div>
+  )
+}
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!remitente)          { toast.error('Ingresa el remitente'); return }
-    if (!destinatario)       { toast.error('Ingresa el destinatario'); return }
-    if (!agenciaDestinoId)   { toast.error('Selecciona la agencia de destino'); return }
-    if (!descripcion.trim()) { toast.error('La descripción es obligatoria'); return }
+// ── Page ───────────────────────────────────────────────────────────────────────
+export default function EncomiendaPage() {
+  const [vista, setVista] = useState<'lista' | 'nueva'>('lista')
+  const [paso, setPaso] = useState(0)
+  const [form, setForm] = useState<FormState>(INIT)
+  const [guardando, setGuardando] = useState(false)
+  const [comprobante, setComprobante] = useState<ComprobanteData | null>(null)
+  const [lista, setLista] = useState<Encomienda[]>([])
+  const [cargando, setCargando] = useState(false)
+  const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroQ, setFiltroQ] = useState('')
+  const [agencias, setAgencias] = useState<Agencia[]>([])
 
-    setSaving(true)
+  useEffect(() => {
+    api.get<any, ApiResponse<Agencia[]>>('/api/agencias').then(r => setAgencias(r.data ?? []))
+  }, [])
+
+  const cargarLista = async () => {
+    setCargando(true)
     try {
-      const res = await encomiendaService.registrar({
-        remitenteId:      remitente.id,
-        destinatarioId:   destinatario.id,
-        agenciaDestinoId: Number(agenciaDestinoId),
-        descripcion:      descripcion.trim(),
-        pesoKg:           pesoKg ? parseFloat(pesoKg) : undefined,
-        observaciones:    observaciones.trim() || undefined,
-      })
-      const enc = (res as any).data as Encomienda
-      toast.success(`Encomienda ${enc.codigoTracking} registrada`)
-      setModalOpen(false)
-      mutate()
-
-      const agDest = agencias.find(a => a.id === Number(agenciaDestinoId))
-      setVoucher({
-        enc,
-        remitente,
-        destinatario,
-        agenciaOrigen: 'Huamanga — Ayacucho',
-        agenciaDestino: agDest ? `${agDest.nombre.replace('Express Quinuapata VRAEM SAC — ', '')} — ${agDest.ciudad}` : 'Destino',
-        operador: user?.nombre ?? 'Operador',
-      })
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Error al registrar')
-    } finally {
-      setSaving(false)
-    }
+      const r = await encomiendaService.getLista({ estado: filtroEstado || undefined, q: filtroQ || undefined })
+      setLista((r.data ?? []) as Encomienda[])
+    } catch { toast.error('Error cargando lista') }
+    finally { setCargando(false) }
   }
 
-  const columns: Column<Encomienda>[] = [
-    {
-      key: 'codigoTracking',
-      header: 'Código',
-      render: r => (
-        <span className="font-mono text-xs font-semibold text-[#1F3864]">{r.codigoTracking}</span>
-      )
-    },
-    {
-      key: 'descripcion',
-      header: 'Descripción',
-      render: r => <span className="truncate max-w-xs block text-sm">{r.descripcion}</span>
-    },
-    {
-      key: 'pesoKg',
-      header: 'Peso',
-      render: r => r.pesoKg ? `${r.pesoKg} kg` : '—'
-    },
-    {
-      key: 'precioEnvio',
-      header: 'Precio',
-      render: r => (
-        <span className="font-semibold text-gray-900">S/ {r.precioEnvio}</span>
-      )
-    },
-    {
-      key: 'estado',
-      header: 'Estado',
-      render: r => <Badge estado={r.estado} />
-    },
-    {
-      key: 'id',
-      header: '',
-      render: r => (
-        <Button size="sm" variant="ghost" onClick={() => setDetalleSel(r)}>Ver</Button>
-      )
-    },
-  ]
+  useEffect(() => { if (vista === 'lista') cargarLista() }, [vista, filtroEstado])
+
+  const sf = (k: keyof FormState) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm(v => ({ ...v, [k]: e.target.value }))
+
+  const puedeAvanzar = (): boolean => {
+    if (paso === 0) return !!form.remitente
+    if (paso === 1) return !!form.destinatario
+    if (paso === 2) return !!form.descripcion.trim() && !!form.agenciaDestinoId
+    if (paso === 3) return !!form.monto && parseFloat(form.monto) >= 0 && !!form.formaCobro
+    return true
+  }
+
+  const registrar = async () => {
+    if (!form.remitente || !form.destinatario) return
+    setGuardando(true)
+    try {
+      const dto: RegistrarEncomiendaDTO = {
+        remitenteTipoDoc: form.remitente.tipoDoc,
+        remitenteDoc: form.remitente.numDoc,
+        remitenteNombres: form.remitente.nombres,
+        remitenteApellidos: form.remitente.apellidos,
+        remitenteRazonSocial: form.remitente.razonSocial,
+        remitenteTelefono: form.remitente.telefono,
+        destinatarioTipoDoc: form.destinatario.tipoDoc,
+        destinatarioDoc: form.destinatario.numDoc,
+        destinatarioNombres: form.destinatario.nombres,
+        destinatarioApellidos: form.destinatario.apellidos,
+        destinatarioRazonSocial: form.destinatario.razonSocial,
+        destinatarioTelefono: form.destinatario.telefono,
+        descripcion: form.descripcion,
+        pesoKg: form.pesoKg ? parseFloat(form.pesoKg) : undefined,
+        agenciaDestinoId: parseInt(form.agenciaDestinoId),
+        monto: parseFloat(form.monto || '0'),
+        formaCobro: form.formaCobro,
+        observaciones: form.observaciones || undefined,
+      }
+      const r = await encomiendaService.registrar(dto)
+      const enc = r.data
+      toast.success('Encomienda registrada: ' + enc.codigoTracking)
+      setComprobante({
+        enc,
+        remitenteNombre: form.remitente.razonSocial ?? `${form.remitente.apellidos}, ${form.remitente.nombres}`,
+        remitenteDoc: `${form.remitente.tipoDoc} ${form.remitente.numDoc}`,
+        destinatarioNombre: form.destinatario.razonSocial ?? `${form.destinatario.apellidos}, ${form.destinatario.nombres}`,
+        destinatarioTel: form.destinatario.telefono ?? '',
+      })
+      setForm(INIT); setPaso(0); setVista('lista')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al registrar encomienda')
+    } finally { setGuardando(false) }
+  }
+
+  const agenciaDestNombre = agencias.find(a => a.id.toString() === form.agenciaDestinoId)?.nombre ?? '—'
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Encomiendas</h1>
-          <p className="text-sm text-gray-500">Registro y seguimiento de envíos</p>
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#1F3864] flex items-center justify-center">
+            <Package size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Encomiendas</h1>
+            <p className="text-xs text-gray-500">Gestión de paquetes y envíos</p>
+          </div>
         </div>
-        <Button icon={Plus} onClick={abrirModal}>Nueva encomienda</Button>
+        <button onClick={() => { setVista(v => v === 'lista' ? 'nueva' : 'lista'); setPaso(0); setForm(INIT) }}
+          className="flex items-center gap-2 px-4 py-2 bg-[#1F3864] text-white text-sm rounded-lg hover:bg-[#16294d] transition-colors">
+          {vista === 'lista' ? <><Plus size={16} /> Nueva encomienda</> : <><X size={16} /> Cancelar</>}
+        </button>
       </div>
 
-      <Table columns={columns} data={encomiendas} emptyMessage="Sin encomiendas registradas" />
-
-      {/* ── Modal nueva encomienda ── */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nueva Encomienda" size="lg">
-        <form onSubmit={onSubmit} className="space-y-4">
-
-          {/* Remitente + Destinatario */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <BuscadorCliente
-              label="Remitente (quien envía) *"
-              value={remitente}
-              onChange={setRemitente}
-            />
-            <BuscadorCliente
-              label="Destinatario (quien recibe) *"
-              value={destinatario}
-              onChange={setDestinatario}
-            />
+      {/* ── Wizard ── */}
+      {vista === 'nueva' && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          {/* Progress bar */}
+          <div className="px-6 pt-5 pb-3">
+            <div className="flex items-center">
+              {PASOS.map((p, i) => (
+                <React.Fragment key={p}>
+                  <div className="flex flex-col items-center">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                      i < paso ? 'bg-[#1F3864] border-[#1F3864] text-white'
+                        : i === paso ? 'border-[#1F3864] text-[#1F3864] bg-white'
+                        : 'border-gray-300 text-gray-400 bg-white'
+                    }`}>
+                      {i < paso ? <Check size={13} /> : i + 1}
+                    </div>
+                    <span className={`text-[10px] mt-1 ${i === paso ? 'text-[#1F3864] font-semibold' : 'text-gray-400'}`}>{p}</span>
+                  </div>
+                  {i < PASOS.length - 1 && (
+                    <div className={`flex-1 h-0.5 mb-4 mx-1 ${i < paso ? 'bg-[#1F3864]' : 'bg-gray-200'}`} />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
           </div>
 
-          {/* Ruta: origen → destino */}
-          <div className="flex items-center gap-2">
-            <MapPin size={14} className="text-[#1F3864] shrink-0" />
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Agencia destino *</label>
-              <div className="relative">
-                <select
-                  value={agenciaDestinoId}
-                  onChange={e => setAgenciaDestinoId(e.target.value)}
-                  className="w-full appearance-none px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">— Seleccionar agencia destino —</option>
-                  {agencias.map(a => (
-                    <option key={a.id} value={a.id}>{a.nombre} — {a.ciudad}</option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <div className="px-6 pb-6">
+            {paso === 0 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 text-sm">¿Quién envía?</h3>
+                <TipoSelector value={form.tipoRemitente} onChange={v => setForm(f => ({ ...f, tipoRemitente: v, remitente: null }))} />
+                <BuscadorCliente label="Buscar remitente" value={form.remitente}
+                  onChange={c => setForm(f => ({ ...f, remitente: c }))} tipoDoc={tipoToDoc(form.tipoRemitente)} />
               </div>
+            )}
+
+            {paso === 1 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 text-sm">¿Quién recibe?</h3>
+                <TipoSelector value={form.tipoDestinatario} onChange={v => setForm(f => ({ ...f, tipoDestinatario: v, destinatario: null }))} />
+                <BuscadorCliente label="Buscar destinatario" value={form.destinatario}
+                  onChange={c => setForm(f => ({ ...f, destinatario: c }))} tipoDoc={tipoToDoc(form.tipoDestinatario)} />
+              </div>
+            )}
+
+            {paso === 2 && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-800 text-sm">Datos del paquete</h3>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Descripción del contenido *</label>
+                  <textarea value={form.descripcion} onChange={sf('descripcion')} rows={2}
+                    placeholder="Ej: Ropa, electrónicos, documentos..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Peso en kg (opcional)</label>
+                    <input type="number" step="0.1" min="0" value={form.pesoKg} onChange={sf('pesoKg')} placeholder="0.5"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Agencia destino *</label>
+                    <select value={form.agenciaDestinoId} onChange={sf('agenciaDestinoId')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                      <option value="">Seleccionar...</option>
+                      {agencias.map(a => <option key={a.id} value={a.id}>{a.nombre} — {a.ciudad}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {paso === 3 && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-800 text-sm">Cobro del envío</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Monto (S/) *</label>
+                    <input type="number" step="0.5" min="0" value={form.monto} onChange={sf('monto')} placeholder="0.00"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Forma de cobro *</label>
+                    <select value={form.formaCobro} onChange={sf('formaCobro')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                      {Object.entries(FORMA_COBRO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {form.formaCobro === 'POR_COBRAR' && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                    El monto será cobrado al destinatario al momento de la entrega.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {paso === 4 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 text-sm">Observaciones (opcional)</h3>
+                <textarea value={form.observaciones} onChange={sf('observaciones')} rows={3}
+                  placeholder="Frágil, requiere refrigeración, etc."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            )}
+
+            {paso === 5 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 text-sm">Confirmar registro</h3>
+                <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+                  <Row label="Remitente" value={form.remitente?.razonSocial ?? `${form.remitente?.apellidos ?? ''}, ${form.remitente?.nombres ?? ''}`} />
+                  <Row label="Destinatario" value={form.destinatario?.razonSocial ?? `${form.destinatario?.apellidos ?? ''}, ${form.destinatario?.nombres ?? ''}`} />
+                  <Row label="Contenido" value={form.descripcion} />
+                  {form.pesoKg && <Row label="Peso" value={form.pesoKg + ' kg'} />}
+                  <Row label="Destino" value={agenciaDestNombre} />
+                  <Row label="Monto" value={`S/ ${parseFloat(form.monto || '0').toFixed(2)}`} />
+                  <Row label="Forma cobro" value={FORMA_COBRO_LABELS[form.formaCobro] ?? form.formaCobro} />
+                  {form.observaciones && <Row label="Obs." value={form.observaciones} />}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              {paso > 0 && (
+                <button onClick={() => setPaso(p => p - 1)}
+                  className="flex items-center gap-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                  <ChevronLeft size={15} /> Anterior
+                </button>
+              )}
+              <div className="flex-1" />
+              {paso < PASOS.length - 1 ? (
+                <button onClick={() => setPaso(p => p + 1)} disabled={!puedeAvanzar()}
+                  className="flex items-center gap-1 px-4 py-2 text-sm bg-[#1F3864] text-white rounded-lg hover:bg-[#16294d] disabled:opacity-50">
+                  Siguiente <ChevronRight size={15} />
+                </button>
+              ) : (
+                <button onClick={registrar} disabled={guardando}
+                  className="flex items-center gap-2 px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                  {guardando && <Loader2 size={14} className="animate-spin" />}
+                  <Check size={15} /> Registrar encomienda
+                </button>
+              )}
             </div>
           </div>
-
-          {/* Descripción */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Descripción del contenido *</label>
-            <input
-              value={descripcion}
-              onChange={e => setDescripcion(e.target.value)}
-              placeholder="Ej: Ropa, electrodoméstico, documentos..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Peso */}
-          <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
-                <Weight size={11} /> Peso (kg) — opcional
-              </label>
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                value={pesoKg}
-                onChange={e => setPesoKg(e.target.value)}
-                placeholder="Ej: 2.5"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-          </div>
-
-          {/* Observaciones */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
-            <textarea
-              value={observaciones}
-              onChange={e => setObservaciones(e.target.value)}
-              rows={2}
-              placeholder="Instrucciones especiales: frágil, no apilar, etc."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Resumen */}
-          {(remitente || destinatario) && (
-            <div className="bg-blue-50 rounded-lg p-3 text-xs space-y-1">
-              {remitente && (
-                <p className="flex items-center gap-1.5 text-blue-700">
-                  <UserCheck size={12} />
-                  <span className="font-medium">Envía:</span> {remitente.apellidos}, {remitente.nombres}
-                </p>
-              )}
-              {destinatario && (
-                <p className="flex items-center gap-1.5 text-blue-700">
-                  <UserCheck size={12} />
-                  <span className="font-medium">Recibe:</span> {destinatario.apellidos}, {destinatario.nombres}
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button variant="primary" type="submit" loading={saving}>Registrar encomienda</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Modal voucher ── */}
-      {voucher && (
-        <Modal
-          open={!!voucher}
-          onClose={() => setVoucher(null)}
-          title="Comprobante de envío"
-          size="sm"
-        >
-          <Voucher
-            enc={voucher.enc}
-            remitente={voucher.remitente}
-            destinatario={voucher.destinatario}
-            agenciaOrigen={voucher.agenciaOrigen}
-            agenciaDestino={voucher.agenciaDestino}
-            operador={voucher.operador}
-            onClose={() => setVoucher(null)}
-          />
-        </Modal>
+        </div>
       )}
 
-      {/* ── Modal detalle ── */}
-      <Modal
-        open={!!detalleSel}
-        onClose={() => setDetalleSel(null)}
-        title={`Detalle — ${detalleSel?.codigoTracking}`}
-        size="lg"
-      >
-        {detalleSel && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-xs text-gray-500 block">Estado</span>
-                <Badge estado={detalleSel.estado} />
-              </div>
-              <div>
-                <span className="text-xs text-gray-500 block">Precio</span>
-                <span className="font-semibold">S/ {detalleSel.precioEnvio}</span>
-              </div>
-              {detalleSel.pesoKg && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Peso</span>
-                  <span>{detalleSel.pesoKg} kg</span>
-                </div>
-              )}
-              <div className="col-span-2">
-                <span className="text-xs text-gray-500 block">Descripción</span>
-                <span>{detalleSel.descripcion}</span>
+      {/* ── Lista ── */}
+      {vista === 'lista' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Buscar tracking</label>
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={filtroQ} onChange={e => setFiltroQ(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && cargarLista()} placeholder="EXP-2026-..."
+                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-                Historial de estados
-              </h4>
-              <TrackingTimeline
-                historial={historialData || []}
-                estadoActual={detalleSel.estado}
-              />
+              <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
+              <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                <option value="">Todos</option>
+                {Object.entries(ESTADO_CONFIG).map(([k, { label }]) => <option key={k} value={k}>{label}</option>)}
+              </select>
             </div>
+            <button onClick={cargarLista}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg">
+              <RefreshCw size={14} /> Buscar
+            </button>
           </div>
-        )}
-      </Modal>
+
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {cargando ? (
+              <div className="flex justify-center items-center py-16 text-gray-400">
+                <Loader2 size={24} className="animate-spin mr-2" /> Cargando...
+              </div>
+            ) : lista.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <Package size={40} className="mx-auto mb-2 opacity-30" />
+                <p>No hay encomiendas</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {['Tracking', 'Remitente', 'Destinatario', 'Estado', 'Monto', 'Fecha', ''].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {lista.map(enc => {
+                      const cfg = ESTADO_CONFIG[enc.estado] ?? { label: enc.estado, color: 'bg-gray-100 text-gray-800' }
+                      return (
+                        <tr key={enc.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1F3864]">{enc.codigoTracking}</td>
+                          <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">{enc.remitenteNombre ?? `ID ${enc.remitenteId}`}</td>
+                          <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-gray-800">
+                            S/ {(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                            {enc.fechaRegistro ? format(new Date(enc.fechaRegistro), 'dd/MM/yy HH:mm') : '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <a href={`/encomiendas/${enc.id}`}
+                              className="p-1.5 rounded text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 inline-flex">
+                              <Eye size={15} />
+                            </a>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {comprobante && <ComprobanteModal data={comprobante} onClose={() => setComprobante(null)} />}
     </div>
   )
 }

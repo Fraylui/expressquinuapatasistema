@@ -18,9 +18,13 @@ public class Asiento {
     @Column(name = "viaje_id", nullable = false)
     private Long viajeId;
 
+    @Column(name = "vehiculo_id")
+    private Long vehiculoId;
+
     @Column(nullable = false)
     private Integer numero;
 
+    @Builder.Default
     @Column(nullable = false, length = 20)
-    private String estado;
+    private String estado = "LIBRE"; // LIBRE | OCUPADO | RESERVADO
 }

@@ -11,6 +11,14 @@ import java.util.Optional;
 public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     List<Cliente> findByAgenciaIdOrderByApellidosAsc(Long agenciaId);
     Optional<Cliente> findByTipoDocAndNumDoc(String tipoDoc, String numDoc);
+
+    Optional<Cliente> findByDni(String dni);
+
+    Optional<Cliente> findByRuc(String ruc);
+
+    boolean existsByDni(String dni);
+
+    boolean existsByRuc(String ruc);
     List<Cliente> findByAgenciaIdAndNumDocContainingIgnoreCase(Long agenciaId, String numDoc);
     List<Cliente> findByAgenciaIdAndApellidosContainingIgnoreCaseOrAgenciaIdAndNombresContainingIgnoreCase(
         Long agenciaId1, String apellidos, Long agenciaId2, String nombres);

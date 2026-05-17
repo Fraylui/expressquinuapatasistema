@@ -3,18 +3,59 @@ package com.expressvraem.modules.encomiendas.dto;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 
 public record RegistrarEncomiendaDTO(
-        @NotNull(message = "El remitente es obligatorio") Long remitenteId,
-        @NotNull(message = "El destinatario es obligatorio") Long destinatarioId,
-        @NotNull(message = "La agencia destino es obligatoria") Long agenciaDestinoId,
-        Long viajeId,
+
+        /* ── Remitente inline ────────────────────────── */
+        @NotBlank(message = "Tipo doc remitente obligatorio")
+        String remitenteTipoDoc,
+
+        @NotBlank(message = "Doc remitente obligatorio")
+        String remitenteDoc,
+
+        String remitenteNombres,
+        String remitenteApellidos,
+        String remitenteRazonSocial,
+        String remitenteTelefono,
+
+        /* ── Destinatario inline ─────────────────────── */
+        @NotBlank(message = "Tipo doc destinatario obligatorio")
+        String destinatarioTipoDoc,
+
+        @NotBlank(message = "Doc destinatario obligatorio")
+        String destinatarioDoc,
+
+        String destinatarioNombres,
+        String destinatarioApellidos,
+        String destinatarioRazonSocial,
+        String destinatarioTelefono,
+
+        /* ── Paquete ─────────────────────────────────── */
         @NotBlank(message = "La descripción es obligatoria")
-        @Size(max = 255, message = "La descripción no puede superar 255 caracteres") String descripcion,
-        @Pattern(regexp = "^(PEQUEÑO|MEDIANO|GRANDE)?$", message = "Tamaño inválido") String tamano,
-        @Positive(message = "El peso debe ser un valor positivo")
-        @DecimalMax(value = "9999.99", message = "El peso no puede superar 9999.99 kg") BigDecimal pesoKg,
-        @FutureOrPresent(message = "La fecha de entrega no puede ser en el pasado") LocalDate fechaEntregaEst,
-        @Size(max = 500, message = "Las observaciones no pueden superar 500 caracteres") String observaciones
+        @Size(max = 255)
+        String descripcion,
+
+        @Positive
+        @DecimalMax("9999.99")
+        BigDecimal pesoKg,
+
+        Long viajeId,
+
+        @NotNull(message = "La agencia destino es obligatoria")
+        Long agenciaDestinoId,
+
+        /* ── Cobro ───────────────────────────────────── */
+        @NotNull(message = "El monto es obligatorio")
+        @DecimalMin("0.00")
+        BigDecimal monto,
+
+        @NotBlank(message = "La forma de cobro es obligatoria")
+        @Pattern(regexp = "^(EFECTIVO|TRANSFERENCIA|YAPE|PLIN|POR_COBRAR)$",
+                message = "Forma de cobro inválida")
+        String formaCobro,
+
+        /* ── Extras ──────────────────────────────────── */
+        @Size(max = 500)
+        String observaciones
+
 ) {}

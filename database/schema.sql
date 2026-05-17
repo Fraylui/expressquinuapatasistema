@@ -262,6 +262,9 @@ CREATE TABLE asientos (
 CREATE TABLE clientes (
     id              BIGSERIAL PRIMARY KEY,
     agencia_id      BIGINT       NOT NULL REFERENCES agencias(id),
+    tipo            VARCHAR(10)  NOT NULL DEFAULT 'PERSONA'
+                        CHECK (tipo IN ('PERSONA','EMPRESA')),
+    razon_social    VARCHAR(200),
     nombres         VARCHAR(80)  NOT NULL,
     apellidos       VARCHAR(80)  NOT NULL,
     tipo_doc        VARCHAR(10)  NOT NULL DEFAULT 'DNI'
@@ -318,32 +321,35 @@ CREATE TABLE pasajes (
 -- 19. ENCOMIENDAS
 -- ============================================================
 CREATE TABLE encomiendas (
-    id                  BIGSERIAL PRIMARY KEY,
-    agencia_id          BIGINT          NOT NULL REFERENCES agencias(id),
-    codigo_tracking     VARCHAR(30)     UNIQUE,
-    viaje_id            BIGINT          REFERENCES viajes(id),
-    remitente_id        BIGINT          NOT NULL REFERENCES clientes(id),
-    destinatario_id     BIGINT          NOT NULL REFERENCES clientes(id),
-    vendedor_id         BIGINT          NOT NULL REFERENCES usuarios(id),
-    agencia_destino_id  BIGINT          REFERENCES agencias(id),
-    descripcion         TEXT            NOT NULL,
-    tamano              VARCHAR(10)     CHECK (tamano IN ('PEQUEÑO','MEDIANO','GRANDE')),
-    peso_kg             NUMERIC(8,3),
-    volumen_m3          NUMERIC(8,4),
-    precio_envio        NUMERIC(8,2)    NOT NULL,
-    estado              VARCHAR(20)     NOT NULL DEFAULT 'REGISTRADO'
-                            CHECK (estado IN (
-                                'REGISTRADO','RECOGIDO','EN_TERMINAL','EN_TRANSITO',
-                                'EN_DESTINO','LISTO_ENTREGA','ENTREGADO',
-                                'DEVUELTO','PERDIDO','SINIESTRADO'
-                            )),
-    serie               VARCHAR(5),
-    correlativo         VARCHAR(10),
-    fecha_registro      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    fecha_entrega_est   DATE,
-    fecha_entrega_real  TIMESTAMPTZ,
-    observaciones       TEXT,
-    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+    id                   BIGSERIAL PRIMARY KEY,
+    agencia_id           BIGINT          NOT NULL REFERENCES agencias(id),
+    agencia_origen_id    BIGINT          REFERENCES agencias(id),
+    agencia_destino_id   BIGINT          REFERENCES agencias(id),
+    codigo_tracking      VARCHAR(30)     UNIQUE,
+    viaje_id             BIGINT          REFERENCES viajes(id),
+    remitente_id         BIGINT          NOT NULL REFERENCES clientes(id),
+    destinatario_id      BIGINT          NOT NULL REFERENCES clientes(id),
+    vendedor_id          BIGINT          NOT NULL REFERENCES usuarios(id),
+    descripcion          TEXT            NOT NULL,
+    peso_kg              NUMERIC(8,3),
+    monto                NUMERIC(8,2),
+    precio_envio         NUMERIC(8,2)    NOT NULL,
+    forma_cobro          VARCHAR(20),
+    estado               VARCHAR(20)     NOT NULL DEFAULT 'REGISTRADO'
+                             CHECK (estado IN (
+                                 'REGISTRADO','RECEPCIONADO','ALMACENADO','CARGADO',
+                                 'EN_TRANSITO','LLEGADO_AGENCIA','DISPONIBLE',
+                                 'ENTREGADO','OBSERVADO','DEVUELTO'
+                             )),
+    serie                VARCHAR(5),
+    correlativo          VARCHAR(10),
+    fecha_registro       TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    fecha_entrega_est    DATE,
+    fecha_entrega_real   TIMESTAMPTZ,
+    recibido_por_dni     VARCHAR(20),
+    recibido_por_nombre  VARCHAR(200),
+    observaciones        TEXT,
+    created_at           TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================

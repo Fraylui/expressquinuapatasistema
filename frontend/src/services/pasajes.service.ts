@@ -1,28 +1,52 @@
 import api from './api'
 import { ApiResponse, Pasaje } from '@/types'
 
+export interface VentaPasajeDTO {
+  viajeId: number
+  asientoNumero: number
+  clienteDni: string
+  clienteNombres: string
+  clienteApellidos: string
+  clienteTelefono: string
+  clienteDireccion?: string
+  precioBase: number
+  descuento: number
+  formaPago: string
+  motivoDescuento?: string
+}
+
+export interface PasajeResponseDTO {
+  id: number
+  codigoBoleta: string
+  viajeId: number
+  asientoNumero: number
+  clienteId: number
+  clienteNombres: string
+  clienteApellidos: string
+  clienteDni: string
+  precioBase: number
+  descuento: number
+  precioFinal: number
+  formaPago: string
+  estado: string
+  fechaVenta: string
+}
+
 export const pasajesService = {
-  getAsientosDisponibles: (viajeId: number) =>
-    api.get<any, ApiResponse<any[]>>(`/api/pasajes/viaje/${viajeId}/asientos`),
+  vender: (dto: VentaPasajeDTO) =>
+    api.post<any, ApiResponse<PasajeResponseDTO>>('/api/pasajes/vender', dto),
 
-  venderPasaje: (dto: {
-    viajeId: number
-    asientoId: number
-    clienteId: number
-    tarifaId: number
-    descuentoId?: number
-    montoDescuento?: number
-    formaPago?: string
-  }) => api.post<any, ApiResponse<Pasaje>>('/api/pasajes/vender', dto),
+  anular: (id: number, motivoAnulacion: string) =>
+    api.post<any, ApiResponse<void>>(`/api/pasajes/${id}/anular`, { motivoAnulacion }),
 
-  anularPasaje: (id: number) =>
-    api.post<any, ApiResponse<void>>(`/api/pasajes/${id}/anular`),
-
-  getTicketPDF: async (id: number): Promise<Blob> => {
-    const response = await api.get(`/api/pasajes/${id}/ticket`, { responseType: 'blob' })
-    return response as unknown as Blob
-  },
+  getLista: (params?: { estado?: string; codigoBoleta?: string }) =>
+    api.get<any, ApiResponse<Pasaje[]>>('/api/pasajes', { params }),
 
   getDetalle: (id: number) =>
     api.get<any, ApiResponse<Pasaje>>(`/api/pasajes/${id}`),
+
+  getTicketBlob: async (id: number): Promise<Blob> => {
+    const response = await api.get(`/api/pasajes/${id}/ticket`, { responseType: 'blob' })
+    return response as unknown as Blob
+  },
 }

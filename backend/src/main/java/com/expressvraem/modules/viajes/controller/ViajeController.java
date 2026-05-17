@@ -18,9 +18,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
 
 @RestController
 @RequestMapping("/api/viajes")
@@ -33,12 +36,59 @@ public class ViajeController {
     private final EntityManager entityManager;
     private final LogService logService;
 
+    /**
+     * Viajes disponibles para venta de pasajes.
+     * Retorna viajes PROGRAMADO/EN_RUTA con al menos 1 asiento LIBRE.
+     */
+    @GetMapping("/disponibles")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> disponibles(
+            @RequestParam(required = false) String origen,
+            @RequestParam(required = false) String destino,
+            @RequestParam(required = false) String fecha) {
+
+        Long agenciaId = AgenciaContext.getAgenciaId();
+        List<Viaje> todos = agenciaId != null
+                ? viajeRepository.findByAgenciaId(agenciaId)
+                : viajeRepository.findAll();
+
+        LocalDate fechaFiltro = null;
+        if (fecha != null && !fecha.isBlank()) {
+            try { fechaFiltro = LocalDate.parse(fecha); } catch (Exception ignored) {}
+        }
+        final LocalDate fechaFinal = fechaFiltro;
+
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        for (Viaje v : todos) {
+            if (!"PROGRAMADO".equals(v.getEstado()) && !"EN_RUTA".equals(v.getEstado())) continue;
+            long libres = asientoRepository.countByViajeIdAndEstado(v.getId(), "LIBRE");
+            if (libres == 0) continue;
+            try {
+                ViajeResponseDTO dto = enrich(v);
+                if (origen != null && !origen.isBlank() && dto.getRuta() != null
+                        && !dto.getRuta().getOrigen().toLowerCase().contains(origen.toLowerCase())) continue;
+                if (destino != null && !destino.isBlank() && dto.getRuta() != null
+                        && !dto.getRuta().getDestino().toLowerCase().contains(destino.toLowerCase())) continue;
+                if (fechaFinal != null && v.getFechaHoraSal() != null
+                        && !v.getFechaHoraSal().toLocalDate().equals(fechaFinal)) continue;
+
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", v.getId());
+                m.put("estado", v.getEstado());
+                m.put("fechaHoraSal", v.getFechaHoraSal());
+                m.put("ruta", dto.getRuta());
+                m.put("vehiculo", dto.getVehiculo());
+                m.put("asientosLibres", libres);
+                resultado.add(m);
+            } catch (Exception ignored) {}
+        }
+        return ResponseEntity.ok(ApiResponse.ok(resultado));
+    }
+
     /** Endpoint público — sin autenticación. Filtra por origen, destino y fecha. */
     @GetMapping("/publico")
     public ResponseEntity<ApiResponse<List<ViajeResponseDTO>>> listarPublico(
             @RequestParam(required = false) String origen,
-            @RequestParam(required = false) String destino,
-            @RequestParam(required = false) String fecha) {
+            @RequestParam(required = false) String destino) {
         List<Viaje> todos = viajeRepository.findAll();
         List<ViajeResponseDTO> dtos = todos.stream()
                 .map(this::enrich)
@@ -49,7 +99,7 @@ public class ViajeController {
                 .filter(v -> destino == null || destino.isBlank() ||
                         (v.getRuta() != null && v.getRuta().getDestino() != null &&
                          v.getRuta().getDestino().equalsIgnoreCase(destino)))
-                .collect(java.util.stream.Collectors.toList());
+                .toList();
         return ResponseEntity.ok(ApiResponse.ok(dtos));
     }
 
@@ -65,7 +115,7 @@ public class ViajeController {
 
         List<ViajeResponseDTO> dtos = viajes.stream()
                 .map(this::enrich)
-                .collect(Collectors.toList());
+                .toList();
 
         return ResponseEntity.ok(ApiResponse.ok(dtos));
     }

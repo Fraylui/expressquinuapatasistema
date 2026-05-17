@@ -29,8 +29,19 @@ public class ClienteController {
 
     @GetMapping("/buscar")
     public ResponseEntity<ApiResponse<Cliente>> buscarPorDoc(
-            @RequestParam String tipoDoc,
-            @RequestParam String numDoc) {
+            @RequestParam(required = false) String tipoDoc,
+            @RequestParam(required = false) String numDoc,
+            @RequestParam(required = false) String dni,
+            @RequestParam(required = false) String ruc) {
+
+        // Soporte nuevo: buscar por dni o ruc directo
+        if (dni != null && !dni.isBlank()) {
+            return ResponseEntity.ok(ApiResponse.ok(clienteService.buscarPorDni(dni)));
+        }
+        if (ruc != null && !ruc.isBlank()) {
+            return ResponseEntity.ok(ApiResponse.ok(clienteService.buscarPorRuc(ruc)));
+        }
+        // Soporte legacy: tipoDoc + numDoc
         return ResponseEntity.ok(ApiResponse.ok(clienteService.buscarPorDoc(tipoDoc, numDoc)));
     }
 
