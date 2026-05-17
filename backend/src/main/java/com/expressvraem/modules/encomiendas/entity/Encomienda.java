@@ -31,11 +31,17 @@ public class Encomienda {
     @Column(name = "viaje_id")
     private Long viajeId;
 
+    @Column(name = "agencia_destino_id")
+    private Long agenciaDestinoId;
+
     @Column(name = "vendedor_id", nullable = false)
     private Long vendedorId;
 
     @Column(nullable = false)
     private String descripcion;
+
+    @Column(length = 10)
+    private String tamano;
 
     @Column(name = "peso_kg", precision = 8, scale = 3)
     private BigDecimal pesoKg;

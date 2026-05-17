@@ -3,6 +3,10 @@
 -- Nota: Los datos principales están en schema.sql
 -- ============================================================
 
+-- Migración segura: agrega columnas nuevas a encomiendas si no existen
+ALTER TABLE encomiendas ADD COLUMN IF NOT EXISTS agencia_destino_id BIGINT REFERENCES agencias(id);
+ALTER TABLE encomiendas ADD COLUMN IF NOT EXISTS tamano VARCHAR(10) CHECK (tamano IN ('PEQUEÑO','MEDIANO','GRANDE'));
+
 -- Viajes adicionales para mañana
 INSERT INTO viajes (agencia_id, ruta_id, vehiculo_id, conductor_id, fecha_hora_sal, estado)
 SELECT 1, 2, 2, 2, (NOW() + INTERVAL '1 day')::date + TIME '05:30:00', 'PROGRAMADO'

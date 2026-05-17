@@ -5,8 +5,10 @@ export const encomiendaService = {
   registrar: (dto: {
     remitenteId: number
     destinatarioId: number
+    agenciaDestinoId: number
     viajeId?: number
     descripcion: string
+    tamano?: string
     pesoKg?: number
     fechaEntregaEst?: string
     observaciones?: string

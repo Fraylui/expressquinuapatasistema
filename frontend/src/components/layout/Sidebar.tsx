@@ -32,7 +32,7 @@ const navItems: Section[] = [
       { href: '/encomiendas', icon: Package,         label: 'Encomiendas',  modulo: 'ENCOMIENDAS',  roles: null },
       { href: '/caja',        icon: DollarSign,      label: 'Caja',         modulo: 'CAJA',         roles: null },
       { href: '/manifiestos', icon: FileText,        label: 'Manifiestos',  modulo: 'MANIFIESTOS',  roles: null },
-      { href: '/clientes',    icon: UserCheck,       label: 'Clientes',     modulo: 'VENTAS',       roles: null },
+      { href: '/clientes',    icon: UserCheck,       label: 'Clientes',     modulo: null,           roles: ['SUPER_ADMIN','GERENTE'] },
     ],
   },
   {

@@ -153,17 +153,22 @@ export interface Pasaje {
 export interface Encomienda {
   id: number
   agenciaId: number
+  agenciaDestinoId?: number
   codigoTracking: string
   remitenteId: number
   destinatarioId: number
   viajeId?: number
   descripcion: string
+  tamano?: 'PEQUEÑO' | 'MEDIANO' | 'GRANDE'
   pesoKg?: number
   precioEnvio: number
   estado: EstadoEncomienda
+  serie?: string
+  correlativo?: string
   fechaRegistro: string
   fechaEntregaEst?: string
   fechaEntregaReal?: string
+  observaciones?: string
 }
 
 export interface HistorialEncomienda {
