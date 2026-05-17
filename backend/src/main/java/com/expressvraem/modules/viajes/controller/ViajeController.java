@@ -148,9 +148,11 @@ public class ViajeController {
         viaje.setEstado("EN_RUTA");
         viajeRepository.save(viaje);
 
-        // Cambia encomiendas asignadas a este viaje a EN_TRANSITO
+        // Cambia todas las encomiendas pre-tránsito asignadas a este viaje
+        java.util.Set<String> preTransito = java.util.Set.of(
+                "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
         encomiendaRepository.findByViajeId(id).forEach(enc -> {
-            if ("REGISTRADO".equals(enc.getEstado())) {
+            if (preTransito.contains(enc.getEstado())) {
                 enc.setEstado("EN_TRANSITO");
                 encomiendaRepository.save(enc);
             }
@@ -160,6 +162,38 @@ public class ViajeController {
                 Map.of("viajeId", id, "operador", auth.getName()));
 
         return ResponseEntity.ok(ApiResponse.ok("Viaje confirmado — en ruta", enrich(viaje)));
+    }
+
+    /**
+     * Confirmar llegada: cambia viaje a COMPLETADO y encomiendas EN_TRANSITO a LLEGADO_AGENCIA.
+     */
+    @PostMapping("/{id}/confirmar-llegada")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN','OPERADOR')")
+    public ResponseEntity<ApiResponse<ViajeResponseDTO>> confirmarLlegada(
+            @PathVariable Long id, Authentication auth) {
+        Viaje viaje = viajeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Viaje", id));
+
+        if (!"EN_RUTA".equals(viaje.getEstado())) {
+            throw new BusinessException(
+                    "Solo se puede confirmar llegada de un viaje EN_RUTA. Estado actual: " + viaje.getEstado(),
+                    "ESTADO_INVALIDO");
+        }
+
+        viaje.setEstado("COMPLETADO");
+        viajeRepository.save(viaje);
+
+        encomiendaRepository.findByViajeId(id).forEach(enc -> {
+            if ("EN_TRANSITO".equals(enc.getEstado())) {
+                enc.setEstado("LLEGADO_AGENCIA");
+                encomiendaRepository.save(enc);
+            }
+        });
+
+        logService.logOperacion(auth.getName(), "VIAJES", "CONFIRMAR_LLEGADA",
+                Map.of("viajeId", id, "operador", auth.getName()));
+
+        return ResponseEntity.ok(ApiResponse.ok("Viaje completado — llegada confirmada", enrich(viaje)));
     }
 
     /**
