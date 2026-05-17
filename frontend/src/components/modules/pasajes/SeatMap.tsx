@@ -66,16 +66,12 @@ function DriverSeat() {
 
 /* ─── Layout COMBI ────────────────────────────────────────────
    Toyota Hiace · 16 posiciones = 1 conductor + 15 pasajeros
-   Distribución:
-     Fila 1: [CONDUCTOR] [Asiento 1]
-     Filas 2-4: [A] [B] | pasillo | [C] [D]   → 4 asientos × 3 = 12
-     Fila 5 (trasera): [A] [B] | pasillo | [C]  → pero son los últimos 2
-   Resultado real:
-     Fila 1:  COND  A1
-     Fila 2:  A2 A3  A4 A5
-     Fila 3:  A6 A7  A8 A9
-     Fila 4:  A10 A11  A12 A13
-     Fila 5:  A14 A15  (sin pasillo, centrados)
+
+   Fila 1 (cabina):   [COND] [01] [02]
+   Filas 2-4 (medio): [03][04] | pasillo | [05]
+                      [06][07] | pasillo | [08]
+                      [09][10] | pasillo | [11]
+   Fila 5 (trasera):  [12][13][14][15]  (4 plazas ancho total)
 ────────────────────────────────────────────────────────────── */
 function CombiLayout({
   asientos,
@@ -87,16 +83,15 @@ function CombiLayout({
   onSelect: (id: number, num: number) => void
 }) {
   const byNum = Object.fromEntries(asientos.map(a => [a.numero, a]))
-  const seat = (n: number) => byNum[n]
 
   const Row = ({ children }: { children: React.ReactNode }) => (
     <div className="flex items-center gap-2 justify-center">{children}</div>
   )
 
-  const Aisle = () => <div className="w-5" />
+  const Aisle = () => <div className="w-6" />
 
   const Btn = ({ n }: { n: number }) => {
-    const a = seat(n)
+    const a = byNum[n]
     if (!a) return <div className="w-10 h-10" />
     return (
       <SeatBtn
@@ -109,28 +104,29 @@ function CombiLayout({
 
   return (
     <div className="space-y-2">
-      {/* Fila 1: conductor + copiloto */}
+      {/* Fila 1: conductor + 2 copiloto */}
       <Row>
         <DriverSeat />
         <Btn n={1} />
+        <Btn n={2} />
       </Row>
 
-      {/* Separador visual entre cabina y pasajeros */}
       <div className="border-t border-dashed border-gray-300 mx-4" />
 
-      {/* Filas 2-4: 2+pasillo+2 */}
-      {[[2,3,4,5],[6,7,8,9],[10,11,12,13]].map((fila, i) => (
+      {/* Filas 2-4: 2 izq + pasillo + 1 der */}
+      {[[3,4,5],[6,7,8],[9,10,11]].map(([a, b, c], i) => (
         <Row key={i}>
-          <Btn n={fila[0]} />
-          <Btn n={fila[1]} />
+          <Btn n={a} />
+          <Btn n={b} />
           <Aisle />
-          <Btn n={fila[2]} />
-          <Btn n={fila[3]} />
+          <Btn n={c} />
         </Row>
       ))}
 
-      {/* Fila 5: trasera (2 asientos centrados) */}
+      {/* Fila 5: trasera corrida de 4 */}
       <Row>
+        <Btn n={12} />
+        <Btn n={13} />
         <Btn n={14} />
         <Btn n={15} />
       </Row>

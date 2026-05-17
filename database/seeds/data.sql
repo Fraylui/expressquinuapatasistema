@@ -16,7 +16,7 @@ DECLARE
 BEGIN
   FOR v IN SELECT id FROM viajes WHERE estado = 'PROGRAMADO' LOOP
     IF NOT EXISTS (SELECT 1 FROM asientos WHERE viaje_id = v.id) THEN
-      FOR i IN 1..14 LOOP
+      FOR i IN 1..15 LOOP
         INSERT INTO asientos (agencia_id, viaje_id, numero, estado)
         VALUES (1, v.id, i, 'DISPONIBLE');
       END LOOP;
