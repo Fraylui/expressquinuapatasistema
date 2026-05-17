@@ -43,11 +43,12 @@ public class AuditoriaInterceptor implements HandlerInterceptor {
 
             Auditoria auditoria = new Auditoria();
             auditoria.setUsuarioNombre(username);
-            auditoria.setAccion(accion + "_HTTP_" + response.getStatus());
+            auditoria.setAccion(accion);
             auditoria.setModulo(modulo);
             auditoria.setEntidad(modulo);
             auditoria.setIp(ip);
             auditoria.setUserAgent(request.getHeader("User-Agent"));
+            auditoria.setDatosDespues("HTTP/" + response.getStatus());
             auditoria.setFecha(LocalDateTime.now());
             auditoria.setAgenciaId(AgenciaContext.getAgenciaId());
 
