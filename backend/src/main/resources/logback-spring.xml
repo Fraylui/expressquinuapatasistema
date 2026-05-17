@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{usuario:-anon}] %logger{36} - %msg%n"/>
+    <property name="LOG_FILE" value="logs/express-vraem"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>100MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}-error.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <springProfile name="dev">
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="FILE_ERROR"/>
+        </root>
+        <logger name="com.expressvraem" level="DEBUG"/>
+        <logger name="org.springframework.security" level="DEBUG"/>
+    </springProfile>
+
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="FILE_ERROR"/>
+        </root>
+        <logger name="com.expressvraem" level="INFO"/>
+        <logger name="org.springframework" level="WARN"/>
+    </springProfile>
+
+    <springProfile name="!dev,!prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>
