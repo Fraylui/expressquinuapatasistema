@@ -28,9 +28,10 @@ public class ReporteController {
      * Incluye: ventas hoy, encomiendas hoy, ingresos hoy, diferencias de caja, auditoría hoy.
      */
     @GetMapping("/kpis")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> kpis() {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        return ResponseEntity.ok(ApiResponse.ok(reporteService.getKpisGerente(agenciaId)));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> kpis(
+            @RequestParam(required = false) Long agenciaId) {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getKpisGerente(ag)));
     }
 
     @GetMapping("/ventas/excel")
@@ -62,9 +63,31 @@ public class ReporteController {
      */
     @GetMapping("/tendencia")
     public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> tendencia(
-            @RequestParam(defaultValue = "7") int dias) {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        return ResponseEntity.ok(ApiResponse.ok(reporteService.getTendencia(agenciaId, dias)));
+            @RequestParam(defaultValue = "7") int dias,
+            @RequestParam(required = false) Long agenciaId) {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getTendencia(ag, dias)));
+    }
+
+    @GetMapping("/ventas-hora")
+    public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> ventasHora(
+            @RequestParam(required = false) Long agenciaId) {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getVentasPorHora(ag)));
+    }
+
+    @GetMapping("/viajes-dia")
+    public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> viajesDia(
+            @RequestParam(required = false) Long agenciaId) {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getViajesDelDia(ag)));
+    }
+
+    @GetMapping("/encomiendas-pendientes")
+    public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> encomiendasPendientes(
+            @RequestParam(required = false) Long agenciaId) {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getEncomiendasPendientes(ag)));
     }
 
     @GetMapping("/caja/excel")
