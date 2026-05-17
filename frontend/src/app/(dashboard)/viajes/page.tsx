@@ -9,7 +9,6 @@ import { useAuthStore } from '@/stores/authStore'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import api from '@/services/api'
-import { useRouter } from 'next/navigation'
 
 interface ViajeDTO {
   id: number
@@ -31,7 +30,7 @@ export default function ViajesPage() {
   const viajes: ViajeDTO[] = data || []
   const { user, hasModulo } = useAuthStore()
   const [confirmando, setConfirmando] = useState<number | null>(null)
-  const router = useRouter()
+  const [imprimiendoManifiesto, setImprimiendoManifiesto] = useState<number | null>(null)
 
   const puedeConfirmar = user?.rol && ['SUPER_ADMIN','GERENTE','OPERADOR'].includes(user.rol)
 
@@ -45,6 +44,36 @@ export default function ViajesPage() {
       toast.error(err?.response?.data?.message || 'Error al confirmar salida')
     } finally {
       setConfirmando(null)
+    }
+  }
+
+  const confirmarLlegada = async (viajeId: number) => {
+    setConfirmando(viajeId)
+    try {
+      await api.post(`/api/viajes/${viajeId}/confirmar-llegada`)
+      toast.success('Llegada confirmada — viaje completado')
+      mutate()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error al confirmar llegada')
+    } finally {
+      setConfirmando(null)
+    }
+  }
+
+  const imprimirManifiesto = async (viajeId: number) => {
+    setImprimiendoManifiesto(viajeId)
+    try {
+      const blob = await api.get(`/api/manifiestos/${viajeId}/pdf`, {
+        responseType: 'blob',
+      }) as unknown as Blob
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      win?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      toast.error('Error al generar el manifiesto')
+    } finally {
+      setImprimiendoManifiesto(null)
     }
   }
 
@@ -113,15 +142,27 @@ export default function ViajesPage() {
             Confirmar salida
           </Button>
         )}
-        {v.estado === 'EN_RUTA' && (
-          <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            En ruta
-          </div>
+        {v.estado === 'EN_RUTA' && puedeConfirmar && (
+          <Button
+            size="sm"
+            variant="primary"
+            icon={CheckCircle}
+            loading={confirmando === v.id}
+            onClick={() => confirmarLlegada(v.id)}
+            className="flex-1 justify-center bg-green-600 hover:bg-green-700"
+          >
+            Confirmar llegada
+          </Button>
         )}
-        {hasModulo('MANIFIESTOS') && (
-          <Button size="sm" variant="secondary" icon={FileText} className="justify-center"
-            onClick={() => router.push('/manifiestos')}>
+        {hasModulo('MANIFIESTOS') && (v.estado === 'PROGRAMADO' || v.estado === 'EN_RUTA') && (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={FileText}
+            loading={imprimiendoManifiesto === v.id}
+            onClick={() => imprimirManifiesto(v.id)}
+            className="justify-center"
+          >
             Manifiesto
           </Button>
         )}
