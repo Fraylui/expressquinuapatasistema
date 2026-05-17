@@ -1,0 +1,73 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: expressvraem_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-quinuapata_db}
+      POSTGRES_USER: ${DB_USER:-expressadmin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-Express2026Secure!}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/seeds/data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    networks:
+      - express-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-expressadmin} -d ${DB_NAME:-quinuapata_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: expressvraem_backend_dev
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-quinuapata_db}
+      DB_USER: ${DB_USER:-expressadmin}
+      DB_PASSWORD: ${DB_PASSWORD:-Express2026Secure!}
+      JWT_SECRET: ${JWT_SECRET:-ExpressVRAEM2026SuperSecretKeyForJWTTokenGeneration512bits}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      SPRING_PROFILES_ACTIVE: dev
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./backend/src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - express-dev-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: expressvraem_frontend_dev
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8080}
+      NEXT_PUBLIC_WS_URL: ws://localhost:${BACKEND_PORT:-8080}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend/src:/app/src
+    depends_on:
+      - backend
+    networks:
+      - express-dev-network
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  express-dev-network:
+    driver: bridge

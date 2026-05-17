@@ -1,0 +1,133 @@
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+    access_log /var/log/nginx/access.log main;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout 65;
+    server_tokens   off;
+    client_max_body_size 15M;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript
+               text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1000;
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
+
+    upstream backend  { server backend:8080;  keepalive 32; }
+    upstream frontend { server frontend:3000; keepalive 16; }
+
+    # ── Configuración SSL compartida ────────────────────────────────────────
+    ssl_certificate      /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
+    ssl_certificate_key  /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/chain.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+    ssl_stapling        on;
+    ssl_stapling_verify on;
+
+    # ── HTTP → HTTPS redirect + ACME challenge ──────────────────────────────
+    server {
+        listen 80;
+        server_name DOMAIN_PLACEHOLDER;
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+            try_files $uri =404;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # ── HTTPS principal ─────────────────────────────────────────────────────
+    server {
+        listen 443 ssl;
+        server_name DOMAIN_PLACEHOLDER;
+
+        # Cabeceras de seguridad OWASP
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+        add_header X-Frame-Options          "SAMEORIGIN"                             always;
+        add_header X-Content-Type-Options   "nosniff"                                always;
+        add_header X-XSS-Protection         "1; mode=block"                          always;
+        add_header Referrer-Policy          "strict-origin-when-cross-origin"         always;
+        add_header Permissions-Policy       "geolocation=(), camera=(), microphone=()" always;
+
+        # WebSocket STOMP
+        location /ws-stomp {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade    $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host       $host;
+            proxy_read_timeout 3600s;
+        }
+
+        location /ws {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade    $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host       $host;
+            proxy_read_timeout 3600s;
+        }
+
+        # API backend
+        location /api/ {
+            proxy_pass         http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header   Host              $host;
+            proxy_set_header   X-Real-IP         $remote_addr;
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto $scheme;
+            proxy_read_timeout 60s;
+            proxy_send_timeout 60s;
+            limit_req zone=api burst=20 nodelay;
+        }
+
+        # Health (solo este endpoint actuator expuesto)
+        location /actuator/health {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+        }
+
+        # Archivos estáticos Next.js — caché un año
+        location /_next/static/ {
+            proxy_pass http://frontend;
+            add_header Cache-Control "public, immutable, max-age=31536000";
+        }
+
+        # Frontend Next.js
+        location / {
+            proxy_pass         http://frontend;
+            proxy_http_version 1.1;
+            proxy_set_header   Host              $host;
+            proxy_set_header   X-Real-IP         $remote_addr;
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto $scheme;
+        }
+    }
+}
