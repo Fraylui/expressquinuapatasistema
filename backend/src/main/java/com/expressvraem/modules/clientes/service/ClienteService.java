@@ -32,6 +32,18 @@ public class ClienteService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", numDoc));
     }
 
+    public Cliente buscarPorDni(String dni) {
+        return clienteRepository.findByDni(dni)
+                .orElseGet(() -> clienteRepository.findByTipoDocAndNumDoc("DNI", dni)
+                        .orElseThrow(() -> new ResourceNotFoundException("Cliente con DNI", dni)));
+    }
+
+    public Cliente buscarPorRuc(String ruc) {
+        return clienteRepository.findByRuc(ruc)
+                .orElseGet(() -> clienteRepository.findByTipoDocAndNumDoc("RUC", ruc)
+                        .orElseThrow(() -> new ResourceNotFoundException("Cliente con RUC", ruc)));
+    }
+
     public List<Cliente> buscar(String q) {
         Long agenciaId = AgenciaContext.getAgenciaId();
         if (agenciaId == null) return List.of();
@@ -71,6 +83,30 @@ public class ClienteService {
         c.setEmail(dto.getEmail());
         c.setFechaNac(dto.getFechaNac());
         return clienteRepository.save(c);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public Cliente findOrCreate(String tipoDoc, String numDoc,
+                                String nombres, String apellidos,
+                                String razonSocial, String telefono,
+                                Long agenciaId) {
+        return clienteRepository.findByTipoDocAndNumDoc(tipoDoc, numDoc)
+                .orElseGet(() -> {
+                    boolean empresa = "RUC".equals(tipoDoc);
+                    String nomFinal = empresa ? (razonSocial != null ? razonSocial.substring(0, Math.min(razonSocial.length(), 80)) : numDoc) : (nombres != null ? nombres : numDoc);
+                    String apeFinal = empresa ? "-" : (apellidos != null ? apellidos : "-");
+                    Cliente c = Cliente.builder()
+                            .agenciaId(agenciaId != null ? agenciaId : 1L)
+                            .tipo(empresa ? "EMPRESA" : "PERSONA")
+                            .razonSocial(empresa ? razonSocial : null)
+                            .nombres(nomFinal)
+                            .apellidos(apeFinal)
+                            .tipoDoc(tipoDoc)
+                            .numDoc(numDoc)
+                            .telefono(telefono)
+                            .build();
+                    return clienteRepository.save(c);
+                });
     }
 
     public Cliente findById(Long id) {

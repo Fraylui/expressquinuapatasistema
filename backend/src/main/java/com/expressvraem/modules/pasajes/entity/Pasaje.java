@@ -21,17 +21,23 @@ public class Pasaje {
     @Column(name = "viaje_id", nullable = false)
     private Long viajeId;
 
-    @Column(name = "asiento_id", nullable = false)
+    @Column(name = "asiento_id")
     private Long asientoId;
+
+    @Column(name = "asiento_numero")
+    private Integer asientoNumero;
 
     @Column(name = "cliente_id", nullable = false)
     private Long clienteId;
 
-    @Column(name = "tarifa_id", nullable = false)
+    @Column(name = "tarifa_id")
     private Long tarifaId;
 
     @Column(name = "vendedor_id", nullable = false)
     private Long vendedorId;
+
+    @Column(name = "operador_id")
+    private Long operadorId;
 
     @Column(name = "descuento_id")
     private Long descuentoId;
@@ -46,16 +52,19 @@ public class Pasaje {
     @Column(name = "precio_final", nullable = false, precision = 8, scale = 2)
     private BigDecimal precioFinal;
 
+    @Column(name = "motivo_descuento", length = 200)
+    private String motivoDescuento;
+
     @Builder.Default
     @Column(name = "forma_pago", length = 20)
     private String formaPago = "EFECTIVO";
 
     @Builder.Default
     @Column(length = 20)
-    private String estado = "EMITIDO";
+    private String estado = "VENDIDO"; // VENDIDO | ANULADO
 
-    @Column(name = "codigo_pasaje", length = 20)
-    private String codigoPasaje;
+    @Column(name = "codigo_boleta", length = 20, unique = true)
+    private String codigoBoleta;
 
     @Column(length = 5)
     private String serie;
@@ -63,8 +72,23 @@ public class Pasaje {
     @Column(length = 10)
     private String correlativo;
 
+    @Column(name = "codigo_pasaje", length = 20)
+    private String codigoPasaje;
+
     @Column(name = "fecha_emision")
     private LocalDateTime fechaEmision;
+
+    @Column(name = "fecha_venta")
+    private LocalDateTime fechaVenta;
+
+    @Column(name = "motivo_anulacion", length = 500)
+    private String motivoAnulacion;
+
+    @Column(name = "anulado_por")
+    private Long anuladoPor;
+
+    @Column(name = "fecha_anulacion")
+    private LocalDateTime fechaAnulacion;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -72,6 +96,7 @@ public class Pasaje {
     @PrePersist
     public void prePersist() {
         fechaEmision = LocalDateTime.now();
-        createdAt = LocalDateTime.now();
+        fechaVenta   = LocalDateTime.now();
+        createdAt    = LocalDateTime.now();
     }
 }

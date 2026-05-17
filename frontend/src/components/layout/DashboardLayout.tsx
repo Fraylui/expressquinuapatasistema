@@ -66,7 +66,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
       {/* Sidebar */}
       <div className={`
-        fixed inset-y-0 left-0 z-30 lg:static lg:z-auto
+        fixed inset-y-0 left-0 z-30 lg:static lg:z-auto lg:w-60 shrink-0
         transition-transform duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>

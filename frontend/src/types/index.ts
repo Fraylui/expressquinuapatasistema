@@ -8,11 +8,16 @@ export enum RolUsuario {
 }
 
 export enum EstadoEncomienda {
-  REGISTRADO = 'REGISTRADO',
-  EN_TRANSITO = 'EN_TRANSITO',
-  ENTREGADO = 'ENTREGADO',
-  DEVUELTO = 'DEVUELTO',
-  PERDIDO = 'PERDIDO',
+  REGISTRADO      = 'REGISTRADO',
+  RECEPCIONADO    = 'RECEPCIONADO',
+  ALMACENADO      = 'ALMACENADO',
+  CARGADO         = 'CARGADO',
+  EN_TRANSITO     = 'EN_TRANSITO',
+  LLEGADO_AGENCIA = 'LLEGADO_AGENCIA',
+  DISPONIBLE      = 'DISPONIBLE',
+  ENTREGADO       = 'ENTREGADO',
+  OBSERVADO       = 'OBSERVADO',
+  DEVUELTO        = 'DEVUELTO',
 }
 
 export enum TipoVehiculo {
@@ -122,12 +127,14 @@ export interface Asiento {
   id: number
   viajeId: number
   numero: number
-  estado: 'DISPONIBLE' | 'RESERVADO' | 'VENDIDO' | 'BLOQUEADO'
+  estado: 'LIBRE' | 'OCUPADO' | 'RESERVADO'
 }
 
 export interface Cliente {
   id: number
   agenciaId: number
+  tipo?: 'PERSONA' | 'EMPRESA'
+  razonSocial?: string
   nombres: string
   apellidos: string
   tipoDoc: string
@@ -140,35 +147,54 @@ export interface Pasaje {
   id: number
   agenciaId: number
   viajeId: number
-  asientoId: number
+  asientoNumero: number
   clienteId: number
+  clienteNombres?: string
+  clienteApellidos?: string
+  clienteDni?: string
   precioBase: number
-  montoDescuento: number
+  descuento: number
   precioFinal: number
-  estado: string
-  codigoPasaje?: string
-  fechaEmision: string
+  formaPago: string
+  estado: 'VENDIDO' | 'ANULADO'
+  codigoBoleta: string
+  motivoDescuento?: string
+  motivoAnulacion?: string
+  fechaVenta: string
+  fechaAnulacion?: string
 }
 
 export interface Encomienda {
   id: number
   agenciaId: number
+  agenciaOrigenId?: number
   agenciaDestinoId?: number
   codigoTracking: string
   remitenteId: number
   destinatarioId: number
   viajeId?: number
+  vendedorId?: number
   descripcion: string
-  tamano?: 'PEQUEÑO' | 'MEDIANO' | 'GRANDE'
   pesoKg?: number
+  monto?: number
   precioEnvio: number
+  formaCobro?: string
   estado: EstadoEncomienda
   serie?: string
   correlativo?: string
   fechaRegistro: string
   fechaEntregaEst?: string
   fechaEntregaReal?: string
+  recibidoPorDni?: string
+  recibidoPorNombre?: string
   observaciones?: string
+  // enriched by backend
+  remitenteNombre?: string
+  remitenteDoc?: string
+  remitenteTel?: string
+  destinatarioNombre?: string
+  destinatarioDoc?: string
+  destinatarioTel?: string
 }
 
 export interface HistorialEncomienda {

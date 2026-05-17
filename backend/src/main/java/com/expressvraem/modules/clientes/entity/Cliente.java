@@ -6,6 +6,7 @@ import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+
 @Entity
 @Table(name = "clientes")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -17,6 +18,13 @@ public class Cliente {
 
     @Column(name = "agencia_id", nullable = false)
     private Long agenciaId;
+
+    @Builder.Default
+    @Column(length = 10)
+    private String tipo = "PERSONA"; // PERSONA | EMPRESA
+
+    @Column(name = "razon_social", length = 200)
+    private String razonSocial;
 
     @Column(nullable = false, length = 80)
     private String nombres;
@@ -37,6 +45,18 @@ public class Cliente {
     @Column(length = 100)
     private String email;
 
+    @Column(length = 8)
+    private String dni;
+
+    @Column(length = 11)
+    private String ruc;
+
+    @Column(length = 200)
+    private String direccion;
+
+    @Column(name = "fecha_registro")
+    private LocalDateTime fechaRegistro;
+
     @Column(name = "fecha_nac")
     private LocalDate fechaNac;
 
@@ -48,6 +68,7 @@ public class Cliente {
 
     @PrePersist
     public void prePersist() {
+        fechaRegistro = LocalDateTime.now();
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }

@@ -1,20 +1,26 @@
 package com.expressvraem.modules.pasajes.controller;
 
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
+import com.expressvraem.modules.pasajes.dto.PasajeResponseDTO;
 import com.expressvraem.modules.pasajes.dto.VentaPasajeDTO;
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.expressvraem.modules.pasajes.service.PasajeService;
+import com.expressvraem.modules.pasajes.service.TicketPdfService;
+import com.expressvraem.modules.viajes.entity.Asiento;
 import com.expressvraem.shared.annotations.RequiereModulo;
 import com.expressvraem.shared.exceptions.ApiResponse;
+import com.expressvraem.shared.exceptions.BusinessException;
+import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/pasajes")
@@ -22,42 +28,61 @@ import java.util.List;
 public class PasajeController {
 
     private final PasajeService pasajeService;
+    private final TicketPdfService ticketPdfService;
     private final UsuarioRepository usuarioRepository;
+
+    private Long resolveUserId(Authentication auth) {
+        return usuarioRepository.findByEmail(auth.getName())
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"))
+                .getId();
+    }
 
     @PostMapping("/vender")
     @RequiereModulo("VENTAS")
-    public ResponseEntity<ApiResponse<Pasaje>> vender(
+    public ResponseEntity<ApiResponse<PasajeResponseDTO>> vender(
             @Valid @RequestBody VentaPasajeDTO dto,
             Authentication auth) {
-        Long usuarioId = usuarioRepository.findByEmail(auth.getName())
-                .map(u -> u.getId())
-                .orElse(1L);
-
-        String rol = auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(a -> a.startsWith("ROLE_"))
-                .map(a -> a.substring(5))
-                .findFirst().orElse("OPERADOR");
-
-        Pasaje pasaje = pasajeService.venderPasaje(dto, usuarioId, rol);
-        return ResponseEntity.ok(ApiResponse.ok("Pasaje vendido correctamente", pasaje));
+        PasajeResponseDTO result = pasajeService.venderPasaje(dto, resolveUserId(auth));
+        return ResponseEntity.ok(ApiResponse.ok("Pasaje vendido", result));
     }
 
     @GetMapping("/viaje/{viajeId}/asientos")
-    public ResponseEntity<ApiResponse<List<Pasaje>>> asientosPorViaje(@PathVariable Long viajeId) {
-        return ResponseEntity.ok(ApiResponse.ok(pasajeService.findByViaje(viajeId)));
+    public ResponseEntity<ApiResponse<List<Asiento>>> asientosPorViaje(@PathVariable Long viajeId) {
+        return ResponseEntity.ok(ApiResponse.ok(pasajeService.getAsientosPorViaje(viajeId)));
     }
 
-    @PostMapping("/{id}/anular")
-    @RequiereModulo("VENTAS")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','OPERADOR')")
-    public ResponseEntity<ApiResponse<Void>> anular(@PathVariable Long id) {
-        pasajeService.anularPasaje(id);
-        return ResponseEntity.ok(ApiResponse.ok("Pasaje anulado correctamente", null));
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<Pasaje>>> lista(
+            @RequestParam(required = false) String estado,
+            @RequestParam(required = false) String codigoBoleta) {
+        Long agenciaId = AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(pasajeService.getLista(agenciaId, estado, codigoBoleta)));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<Pasaje>> detalle(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(pasajeService.findById(id)));
+    }
+
+    @PostMapping("/{id}/anular")
+    @RequiereModulo("VENTAS")
+    public ResponseEntity<ApiResponse<Void>> anular(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        String motivo = body.getOrDefault("motivoAnulacion", "");
+        pasajeService.anularPasaje(id, motivo, resolveUserId(auth));
+        return ResponseEntity.ok(ApiResponse.ok("Pasaje anulado", null));
+    }
+
+    @GetMapping(value = "/{id}/ticket", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> ticket(@PathVariable Long id) {
+        Pasaje p = pasajeService.findById(id);
+        byte[] pdf = ticketPdfService.generarTicket(p);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"ticket-" + p.getCodigoBoleta() + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
     }
 }

@@ -106,6 +106,18 @@
             <version>${poi.version}</version>
         </dependency>
 
+        <!-- ZXing (QR code) -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
         <!-- AOP — para @RequiereModulo aspect -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -173,7 +185,6 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <version>${lombok.version}</version>
                         </path>
                         <path>
                             <groupId>org.mapstruct</groupId>

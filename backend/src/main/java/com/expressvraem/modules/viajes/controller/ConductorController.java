@@ -10,12 +10,10 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/conductor")
@@ -29,18 +27,18 @@ public class ConductorController {
 
     /** Devuelve los viajes asignados al conductor del JWT (filtrado por conductor_id) */
     @GetMapping("/mis-viajes")
-    public ResponseEntity<ApiResponse<List<ViajeResponseDTO>>> misViajes(Authentication auth) {
+    public ResponseEntity<ApiResponse<List<ViajeResponseDTO>>> misViajes() {
         // Busca el conductorId desde la tabla conductores por DNI del usuario
         Long agenciaId = AgenciaContext.getAgenciaId();
 
         List<Viaje> viajes = viajeRepository.findByAgenciaId(agenciaId != null ? agenciaId : 1L)
                 .stream()
                 .filter(v -> "PROGRAMADO".equals(v.getEstado()) || "EN_RUTA".equals(v.getEstado()))
-                .collect(Collectors.toList());
+                .toList();
 
         List<ViajeResponseDTO> dtos = viajes.stream()
                 .map(this::enrich)
-                .collect(Collectors.toList());
+                .toList();
 
         return ResponseEntity.ok(ApiResponse.ok(dtos));
     }
@@ -50,13 +48,13 @@ public class ConductorController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> pasajeros(@PathVariable Long viajeId) {
         var pasajes = pasajeRepository.findActivosByViajeId(viajeId);
         List<Map<String, Object>> lista = pasajes.stream().map(p -> Map.<String, Object>of(
-                "asientoId", p.getAsientoId(),
+                "asientoNumero", p.getAsientoNumero(),
                 "clienteId", p.getClienteId(),
                 "precioFinal", p.getPrecioFinal(),
                 "estado", p.getEstado(),
                 "serie", p.getSerie() != null ? p.getSerie() : "",
                 "correlativo", p.getCorrelativo() != null ? p.getCorrelativo() : ""
-        )).collect(Collectors.toList());
+        )).toList();
         return ResponseEntity.ok(ApiResponse.ok(lista));
     }
 

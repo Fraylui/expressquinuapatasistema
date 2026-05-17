@@ -83,6 +83,7 @@ public class ManifiestoController {
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    @SuppressWarnings("unchecked")
     private ManifiestoDTO buildManifiesto(Long viajeId) {
         Viaje viaje = viajeRepository.findById(viajeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Viaje", viajeId));
@@ -193,6 +194,7 @@ public class ManifiestoController {
         return dto;
     }
 
+    @SuppressWarnings("unchecked")
     private ManifiestoPdfService.TicketData buildTicketData(Pasaje p) {
         String origen = "—", destino = "—", fecha = "—", hora = "—";
         String placa = "—", tipo = "—", ruc = "—";

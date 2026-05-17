@@ -33,10 +33,16 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password) => {
         const response = await authService.login(email, password)
         const data = response.data
+        const u = data.usuario as any
         set({
           user: {
-            ...data.usuario,
-            modulosActivos: data.usuario.modulosActivos ?? data.usuario.permisos ?? [],
+            id:             u.id,
+            nombre:         u.nombre,
+            email:          u.email,
+            rol:            u.rol as AuthUser['rol'],
+            agenciaId:      u.agenciaId,
+            permisos:       u.permisos ?? [],
+            modulosActivos: u.modulosActivos ?? u.permisos ?? [],
           },
           token: data.token,
           isAuthenticated: true,
