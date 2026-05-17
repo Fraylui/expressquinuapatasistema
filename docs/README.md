@@ -46,7 +46,7 @@ Acceso en http://localhost (puerto 80 vía Nginx)
 
 ```
 PROYECTO_TRASPORTES/
-├── backend/          # Spring Boot 3.2 + Java 17
+├── backend/          # Spring Boot 3.3.12 + Java 17
 ├── frontend/         # Next.js 14 + TypeScript
 ├── database/         # Schema y seeds PostgreSQL
 ├── docker/           # Configuración Nginx
@@ -57,12 +57,14 @@ PROYECTO_TRASPORTES/
 
 ## Usuarios de prueba
 
-| Email                          | Contraseña         | Rol       | Agencia   |
-|--------------------------------|--------------------|-----------|-----------|
-| carlos.quispe@quinuapata.com   | Quinuapata2024!    | ADMIN     | Huamanga  |
-| maria.ccencho@quinuapata.com   | Quinuapata2024!    | CAJERO    | Huamanga  |
-| rosa.sulca@quinuapata.com      | Quinuapata2024!    | ADMIN     | Kimbiri   |
-| ana.cardenas@quinuapata.com    | Quinuapata2024!    | ADMIN     | Pichari   |
+| Email                              | Contraseña         | Rol        | Agencia  |
+|------------------------------------|--------------------|------------|----------|
+| superadmin@expressvraem.com        | SuperAdmin2026!    | SUPER_ADMIN| Huamanga |
+| kevin.sandoval@quinuapata.com      | Quinuapata2026!    | GERENTE    | Huamanga |
+| carlos.quispe@quinuapata.com       | Quinuapata2024!    | OPERADOR   | Huamanga |
+| maria.ccencho@quinuapata.com       | Quinuapata2024!    | OPERADOR   | Huamanga |
+| juan.ccoyllo@quinuapata.com        | Quinuapata2024!    | CONDUCTOR  | Huamanga |
+| rosa.sulca@quinuapata.com          | Quinuapata2024!    | OPERADOR   | Kimbiri  |
 
 ## Endpoints principales
 

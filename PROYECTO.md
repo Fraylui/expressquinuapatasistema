@@ -63,15 +63,15 @@ docker compose -f docker-compose.dev.yml up --build
 
 | Email | Contraseña | Rol | Agencia |
 |-------|-----------|-----|---------|
-| superadmin@quinuapata.com | [ver .env] | SUPER_ADMIN | Huamanga |
-| gerente@quinuapata.com | [ver .env] | GERENTE | Huamanga |
-| carlos.quispe@quinuapata.com | [ver .env] | OPERADOR | Huamanga |
-| maria.ccencho@quinuapata.com | [ver .env] | OPERADOR | Huamanga |
-| jose.palomino@quinuapata.com | [ver .env] | OPERADOR | Huamanga |
-| rosa.sulca@quinuapata.com | [ver .env] | OPERADOR | Kimbiri |
-| ana.cardenas@quinuapata.com | [ver .env] | OPERADOR | Pichari |
+| superadmin@expressvraem.com | SuperAdmin2026! | SUPER_ADMIN | Huamanga |
+| kevin.sandoval@quinuapata.com | Quinuapata2026! | GERENTE | Huamanga |
+| carlos.quispe@quinuapata.com | Quinuapata2024! | OPERADOR | Huamanga |
+| maria.ccencho@quinuapata.com | Quinuapata2024! | OPERADOR | Huamanga |
+| juan.ccoyllo@quinuapata.com | Quinuapata2024! | CONDUCTOR | Huamanga |
+| rosa.sulca@quinuapata.com | Quinuapata2024! | OPERADOR | Kimbiri |
 
-> Los usuarios de prueba para tests automatizados están en `backend/src/test/resources/test-data.sql`.
+> Credenciales de desarrollo. Los hashes están en `database/schema.sql`.  
+> Para tests automatizados ver `backend/src/test/resources/test-data.sql`.
 
 ---
 
