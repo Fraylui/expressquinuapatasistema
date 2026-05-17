@@ -40,18 +40,24 @@ DROP TABLE IF EXISTS agencias CASCADE;
 -- 1. AGENCIAS
 -- ============================================================
 CREATE TABLE agencias (
-    id              BIGSERIAL PRIMARY KEY,
-    codigo          VARCHAR(10)  NOT NULL UNIQUE,
-    nombre          VARCHAR(120) NOT NULL,
-    direccion       VARCHAR(200),
-    ciudad          VARCHAR(80),
-    departamento    VARCHAR(80),
-    telefono        VARCHAR(20),
-    email           VARCHAR(100),
-    ruc             VARCHAR(11),
-    activo          BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    id                BIGSERIAL PRIMARY KEY,
+    codigo            VARCHAR(20)  NOT NULL UNIQUE,
+    nombre            VARCHAR(200) NOT NULL,
+    ciudad            VARCHAR(100) NOT NULL DEFAULT '',
+    direccion         VARCHAR(300) NOT NULL DEFAULT '',
+    telefono          VARCHAR(20)  NOT NULL DEFAULT '',
+    email             VARCHAR(150),
+    ruc               VARCHAR(11),
+    encargado_id      BIGINT,
+    estado            VARCHAR(10)  NOT NULL DEFAULT 'ACTIVA' CHECK (estado IN ('ACTIVA','INACTIVA')),
+    es_sede_principal BOOLEAN      NOT NULL DEFAULT false,
+    fecha_apertura    DATE,
+    fecha_registro    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    -- legacy columns kept for backwards-compat
+    departamento      VARCHAR(80),
+    activo            BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================
@@ -472,10 +478,10 @@ CREATE INDEX idx_clientes_doc           ON clientes(tipo_doc, num_doc);
 -- ============================================================
 -- AGENCIAS (3 sedes VRAEM)
 -- ============================================================
-INSERT INTO agencias (codigo, nombre, direccion, ciudad, departamento, telefono, email, ruc) VALUES
-('AYA-01', 'Express Quinuapata VRAEM SAC — Huamanga',  'Jr. Lima 245, Mercado Andrés F. Vivanco', 'Ayacucho',  'Ayacucho', '066-312456', 'huamanga@quinuapata.com', '20601234567'),
-('KIM-01', 'Express Quinuapata VRAEM SAC — Kimbiri',   'Av. Perú 180, Plaza Principal',          'Kimbiri',   'Cusco',    '084-201345', 'kimbiri@quinuapata.com',  '20601234567'),
-('PIC-01', 'Express Quinuapata VRAEM SAC — Pichari',   'Jr. Ayacucho 90, frente al mercado',     'Pichari',   'Cusco',    '084-301456', 'pichari@quinuapata.com',  '20601234567');
+INSERT INTO agencias (codigo, nombre, direccion, ciudad, departamento, telefono, email, ruc, estado, es_sede_principal) VALUES
+('AYA-01', 'Express Quinuapata VRAEM SAC — Huamanga',  'Jr. Lima 245, Mercado Andrés F. Vivanco', 'Ayacucho',  'Ayacucho', '066-312456', 'huamanga@quinuapata.com', '20601234567', 'ACTIVA', true),
+('KIM-01', 'Express Quinuapata VRAEM SAC — Kimbiri',   'Av. Perú 180, Plaza Principal',          'Kimbiri',   'Cusco',    '084-201345', 'kimbiri@quinuapata.com',  '20601234567', 'ACTIVA', false),
+('PIC-01', 'Express Quinuapata VRAEM SAC — Pichari',   'Jr. Ayacucho 90, frente al mercado',     'Pichari',   'Cusco',    '084-301456', 'pichari@quinuapata.com',  '20601234567', 'ACTIVA', false);
 
 -- ============================================================
 -- ROLES (4 globales — COBIT APO01.02)
