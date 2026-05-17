@@ -46,6 +46,9 @@ public class Encomienda {
     @Column(name = "peso_kg", precision = 8, scale = 3)
     private BigDecimal pesoKg;
 
+    @Column(name = "num_bultos")
+    private Integer numBultos;
+
     @Column(precision = 8, scale = 2)
     private BigDecimal monto;
 

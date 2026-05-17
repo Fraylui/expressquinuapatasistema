@@ -8,6 +8,7 @@ import com.google.zxing.EncodeHintType;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -30,43 +31,88 @@ import java.util.Map;
 public class ComprobantePdfService {
 
     private final ClienteRepository clienteRepository;
+    private final EntityManager entityManager;
 
     private static final float PAGE_W   = 226.77f; // 80mm in points
     private static final float MARGIN   = 10f;
     private static final String EMPRESA = "EXPRESS QUINUAPATA VRAEM S.A.C.";
     private static final String RUC     = "RUC: 20601234567";
-    private static final String DIR     = "Jr. Lima 245, Mercado Andrés F. Vivanco";
+    private static final String DIR     = "Jr. Lima 245, Mercado Andres F. Vivanco";
     private static final String CIUDAD  = "Huamanga - Ayacucho  Telf: 066-312456";
+    private static final String TRACK_URL = "expressvraem.pe/tracking/";
 
-    public byte[] generarComprobante(Encomienda enc) {
+    public byte[] generarComprobante(Encomienda enc, String operadorNombre) {
         try (PDDocument doc = new PDDocument()) {
 
-            // --- gather data ---
+            // --- gather client data ---
             Cliente rem = clienteRepository.findById(enc.getRemitenteId()).orElse(null);
             Cliente des = clienteRepository.findById(enc.getDestinatarioId()).orElse(null);
 
-            String remNombre  = rem != null ? nombreDisplay(rem) : "—";
-            String remDoc     = rem != null ? rem.getTipoDoc() + " " + rem.getNumDoc() : "";
-            String remTel     = rem != null && rem.getTelefono() != null ? rem.getTelefono() : "";
-            String desNombre  = des != null ? nombreDisplay(des) : "—";
-            String desTel     = des != null && des.getTelefono() != null ? des.getTelefono() : "";
+            String remNombre = rem != null ? nombreDisplay(rem) : "—";
+            String remDoc    = rem != null ? rem.getTipoDoc() + " " + rem.getNumDoc() : "";
+            String remTel    = rem != null && rem.getTelefono() != null ? rem.getTelefono() : "";
+            String desNombre = des != null ? nombreDisplay(des) : "—";
+            String desTel    = des != null && des.getTelefono() != null ? des.getTelefono() : "";
+
+            // --- agencia destino ---
+            String agenciaDestNombre = "—";
+            String agenciaDestCiudad = "";
+            if (enc.getAgenciaDestinoId() != null) {
+                try {
+                    Object[] ag = (Object[]) entityManager
+                        .createNativeQuery("SELECT nombre, ciudad FROM agencias WHERE id = :id")
+                        .setParameter("id", enc.getAgenciaDestinoId())
+                        .getSingleResult();
+                    agenciaDestNombre = ag[0] != null ? String.valueOf(ag[0]) : "—";
+                    agenciaDestCiudad = ag[1] != null ? String.valueOf(ag[1]) : "";
+                } catch (Exception ignored) {}
+            }
+
+            // --- viaje info ---
+            String viajeHora  = "";
+            String viajePlaca = "";
+            String viajeRuta  = "";
+            if (enc.getViajeId() != null) {
+                try {
+                    Object[] vRow = (Object[]) entityManager.createNativeQuery(
+                        "SELECT v.fecha_hora_sal, ve.placa, r.origen, r.destino " +
+                        "FROM viajes v " +
+                        "JOIN vehiculos ve ON ve.id = v.vehiculo_id " +
+                        "JOIN rutas r ON r.id = v.ruta_id " +
+                        "WHERE v.id = :id")
+                        .setParameter("id", enc.getViajeId())
+                        .getSingleResult();
+                    if (vRow[0] != null) {
+                        DateTimeFormatter hFmt = DateTimeFormatter.ofPattern("HH:mm dd/MM");
+                        if (vRow[0] instanceof java.sql.Timestamp ts)
+                            viajeHora = ts.toLocalDateTime().format(hFmt);
+                        else if (vRow[0] instanceof java.time.OffsetDateTime odt)
+                            viajeHora = odt.format(hFmt);
+                    }
+                    viajePlaca = vRow[1] != null ? String.valueOf(vRow[1]) : "";
+                    viajeRuta  = vRow[2] + " → " + vRow[3];
+                } catch (Exception ignored) {}
+            }
 
             DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
             String fechaStr = enc.getFechaRegistro() != null
                     ? enc.getFechaRegistro().format(dtf) : "—";
 
-            // First pass to compute page height
-            float yEst = MARGIN + 20; // bottom margin
-            yEst += 20 + 8 + 8 + 8;  // company header
-            yEst += 4;                // separator
-            yEst += 10 + 8;          // "COMPROBANTE" + code
-            yEst += 60;              // QR
-            yEst += 4;               // separator
-            yEst += 8 * 12;          // detail lines (approx)
-            yEst += 4;               // separator
-            yEst += 16;              // footer msg
+            boolean esPorCobrar = "POR_COBRAR".equals(enc.getFormaCobro());
 
-            float pageH = Math.max(yEst, 400f);
+            // --- compute page height ---
+            float yEst = MARGIN + 20;
+            yEst += 10 + 8 + 8 + 8;      // header
+            yEst += 6;                     // sep
+            yEst += 12 + 14;              // titulo + codigo
+            yEst += 72;                   // QR
+            yEst += 6;                    // sep
+            yEst += 8 * 16;              // data rows
+            if (!viajeHora.isEmpty()) yEst += 8 * 3;
+            yEst += 6;                    // sep
+            yEst += 20;                   // footer
+
+            float pageH = Math.max(yEst, 420f);
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
@@ -77,88 +123,78 @@ public class ComprobantePdfService {
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
 
-                // ── Company header ─────────────────────────
-                y = drawCenteredText(cs, fontBold, 9f, EMPRESA, y);
-                y -= 2;
-                y = drawCenteredText(cs, fontNorm, 7f, RUC, y);
-                y -= 1;
-                y = drawCenteredText(cs, fontNorm, 6f, DIR, y);
-                y -= 1;
-                y = drawCenteredText(cs, fontNorm, 6f, CIUDAD, y);
-                y -= 4;
+                // ── Company header ──────────────────────────────────────
+                y = drawCenteredText(cs, fontBold, 9f, EMPRESA, y);       y -= 2;
+                y = drawCenteredText(cs, fontNorm, 7f, RUC, y);           y -= 1;
+                y = drawCenteredText(cs, fontNorm, 6f, DIR, y);           y -= 1;
+                y = drawCenteredText(cs, fontNorm, 6f, CIUDAD, y);        y -= 4;
+                y = drawDashes(cs, y);                                     y -= 3;
 
-                // ── Separator ──────────────────────────────
-                y = drawDashes(cs, y);
-                y -= 3;
+                // ── Título + Tracking ───────────────────────────────────
+                y = drawCenteredText(cs, fontBold, 8f, "COMPROBANTE DE ENCOMIENDA", y); y -= 2;
+                y = drawCenteredText(cs, fontBold, 11f, enc.getCodigoTracking(), y);    y -= 4;
 
-                // ── Título ─────────────────────────────────
-                y = drawCenteredText(cs, fontBold, 8f, "COMPROBANTE DE ENCOMIENDA", y);
-                y -= 2;
-                y = drawCenteredText(cs, fontBold, 10f, enc.getCodigoTracking(), y);
-                y -= 4;
-
-                // ── QR code ────────────────────────────────
-                PDImageXObject qrImg = buildQrImage(doc, enc.getCodigoTracking());
-                float qrSize = 70f;
-                float qrX = (PAGE_W - qrSize) / 2f;
-                cs.drawImage(qrImg, qrX, y - qrSize, qrSize, qrSize);
+                // ── QR (tracking URL encoded) ───────────────────────────
+                String qrContent = TRACK_URL + enc.getCodigoTracking();
+                PDImageXObject qrImg = buildQrImage(doc, qrContent);
+                float qrSize = 72f;
+                cs.drawImage(qrImg, (PAGE_W - qrSize) / 2f, y - qrSize, qrSize, qrSize);
                 y -= (qrSize + 4);
 
-                // ── Separator ──────────────────────────────
-                y = drawDashes(cs, y);
+                // ── Destino resaltado ───────────────────────────────────
+                y = drawCenteredText(cs, fontBold, 8f, "DESTINO: " + agenciaDestCiudad.toUpperCase(), y);
                 y -= 3;
+                y = drawDashes(cs, y);                                     y -= 3;
 
-                // ── Remitente ──────────────────────────────
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "REMITENTE:", remNombre, y);
-                y -= 1;
+                // ── Remitente ───────────────────────────────────────────
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "REMITENTE:", remNombre, y);   y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Documento:", remDoc, y);
-                if (!remTel.isEmpty()) {
-                    y -= 1;
-                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Teléfono:", remTel, y);
-                }
+                if (!remTel.isEmpty()) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. rem.:", remTel, y); }
                 y -= 3;
 
-                // ── Destinatario ───────────────────────────
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y);
-                y -= 1;
-                if (!desTel.isEmpty()) {
-                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Teléfono:", desTel, y);
-                    y -= 1;
-                }
+                // ── Destinatario ────────────────────────────────────────
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y); y -= 1;
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "Agencia dest.:", agenciaDestNombre, y);
+                if (!desTel.isEmpty()) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. dest.:", desTel, y); }
                 y -= 3;
 
-                // ── Descripción ────────────────────────────
+                // ── Contenido ───────────────────────────────────────────
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Contenido:", enc.getDescripcion(), y);
-                if (enc.getPesoKg() != null) {
-                    y -= 1;
-                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg() + " kg", y);
-                }
+                if (enc.getPesoKg() != null) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg() + " kg", y); }
+                int bultos = enc.getNumBultos() != null ? enc.getNumBultos() : 1;
+                y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Bultos:", String.valueOf(bultos), y);
                 y -= 3;
 
-                // ── Cobro ──────────────────────────────────
+                // ── Viaje asignado ──────────────────────────────────────
+                if (!viajeHora.isEmpty()) {
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Viaje:", viajeRuta, y);         y -= 1;
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Hora salida:", viajeHora, y);   y -= 1;
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Vehiculo:", viajePlaca, y);     y -= 3;
+                }
+
+                // ── Cobro ───────────────────────────────────────────────
                 String montoStr = enc.getMonto() != null
                         ? "S/ " + enc.getMonto().toPlainString() : "S/ " + enc.getPrecioEnvio().toPlainString();
-                String cobro = enc.getFormaCobro() != null ? enc.getFormaCobro() : "EFECTIVO";
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Monto:", montoStr, y);
-                y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Forma pago:", cobro, y);
+                if (esPorCobrar) {
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Monto:", montoStr + " (EN DESTINO)", y); y -= 1;
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Cobro:", "POR COBRAR AL DESTINATARIO", y);
+                } else {
+                    String cobro = enc.getFormaCobro() != null ? enc.getFormaCobro() : "EFECTIVO";
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Monto:", montoStr, y);     y -= 1;
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Forma pago:", cobro, y);
+                }
                 y -= 3;
 
-                // ── Fecha ──────────────────────────────────
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Fecha registro:", fechaStr, y);
-                y -= 3;
+                // ── Fecha + Operador ────────────────────────────────────
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "Fecha:", fechaStr, y);         y -= 1;
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "Operador:", operadorNombre, y); y -= 3;
 
-                // ── Separator ──────────────────────────────
-                y = drawDashes(cs, y);
-                y -= 3;
+                // ── Separator ───────────────────────────────────────────
+                y = drawDashes(cs, y);                                     y -= 3;
 
-                // ── Footer ─────────────────────────────────
-                String footerMsg = "Conserve este comprobante para";
-                String footerMsg2 = "rastrear su encomienda";
-                y = drawCenteredText(cs, fontObliq, 6.5f, footerMsg, y);
-                y -= 1;
-                y = drawCenteredText(cs, fontObliq, 6.5f, footerMsg2, y);
-                y -= 2;
+                // ── Footer ──────────────────────────────────────────────
+                y = drawCenteredText(cs, fontObliq, 6.5f, "Conserve este comprobante.", y);               y -= 1;
+                y = drawCenteredText(cs, fontObliq, 6.5f, "Rastreo: " + TRACK_URL + enc.getCodigoTracking(), y); y -= 1;
                 y = drawCenteredText(cs, fontNorm, 6f, "Estado: " + enc.getEstado(), y);
             }
 
@@ -171,7 +207,7 @@ public class ComprobantePdfService {
         }
     }
 
-    // ── helpers ────────────────────────────────────────────────────────────
+    // ── helpers ────────────────────────────────────────────────────────────────
 
     private String nombreDisplay(Cliente c) {
         if ("EMPRESA".equals(c.getTipo()) && c.getRazonSocial() != null) return c.getRazonSocial();
@@ -202,11 +238,10 @@ public class ComprobantePdfService {
         float valueX = MARGIN + labelW;
         float maxW   = PAGE_W - MARGIN - valueX;
 
-        // Wrap value if too wide
-        String display = value;
-        float valW = fontN.getStringWidth(value) / 1000f * size;
-        if (valW > maxW && value.length() > 20) {
-            display = value.substring(0, Math.min(value.length(), 30)) + "…";
+        String display = value != null ? value : "—";
+        float valW = fontN.getStringWidth(display) / 1000f * size;
+        if (valW > maxW && display.length() > 22) {
+            display = display.substring(0, Math.min(display.length(), 28)) + "…";
         }
 
         cs.beginText();

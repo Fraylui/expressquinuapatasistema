@@ -11,6 +11,7 @@ export interface ClienteDTO {
   telefono?: string
   email?: string
   fechaNac?: string
+  direccion?: string
 }
 
 export const clientesService = {

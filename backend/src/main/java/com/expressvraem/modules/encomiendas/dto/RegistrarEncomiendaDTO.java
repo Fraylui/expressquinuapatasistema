@@ -39,6 +39,8 @@ public record RegistrarEncomiendaDTO(
         @DecimalMax("9999.99")
         BigDecimal pesoKg,
 
+        Integer numBultos,
+
         Long viajeId,
 
         @NotNull(message = "La agencia destino es obligatoria")

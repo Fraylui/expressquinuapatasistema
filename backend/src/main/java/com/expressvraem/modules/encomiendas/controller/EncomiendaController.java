@@ -100,9 +100,17 @@ public class EncomiendaController {
     }
 
     @GetMapping(value = "/api/encomiendas/{id}/comprobante", produces = MediaType.APPLICATION_PDF_VALUE)
-    public ResponseEntity<byte[]> comprobante(@PathVariable Long id) {
+    public ResponseEntity<byte[]> comprobante(@PathVariable Long id, Authentication auth) {
         Encomienda enc = encomiendaService.getById(id);
-        byte[] pdf = pdfService.generarComprobante(enc);
+
+        // Collect operator name
+        String operadorNombre = auth != null ? auth.getName() : "—";
+        try {
+            var u = usuarioRepository.findByEmail(operadorNombre).orElse(null);
+            if (u != null) operadorNombre = u.getNombres() + " " + u.getApellidos();
+        } catch (Exception ignored) {}
+
+        byte[] pdf = pdfService.generarComprobante(enc, operadorNombre);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename=\"encomienda-" + enc.getCodigoTracking() + ".pdf\"")
@@ -144,6 +152,7 @@ public class EncomiendaController {
         m.put("estado", enc.getEstado());
         m.put("descripcion", enc.getDescripcion());
         m.put("pesoKg", enc.getPesoKg());
+        m.put("numBultos", enc.getNumBultos());
         m.put("monto", enc.getMonto());
         m.put("precioEnvio", enc.getPrecioEnvio());
         m.put("formaCobro", enc.getFormaCobro());

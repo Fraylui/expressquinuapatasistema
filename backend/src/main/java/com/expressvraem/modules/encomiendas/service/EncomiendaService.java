@@ -78,6 +78,7 @@ public class EncomiendaService {
                 .vendedorId(operadorId)
                 .descripcion(dto.descripcion())
                 .pesoKg(dto.pesoKg())
+                .numBultos(dto.numBultos() != null ? dto.numBultos() : 1)
                 .monto(precio)
                 .precioEnvio(precio)
                 .formaCobro(dto.formaCobro())
