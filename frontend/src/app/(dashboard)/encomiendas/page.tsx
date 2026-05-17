@@ -1,13 +1,12 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
-import QRCode from 'qrcode'
 import {
   Package, Plus, Search, X, ChevronRight, ChevronLeft,
-  Printer, Check, Loader2, Eye, RefreshCw
+  Printer, Check, Loader2, Eye, RefreshCw, CheckCircle2
 } from 'lucide-react'
 import { encomiendaService, type RegistrarEncomiendaDTO } from '@/services/encomiendas.service'
-import { BuscadorCliente } from '@/components/modules/clientes/BuscadorCliente'
+import { BuscadorCliente, type BuscadorClienteRef } from '@/components/modules/clientes/BuscadorCliente'
 import type { Encomienda, Cliente, Agencia } from '@/types'
 import api from '@/services/api'
 import type { ApiResponse } from '@/types'
@@ -29,7 +28,7 @@ const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
 
 const FORMA_COBRO_LABELS: Record<string, string> = {
   EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia',
-  YAPE: 'Yape', PLIN: 'Plin', POR_COBRAR: 'Por cobrar',
+  YAPE: 'Yape', PLIN: 'Plin', POR_COBRAR: 'Por cobrar (en destino)',
 }
 
 type TipoEntidad = 'PERSONA_DNI' | 'PERSONA_CE' | 'EMPRESA_RUC'
@@ -39,93 +38,70 @@ function tipoToDoc(t: TipoEntidad): string {
   return 'DNI'
 }
 
-// ── Comprobante modal ─────────────────────────────────────────────────────────
-interface ComprobanteData {
-  enc: Encomienda
-  remitenteNombre: string
-  remitenteDoc: string
-  destinatarioNombre: string
-  destinatarioTel: string
+interface ViajeSimple {
+  id: number
+  estado: string
+  fechaHoraSal: string
+  ruta?: { origen: string; destino: string }
+  vehiculo?: { placa: string; tipo: string }
 }
 
-function ComprobanteModal({ data, onClose }: { data: ComprobanteData; onClose: () => void }) {
-  const [qrUrl, setQrUrl] = useState('')
-  useEffect(() => {
-    QRCode.toDataURL(data.enc.codigoTracking, { width: 140, margin: 1 }).then(setQrUrl)
-  }, [data.enc.codigoTracking])
+// ── Success screen ────────────────────────────────────────────────────────────
+interface SuccessData {
+  enc: Encomienda & { [k: string]: any }
+  remitenteNombre: string
+  destinatarioNombre: string
+  agenciaDestNombre: string
+}
 
-  const imprimir = () => {
-    const win = window.open('', '_blank', 'width=340,height=600')
-    if (!win) return
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>
-@page { size: 80mm auto; margin: 0; }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Courier New',monospace; font-size:9px; width:80mm; padding:6px; }
-.center { text-align:center; } .bold { font-weight:bold; }
-.big { font-size:12px; font-weight:bold; }
-.hr { border-top:1px dashed #000; margin:4px 0; }
-.row { display:flex; justify-content:space-between; margin:1px 0; }
-.label { font-weight:bold; min-width:80px; }
-.qr { display:block; margin:6px auto; }
-.footer { font-size:7.5px; font-style:italic; text-align:center; margin-top:4px; }
-</style></head><body>
-<div class="center bold">EXPRESS QUINUAPATA VRAEM S.A.C.</div>
-<div class="center">RUC: 20601234567</div>
-<div class="center">Jr. Lima 245, Mercado Andrés F. Vivanco</div>
-<div class="center">Huamanga - Ayacucho  Telf: 066-312456</div>
-<div class="hr"></div>
-<div class="center bold">COMPROBANTE DE ENCOMIENDA</div>
-<div class="center big">${data.enc.codigoTracking}</div>
-${qrUrl ? `<img class="qr" src="${qrUrl}" width="100" height="100"/>` : ''}
-<div class="hr"></div>
-<div class="row"><span class="label">REMITENTE:</span><span>${data.remitenteNombre}</span></div>
-<div class="row"><span class="label">Documento:</span><span>${data.remitenteDoc}</span></div>
-<div class="row"><span class="label">DESTINATARIO:</span><span>${data.destinatarioNombre}</span></div>
-${data.destinatarioTel ? `<div class="row"><span class="label">Tel. dest.:</span><span>${data.destinatarioTel}</span></div>` : ''}
-<div class="hr"></div>
-<div class="row"><span class="label">Contenido:</span><span>${data.enc.descripcion}</span></div>
-${data.enc.pesoKg ? `<div class="row"><span class="label">Peso:</span><span>${data.enc.pesoKg} kg</span></div>` : ''}
-<div class="row"><span class="label">Monto:</span><span>S/ ${(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}</span></div>
-<div class="row"><span class="label">Forma pago:</span><span>${FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}</span></div>
-<div class="hr"></div>
-<div class="row"><span class="label">Fecha:</span><span>${data.enc.fechaRegistro ? format(new Date(data.enc.fechaRegistro), 'dd/MM/yyyy HH:mm') : '-'}</span></div>
-<div class="hr"></div>
-<div class="footer">Conserve este comprobante para rastrear su encomienda</div>
-<div class="footer">Estado: ${ESTADO_CONFIG[data.enc.estado]?.label ?? data.enc.estado}</div>
-</body></html>`)
-    win.document.close()
-    setTimeout(() => { win.print(); win.close() }, 400)
-  }
-
+function SuccessScreen({ data, onNueva, onPrint }: {
+  data: SuccessData
+  onNueva: () => void
+  onPrint: () => void
+}) {
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold text-gray-900">Encomienda registrada</h3>
-          <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-600"><X size={18} /></button>
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center space-y-5">
+      <div className="flex justify-center">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center animate-bounce">
+          <CheckCircle2 size={36} className="text-green-500" />
         </div>
-        <div className="p-4 bg-gray-50 flex justify-center">
-          <div style={{ width: 226, fontFamily: 'Courier New,monospace', fontSize: 8, padding: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
-            <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 9 }}>EXPRESS QUINUAPATA VRAEM S.A.C.</p>
-            <p style={{ textAlign: 'center' }}>RUC: 20601234567</p>
-            <hr style={{ borderStyle: 'dashed', margin: '3px 0' }} />
-            <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 10 }}>{data.enc.codigoTracking}</p>
-            {qrUrl && <img src={qrUrl} width={80} height={80} style={{ display: 'block', margin: '4px auto' }} alt="QR" />}
-            <hr style={{ borderStyle: 'dashed', margin: '3px 0' }} />
-            <div><b>REMITENTE: </b>{data.remitenteNombre}</div>
-            <div><b>DESTINATARIO: </b>{data.destinatarioNombre}</div>
-            <hr style={{ borderStyle: 'dashed', margin: '3px 0' }} />
-            <div><b>Contenido: </b>{data.enc.descripcion}</div>
-            <div><b>Monto: </b>S/ {(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)} — {FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}</div>
-          </div>
+      </div>
+      <div>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">¡Encomienda registrada!</h3>
+        <p className="text-xs text-gray-500">Código de seguimiento</p>
+        <div className="inline-block mt-2 px-6 py-2 bg-cyan-50 border-2 border-cyan-300 rounded-xl">
+          <span className="text-xl font-bold font-mono text-cyan-700">{data.enc.codigoTracking}</span>
         </div>
-        <div className="flex gap-3 p-4">
-          <button onClick={onClose} className="flex-1 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cerrar</button>
-          <button onClick={imprimir} className="flex-1 py-2 text-sm bg-[#1F3864] text-white rounded-lg hover:bg-[#16294d] flex items-center justify-center gap-2">
-            <Printer size={14} /> Imprimir 80mm
-          </button>
+      </div>
+      <div className="bg-gray-50 rounded-lg border border-gray-200 text-left divide-y divide-gray-100 text-sm mx-auto max-w-xs">
+        <div className="flex gap-2 px-4 py-2">
+          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Remitente</span>
+          <span className="text-xs text-gray-800">{data.remitenteNombre}</span>
         </div>
+        <div className="flex gap-2 px-4 py-2">
+          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Destinatario</span>
+          <span className="text-xs text-gray-800">{data.destinatarioNombre}</span>
+        </div>
+        <div className="flex gap-2 px-4 py-2">
+          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Destino</span>
+          <span className="text-xs text-gray-800">{data.agenciaDestNombre}</span>
+        </div>
+        <div className="flex gap-2 px-4 py-2">
+          <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Monto</span>
+          <span className="text-xs text-gray-800 font-mono">
+            S/ {(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)} — {FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}
+          </span>
+        </div>
+      </div>
+      <div className="flex gap-3 justify-center">
+        <button onClick={onPrint}
+          className="flex items-center gap-2 px-5 py-2 bg-[#1F3864] text-white text-sm rounded-lg hover:bg-[#16294d]">
+          <Printer size={15} /> Imprimir comprobante
+        </button>
+        <button onClick={onNueva}
+          className="flex items-center gap-2 px-5 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
+          <Plus size={15} /> Nueva encomienda
+        </button>
       </div>
     </div>
   )
@@ -137,13 +113,15 @@ const PASOS = ['Remitente', 'Destinatario', 'Paquete', 'Cobro', 'Obs.', 'Confirm
 interface FormState {
   tipoRemitente: TipoEntidad; remitente: Cliente | null
   tipoDestinatario: TipoEntidad; destinatario: Cliente | null
-  descripcion: string; pesoKg: string; agenciaDestinoId: string
+  descripcion: string; pesoKg: string; numBultos: string
+  agenciaDestinoId: string; viajeId: string
   monto: string; formaCobro: string; observaciones: string
 }
 const INIT: FormState = {
   tipoRemitente: 'PERSONA_DNI', remitente: null,
   tipoDestinatario: 'PERSONA_DNI', destinatario: null,
-  descripcion: '', pesoKg: '', agenciaDestinoId: '',
+  descripcion: '', pesoKg: '', numBultos: '1',
+  agenciaDestinoId: '', viajeId: '',
   monto: '', formaCobro: 'EFECTIVO', observaciones: '',
 }
 
@@ -173,19 +151,25 @@ function Row({ label, value }: { label: string; value: string }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function EncomiendaPage() {
-  const [vista, setVista] = useState<'lista' | 'nueva'>('lista')
+  const [vista, setVista] = useState<'lista' | 'nueva' | 'exito'>('lista')
   const [paso, setPaso] = useState(0)
   const [form, setForm] = useState<FormState>(INIT)
   const [guardando, setGuardando] = useState(false)
-  const [comprobante, setComprobante] = useState<ComprobanteData | null>(null)
+  const [successData, setSuccessData] = useState<SuccessData | null>(null)
   const [lista, setLista] = useState<Encomienda[]>([])
   const [cargando, setCargando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroQ, setFiltroQ] = useState('')
   const [agencias, setAgencias] = useState<Agencia[]>([])
+  const [viajes, setViajes] = useState<ViajeSimple[]>([])
+  const [imprimiendo, setImprimiendo] = useState<number | null>(null)
+
+  const remitenteRef = useRef<BuscadorClienteRef>(null)
+  const destinatarioRef = useRef<BuscadorClienteRef>(null)
 
   useEffect(() => {
     api.get<any, ApiResponse<Agencia[]>>('/api/agencias').then(r => setAgencias(r.data ?? []))
+    api.get<any, any>('/api/viajes').then(r => setViajes(r.data ?? []))
   }, [])
 
   const cargarLista = async () => {
@@ -211,6 +195,18 @@ export default function EncomiendaPage() {
     return true
   }
 
+  const avanzar = async () => {
+    if (paso === 0) {
+      const ok = await remitenteRef.current?.saveIfNeeded() ?? true
+      if (!ok) return
+    }
+    if (paso === 1) {
+      const ok = await destinatarioRef.current?.saveIfNeeded() ?? true
+      if (!ok) return
+    }
+    setPaso(p => p + 1)
+  }
+
   const registrar = async () => {
     if (!form.remitente || !form.destinatario) return
     setGuardando(true)
@@ -230,28 +226,53 @@ export default function EncomiendaPage() {
         destinatarioTelefono: form.destinatario.telefono,
         descripcion: form.descripcion,
         pesoKg: form.pesoKg ? parseFloat(form.pesoKg) : undefined,
+        numBultos: parseInt(form.numBultos || '1'),
         agenciaDestinoId: parseInt(form.agenciaDestinoId),
+        viajeId: form.viajeId ? parseInt(form.viajeId) : undefined,
         monto: parseFloat(form.monto || '0'),
         formaCobro: form.formaCobro,
         observaciones: form.observaciones || undefined,
       }
       const r = await encomiendaService.registrar(dto)
-      const enc = r.data
-      toast.success('Encomienda registrada: ' + enc.codigoTracking)
-      setComprobante({
+      const enc = r.data as any
+      const agDest = agencias.find(a => a.id.toString() === form.agenciaDestinoId)
+
+      setSuccessData({
         enc,
         remitenteNombre: form.remitente.razonSocial ?? `${form.remitente.apellidos}, ${form.remitente.nombres}`,
-        remitenteDoc: `${form.remitente.tipoDoc} ${form.remitente.numDoc}`,
         destinatarioNombre: form.destinatario.razonSocial ?? `${form.destinatario.apellidos}, ${form.destinatario.nombres}`,
-        destinatarioTel: form.destinatario.telefono ?? '',
+        agenciaDestNombre: agDest ? `${agDest.nombre} — ${agDest.ciudad}` : '—',
       })
-      setForm(INIT); setPaso(0); setVista('lista')
+      setForm(INIT); setPaso(0); setVista('exito')
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Error al registrar encomienda')
     } finally { setGuardando(false) }
   }
 
+  const imprimirComprobante = async (encId: number) => {
+    setImprimiendo(encId)
+    try {
+      const blob = await api.get(`/api/encomiendas/${encId}/comprobante`, {
+        responseType: 'blob'
+      }) as unknown as Blob
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      win?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      toast.error('Error al generar comprobante')
+    } finally {
+      setImprimiendo(null)
+    }
+  }
+
   const agenciaDestNombre = agencias.find(a => a.id.toString() === form.agenciaDestinoId)?.nombre ?? '—'
+  const viajeSeleccionado = viajes.find(v => v.id.toString() === form.viajeId)
+  const viajeLabel = viajeSeleccionado
+    ? `${viajeSeleccionado.ruta?.origen ?? ''} → ${viajeSeleccionado.ruta?.destino ?? ''} · ${
+        viajeSeleccionado.vehiculo?.placa ?? ''
+      } · ${viajeSeleccionado.fechaHoraSal ? format(new Date(viajeSeleccionado.fechaHoraSal), 'HH:mm dd/MM') : ''}`
+    : '—'
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -266,11 +287,22 @@ export default function EncomiendaPage() {
             <p className="text-xs text-gray-500">Gestión de paquetes y envíos</p>
           </div>
         </div>
-        <button onClick={() => { setVista(v => v === 'lista' ? 'nueva' : 'lista'); setPaso(0); setForm(INIT) }}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1F3864] text-white text-sm rounded-lg hover:bg-[#16294d] transition-colors">
-          {vista === 'lista' ? <><Plus size={16} /> Nueva encomienda</> : <><X size={16} /> Cancelar</>}
-        </button>
+        {vista !== 'exito' && (
+          <button onClick={() => { setVista(v => v === 'lista' ? 'nueva' : 'lista'); setPaso(0); setForm(INIT) }}
+            className="flex items-center gap-2 px-4 py-2 bg-[#1F3864] text-white text-sm rounded-lg hover:bg-[#16294d] transition-colors">
+            {vista === 'lista' ? <><Plus size={16} /> Nueva encomienda</> : <><X size={16} /> Cancelar</>}
+          </button>
+        )}
       </div>
+
+      {/* ── Success Screen ── */}
+      {vista === 'exito' && successData && (
+        <SuccessScreen
+          data={successData}
+          onNueva={() => { setVista('nueva'); setSuccessData(null) }}
+          onPrint={() => imprimirComprobante(successData.enc.id)}
+        />
+      )}
 
       {/* ── Wizard ── */}
       {vista === 'nueva' && (
@@ -303,7 +335,7 @@ export default function EncomiendaPage() {
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-800 text-sm">¿Quién envía?</h3>
                 <TipoSelector value={form.tipoRemitente} onChange={v => setForm(f => ({ ...f, tipoRemitente: v, remitente: null }))} />
-                <BuscadorCliente label="Buscar remitente" value={form.remitente}
+                <BuscadorCliente ref={remitenteRef} label="Buscar remitente" value={form.remitente}
                   onChange={c => setForm(f => ({ ...f, remitente: c }))} tipoDoc={tipoToDoc(form.tipoRemitente)} />
               </div>
             )}
@@ -312,7 +344,7 @@ export default function EncomiendaPage() {
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-800 text-sm">¿Quién recibe?</h3>
                 <TipoSelector value={form.tipoDestinatario} onChange={v => setForm(f => ({ ...f, tipoDestinatario: v, destinatario: null }))} />
-                <BuscadorCliente label="Buscar destinatario" value={form.destinatario}
+                <BuscadorCliente ref={destinatarioRef} label="Buscar destinatario" value={form.destinatario}
                   onChange={c => setForm(f => ({ ...f, destinatario: c }))} tipoDoc={tipoToDoc(form.tipoDestinatario)} />
               </div>
             )}
@@ -326,10 +358,15 @@ export default function EncomiendaPage() {
                     placeholder="Ej: Ropa, electrónicos, documentos..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Peso en kg (opcional)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Peso en kg</label>
                     <input type="number" step="0.1" min="0" value={form.pesoKg} onChange={sf('pesoKg')} placeholder="0.5"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">N° bultos</label>
+                    <input type="number" min="1" max="99" value={form.numBultos} onChange={sf('numBultos')} placeholder="1"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
@@ -340,6 +377,22 @@ export default function EncomiendaPage() {
                       {agencias.map(a => <option key={a.id} value={a.id}>{a.nombre} — {a.ciudad}</option>)}
                     </select>
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Viaje asignado <span className="text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <select value={form.viajeId} onChange={sf('viajeId')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                    <option value="">Sin viaje asignado</option>
+                    {viajes
+                      .filter(v => v.estado === 'PROGRAMADO' || v.estado === 'EN_RUTA')
+                      .map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.ruta?.origen ?? '?'} → {v.ruta?.destino ?? '?'} · {v.vehiculo?.placa ?? ''} · {v.fechaHoraSal ? format(new Date(v.fechaHoraSal), 'HH:mm dd/MM') : ''}
+                        </option>
+                      ))}
+                  </select>
                 </div>
               </div>
             )}
@@ -363,7 +416,7 @@ export default function EncomiendaPage() {
                 </div>
                 {form.formaCobro === 'POR_COBRAR' && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                    El monto será cobrado al destinatario al momento de la entrega.
+                    El monto será cobrado al destinatario al momento de la entrega. Se imprimirá <b>EN DESTINO</b> en el comprobante.
                   </div>
                 )}
               </div>
@@ -386,7 +439,9 @@ export default function EncomiendaPage() {
                   <Row label="Destinatario" value={form.destinatario?.razonSocial ?? `${form.destinatario?.apellidos ?? ''}, ${form.destinatario?.nombres ?? ''}`} />
                   <Row label="Contenido" value={form.descripcion} />
                   {form.pesoKg && <Row label="Peso" value={form.pesoKg + ' kg'} />}
+                  <Row label="Bultos" value={form.numBultos || '1'} />
                   <Row label="Destino" value={agenciaDestNombre} />
+                  {form.viajeId && <Row label="Viaje" value={viajeLabel} />}
                   <Row label="Monto" value={`S/ ${parseFloat(form.monto || '0').toFixed(2)}`} />
                   <Row label="Forma cobro" value={FORMA_COBRO_LABELS[form.formaCobro] ?? form.formaCobro} />
                   {form.observaciones && <Row label="Obs." value={form.observaciones} />}
@@ -403,7 +458,7 @@ export default function EncomiendaPage() {
               )}
               <div className="flex-1" />
               {paso < PASOS.length - 1 ? (
-                <button onClick={() => setPaso(p => p + 1)} disabled={!puedeAvanzar()}
+                <button onClick={avanzar} disabled={!puedeAvanzar()}
                   className="flex items-center gap-1 px-4 py-2 text-sm bg-[#1F3864] text-white rounded-lg hover:bg-[#16294d] disabled:opacity-50">
                   Siguiente <ChevronRight size={15} />
                 </button>
@@ -472,8 +527,8 @@ export default function EncomiendaPage() {
                       return (
                         <tr key={enc.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1F3864]">{enc.codigoTracking}</td>
-                          <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">{enc.remitenteNombre ?? `ID ${enc.remitenteId}`}</td>
-                          <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</td>
+                          <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">{(enc as any).remitenteNombre ?? `ID ${enc.remitenteId}`}</td>
+                          <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">{(enc as any).destinatarioNombre ?? `ID ${enc.destinatarioId}`}</td>
                           <td className="px-4 py-3">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
                           </td>
@@ -484,10 +539,22 @@ export default function EncomiendaPage() {
                             {enc.fechaRegistro ? format(new Date(enc.fechaRegistro), 'dd/MM/yy HH:mm') : '—'}
                           </td>
                           <td className="px-4 py-3">
-                            <a href={`/encomiendas/${enc.id}`}
-                              className="p-1.5 rounded text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 inline-flex">
-                              <Eye size={15} />
-                            </a>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => imprimirComprobante(enc.id)}
+                                disabled={imprimiendo === enc.id}
+                                title="Imprimir comprobante"
+                                className="p-1.5 rounded text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 inline-flex disabled:opacity-40"
+                              >
+                                {imprimiendo === enc.id
+                                  ? <Loader2 size={14} className="animate-spin" />
+                                  : <Printer size={14} />}
+                              </button>
+                              <a href={`/encomiendas/${enc.id}`}
+                                className="p-1.5 rounded text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 inline-flex">
+                                <Eye size={15} />
+                              </a>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -499,8 +566,6 @@ export default function EncomiendaPage() {
           </div>
         </div>
       )}
-
-      {comprobante && <ComprobanteModal data={comprobante} onClose={() => setComprobante(null)} />}
     </div>
   )
 }

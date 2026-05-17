@@ -166,6 +166,7 @@ export interface Cliente {
   numDoc: string
   telefono?: string
   email?: string
+  direccion?: string
 }
 
 export interface Pasaje {

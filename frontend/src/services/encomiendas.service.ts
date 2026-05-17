@@ -19,6 +19,7 @@ export interface RegistrarEncomiendaDTO {
   // Paquete
   descripcion: string
   pesoKg?: number
+  numBultos?: number
   viajeId?: number
   agenciaDestinoId: number
   // Cobro

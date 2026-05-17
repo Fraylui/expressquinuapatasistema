@@ -338,6 +338,7 @@ CREATE TABLE encomiendas (
     vendedor_id          BIGINT          NOT NULL REFERENCES usuarios(id),
     descripcion          TEXT            NOT NULL,
     peso_kg              NUMERIC(8,3),
+    num_bultos           INT             DEFAULT 1,
     monto                NUMERIC(8,2),
     precio_envio         NUMERIC(8,2)    NOT NULL,
     forma_cobro          VARCHAR(20),
