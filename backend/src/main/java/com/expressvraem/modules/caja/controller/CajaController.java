@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Optional;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -64,8 +66,13 @@ public class CajaController {
 
     @GetMapping("/turno-actual")
     public ResponseEntity<ApiResponse<Map<String, Object>>> turnoActual(Authentication auth) {
-        Caja caja = cajaService.getTurnoActual(resolveUserId(auth));
-        return ResponseEntity.ok(ApiResponse.ok(cajaService.getResumenTurno(caja.getId())));
+        try {
+            Caja caja = cajaService.getTurnoActual(resolveUserId(auth));
+            return ResponseEntity.ok(ApiResponse.ok(cajaService.getResumenTurno(caja.getId())));
+        } catch (BusinessException e) {
+            // Sin turno activo: devuelve 200 con data null para que el frontend lo maneje
+            return ResponseEntity.ok(ApiResponse.ok(null));
+        }
     }
 
     @GetMapping("/movimientos/{cajaId}")
