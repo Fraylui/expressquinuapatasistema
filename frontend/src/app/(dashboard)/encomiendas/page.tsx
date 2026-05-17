@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
 import {
   Plus, Search, X, UserCheck, Loader2,
-  Printer, MapPin, Weight, ChevronDown,
+  Printer, MapPin, ChevronDown,
 } from 'lucide-react'
 import { Table, Column } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
@@ -280,7 +280,6 @@ function Voucher({ enc, remitente, destinatario, agenciaOrigen, agenciaDestino, 
       ${destinatario.telefono ? `<div class="row"><span>Tel:</span><span class="val">${destinatario.telefono}</span></div>` : ''}
       <hr/>
       <div class="row"><span>Contenido:</span><span class="val">${enc.descripcion}</span></div>
-      ${enc.tamano   ? `<div class="row"><span>Tamaño:</span><span class="val">${enc.tamano}</span></div>` : ''}
       ${enc.pesoKg   ? `<div class="row"><span>Peso:</span><span class="val">${enc.pesoKg} kg</span></div>` : ''}
       ${enc.observaciones ? `<div class="row"><span>Nota:</span><span class="val">${enc.observaciones}</span></div>` : ''}
       <hr/>
@@ -324,7 +323,6 @@ function Voucher({ enc, remitente, destinatario, agenciaOrigen, agenciaDestino, 
         {destinatario.telefono && <div className="flex justify-between"><span>Tel:</span><span>{destinatario.telefono}</span></div>}
         <hr className="border-dashed border-gray-400 my-1.5" />
         <div className="flex justify-between"><span>Contenido:</span><span className="text-right max-w-[55%] leading-tight">{enc.descripcion}</span></div>
-        {enc.tamano  && <div className="flex justify-between"><span>Tamaño:</span><span>{enc.tamano}</span></div>}
         {enc.pesoKg  && <div className="flex justify-between"><span>Peso:</span><span>{enc.pesoKg} kg</span></div>}
         <hr className="border-dashed border-gray-400 my-1.5" />
         <div className="flex justify-between font-bold text-[13px]">
@@ -373,7 +371,6 @@ export default function EncomiendaPage() {
   const [destinatario, setDestinatario]     = useState<Cliente | null>(null)
   const [agenciaDestinoId, setAgenciaDestinoId] = useState<string>('')
   const [descripcion, setDescripcion]       = useState('')
-  const [tamano, setTamano]                 = useState('')
   const [pesoKg, setPesoKg]                 = useState('')
   const [observaciones, setObservaciones]   = useState('')
 
@@ -383,7 +380,7 @@ export default function EncomiendaPage() {
 
   const abrirModal = () => {
     setRemitente(null); setDestinatario(null); setAgenciaDestinoId('')
-    setDescripcion(''); setTamano(''); setPesoKg(''); setObservaciones('')
+    setDescripcion(''); setPesoKg(''); setObservaciones('')
     setModalOpen(true)
   }
 
@@ -401,7 +398,6 @@ export default function EncomiendaPage() {
         destinatarioId:   destinatario.id,
         agenciaDestinoId: Number(agenciaDestinoId),
         descripcion:      descripcion.trim(),
-        tamano:           tamano || undefined,
         pesoKg:           pesoKg ? parseFloat(pesoKg) : undefined,
         observaciones:    observaciones.trim() || undefined,
       })
@@ -527,32 +523,8 @@ export default function EncomiendaPage() {
             />
           </div>
 
-          {/* Tamaño + Peso en fila */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Tamaño</label>
-              <div className="flex gap-1.5">
-                {(['PEQUEÑO','MEDIANO','GRANDE'] as const).map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTamano(prev => prev === t ? '' : t)}
-                    className={[
-                      'flex-1 py-2 text-xs font-semibold rounded-lg border-2 transition-all',
-                      tamano === t
-                        ? 'bg-[#1F3864] border-[#1F3864] text-white'
-                        : 'border-gray-200 text-gray-600 hover:border-gray-400',
-                    ].join(' ')}
-                  >
-                    {t === 'PEQUEÑO' ? 'S' : t === 'MEDIANO' ? 'M' : 'L'}
-                  </button>
-                ))}
-              </div>
-              {tamano && (
-                <p className="text-[10px] text-gray-400 mt-1">{tamano}</p>
-              )}
-            </div>
-            <div>
+          {/* Peso */}
+          <div>
               <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
                 <Weight size={11} /> Peso (kg) — opcional
               </label>
@@ -565,7 +537,6 @@ export default function EncomiendaPage() {
                 placeholder="Ej: 2.5"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-            </div>
           </div>
 
           {/* Observaciones */}
@@ -647,12 +618,6 @@ export default function EncomiendaPage() {
                 <div>
                   <span className="text-xs text-gray-500 block">Peso</span>
                   <span>{detalleSel.pesoKg} kg</span>
-                </div>
-              )}
-              {(detalleSel as any).tamano && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Tamaño</span>
-                  <span>{(detalleSel as any).tamano}</span>
                 </div>
               )}
               <div className="col-span-2">
