@@ -1,6 +1,7 @@
 package com.expressvraem.modules.agencias.controller;
 
-import com.expressvraem.modules.agencias.entity.Agencia;
+import com.expressvraem.modules.agencias.dto.AgenciaRequestDTO;
+import com.expressvraem.modules.agencias.dto.AgenciaResponseDTO;
 import com.expressvraem.modules.agencias.service.AgenciaService;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,33 +22,41 @@ public class AgenciaController {
     private final AgenciaService agenciaService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Agencia>>> listar() {
+    public ResponseEntity<ApiResponse<List<AgenciaResponseDTO>>> listar() {
         return ResponseEntity.ok(ApiResponse.ok(agenciaService.findAll()));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Agencia>> detalle(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<AgenciaResponseDTO>> detalle(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(agenciaService.findById(id)));
     }
 
+    @GetMapping("/{id}/metricas")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> metricas(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(agenciaService.getMetricas(id)));
+    }
+
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'GERENTE')")
-    public ResponseEntity<ApiResponse<Agencia>> crear(@RequestBody Agencia agencia) {
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AgenciaResponseDTO>> crear(@RequestBody AgenciaRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Agencia creada correctamente", agenciaService.crear(agencia)));
+                .body(ApiResponse.ok("Agencia creada correctamente", agenciaService.crear(dto)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'GERENTE')")
-    public ResponseEntity<ApiResponse<Agencia>> actualizar(@PathVariable Long id, @RequestBody Agencia datos) {
-        return ResponseEntity.ok(ApiResponse.ok("Agencia actualizada", agenciaService.actualizar(id, datos)));
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AgenciaResponseDTO>> actualizar(
+            @PathVariable Long id,
+            @RequestBody AgenciaRequestDTO dto) {
+        return ResponseEntity.ok(ApiResponse.ok("Agencia actualizada", agenciaService.actualizar(id, dto)));
     }
 
     @PatchMapping("/{id}/estado")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'GERENTE')")
-    public ResponseEntity<ApiResponse<Void>> cambiarEstado(@PathVariable Long id,
-                                                           @RequestBody Map<String, Boolean> body) {
-        agenciaService.cambiarEstado(id, body.get("activo"));
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> cambiarEstado(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        agenciaService.cambiarEstado(id, body.get("estado"));
         return ResponseEntity.ok(ApiResponse.ok("Estado actualizado", null));
     }
 }

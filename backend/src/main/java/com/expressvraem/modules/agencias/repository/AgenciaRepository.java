@@ -8,8 +8,10 @@ import java.util.List;
 
 @Repository
 public interface AgenciaRepository extends JpaRepository<Agencia, Long> {
+    List<Agencia> findByEstado(String estado);
     List<Agencia> findByActivo(boolean activo);
     List<Agencia> findByCiudad(String ciudad);
     boolean existsByNombre(String nombre);
     boolean existsByCodigo(String codigo);
+    boolean existsByCodigoAndIdNot(String codigo, Long id);
 }

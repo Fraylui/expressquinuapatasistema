@@ -78,12 +78,37 @@ export interface Agencia {
   id: number
   codigo: string
   nombre: string
-  direccion?: string
   ciudad: string
-  departamento?: string
-  telefono?: string
+  direccion: string
+  telefono: string
   email?: string
   ruc?: string
+  encargadoId?: number
+  encargadoNombre?: string
+  estado: string
+  esSedePrincipal: boolean
+  fechaApertura?: string
+  fechaRegistro?: string
+  // legacy
+  departamento?: string
+  activo?: boolean
+}
+
+export interface AgenciaMetricas {
+  totalViajesMes: number
+  totalPasajesMes: number
+  totalEncomiendaMes: number
+  totalIngresosMes: number
+  usuariosActivos: number
+}
+
+export interface UsuarioSimple {
+  id: number
+  agenciaId: number
+  nombres: string
+  apellidos: string
+  email: string
+  rol: string
   activo: boolean
 }
 
