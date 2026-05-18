@@ -257,8 +257,8 @@ CREATE TABLE asientos (
     agencia_id  BIGINT      NOT NULL REFERENCES agencias(id),
     viaje_id    BIGINT      NOT NULL REFERENCES viajes(id),
     numero      INT         NOT NULL,
-    estado      VARCHAR(20) NOT NULL DEFAULT 'DISPONIBLE'
-                    CHECK (estado IN ('DISPONIBLE','RESERVADO','VENDIDO','BLOQUEADO')),
+    estado      VARCHAR(20) NOT NULL DEFAULT 'LIBRE'
+                    CHECK (estado IN ('LIBRE','OCUPADO','RESERVADO')),
     UNIQUE (viaje_id, numero)
 );
 
@@ -646,17 +646,17 @@ INSERT INTO viajes (agencia_id, ruta_id, vehiculo_id, conductor_id, fecha_hora_s
 -- ASIENTOS
 -- ============================================================
 INSERT INTO asientos (agencia_id, viaje_id, numero, estado) VALUES
-(1,1,1,'VENDIDO'),(1,1,2,'VENDIDO'),(1,1,3,'RESERVADO'),
-(1,1,4,'DISPONIBLE'),(1,1,5,'DISPONIBLE'),(1,1,6,'DISPONIBLE'),
-(1,1,7,'DISPONIBLE'),(1,1,8,'DISPONIBLE'),(1,1,9,'DISPONIBLE'),
-(1,1,10,'DISPONIBLE'),(1,1,11,'DISPONIBLE'),(1,1,12,'DISPONIBLE'),
-(1,1,13,'DISPONIBLE'),(1,1,14,'DISPONIBLE'),(1,1,15,'DISPONIBLE'),
-(1,2,1,'DISPONIBLE'),(1,2,2,'DISPONIBLE'),(1,2,3,'DISPONIBLE'),
-(1,2,4,'DISPONIBLE'),(1,2,5,'DISPONIBLE'),(1,2,6,'DISPONIBLE'),
-(1,2,7,'DISPONIBLE'),(1,2,8,'DISPONIBLE'),(1,2,9,'DISPONIBLE'),
-(1,2,10,'DISPONIBLE'),(1,2,11,'DISPONIBLE'),(1,2,12,'DISPONIBLE'),
-(1,2,13,'DISPONIBLE'),(1,2,14,'DISPONIBLE'),(1,2,15,'DISPONIBLE'),
-(1,3,1,'VENDIDO'),(1,3,2,'VENDIDO'),(1,3,3,'RESERVADO'),(1,3,4,'DISPONIBLE');
+(1,1,1,'OCUPADO'),(1,1,2,'OCUPADO'),(1,1,3,'RESERVADO'),
+(1,1,4,'LIBRE'),(1,1,5,'LIBRE'),(1,1,6,'LIBRE'),
+(1,1,7,'LIBRE'),(1,1,8,'LIBRE'),(1,1,9,'LIBRE'),
+(1,1,10,'LIBRE'),(1,1,11,'LIBRE'),(1,1,12,'LIBRE'),
+(1,1,13,'LIBRE'),(1,1,14,'LIBRE'),(1,1,15,'LIBRE'),
+(1,2,1,'LIBRE'),(1,2,2,'LIBRE'),(1,2,3,'LIBRE'),
+(1,2,4,'LIBRE'),(1,2,5,'LIBRE'),(1,2,6,'LIBRE'),
+(1,2,7,'LIBRE'),(1,2,8,'LIBRE'),(1,2,9,'LIBRE'),
+(1,2,10,'LIBRE'),(1,2,11,'LIBRE'),(1,2,12,'LIBRE'),
+(1,2,13,'LIBRE'),(1,2,14,'LIBRE'),(1,2,15,'LIBRE'),
+(1,3,1,'OCUPADO'),(1,3,2,'OCUPADO'),(1,3,3,'RESERVADO'),(1,3,4,'LIBRE');
 
 -- ============================================================
 -- CLIENTES (10 registros — Ley 29733 protección de datos)

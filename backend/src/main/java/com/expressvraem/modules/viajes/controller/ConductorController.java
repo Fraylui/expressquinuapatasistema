@@ -27,13 +27,27 @@ public class ConductorController {
 
     /** Devuelve los viajes asignados al conductor del JWT (filtrado por conductor_id) */
     @GetMapping("/mis-viajes")
-    public ResponseEntity<ApiResponse<List<ViajeResponseDTO>>> misViajes() {
-        // Busca el conductorId desde la tabla conductores por DNI del usuario
+    public ResponseEntity<ApiResponse<List<ViajeResponseDTO>>> misViajes(
+            org.springframework.security.core.Authentication auth) {
+        // Resolve conductor_id from the authenticated user's DNI
+        Long conductorId = null;
+        try {
+            Object row = entityManager.createNativeQuery(
+                    "SELECT c.id FROM conductores c " +
+                    "JOIN usuarios u ON u.dni = c.dni " +
+                    "WHERE u.email = :email AND c.activo = true")
+                    .setParameter("email", auth.getName())
+                    .getSingleResult();
+            conductorId = ((Number) row).longValue();
+        } catch (Exception ignored) {}
+
+        final Long cId = conductorId;
         Long agenciaId = AgenciaContext.getAgenciaId();
 
         List<Viaje> viajes = viajeRepository.findByAgenciaId(agenciaId != null ? agenciaId : 1L)
                 .stream()
                 .filter(v -> "PROGRAMADO".equals(v.getEstado()) || "EN_RUTA".equals(v.getEstado()))
+                .filter(v -> cId == null || cId.equals(v.getConductorId()))
                 .toList();
 
         List<ViajeResponseDTO> dtos = viajes.stream()

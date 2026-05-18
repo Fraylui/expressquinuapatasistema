@@ -1,6 +1,9 @@
 package com.expressvraem.modules.viajes.controller;
 
+import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.repository.EncomiendaRepository;
+import com.expressvraem.shared.websocket.WebSocketEventPublisher;
+import com.expressvraem.modules.viajes.dto.ProgramarViajeDTO;
 import com.expressvraem.modules.viajes.dto.ViajeResponseDTO;
 import com.expressvraem.modules.viajes.entity.Asiento;
 import com.expressvraem.modules.viajes.entity.Viaje;
@@ -12,7 +15,9 @@ import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.logs.LogService;
 import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.persistence.EntityManager;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -35,6 +40,57 @@ public class ViajeController {
     private final EncomiendaRepository encomiendaRepository;
     private final EntityManager entityManager;
     private final LogService logService;
+    private final WebSocketEventPublisher wsPublisher;
+
+    /**
+     * Programa un nuevo viaje y genera los asientos según la capacidad del vehículo.
+     */
+    @PostMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','OPERADOR')")
+    public ResponseEntity<ApiResponse<ViajeResponseDTO>> programar(
+            @Valid @RequestBody ProgramarViajeDTO dto, Authentication auth) {
+
+        Long agenciaId = AgenciaContext.getAgenciaId();
+        if (agenciaId == null) agenciaId = 1L;
+
+        Object[] vehRow = (Object[]) entityManager
+                .createNativeQuery("SELECT id, placa, tipo, num_asientos FROM vehiculos WHERE id = :vid")
+                .setParameter("vid", dto.vehiculoId())
+                .getSingleResult();
+
+        int numAsientos = ((Number) vehRow[3]).intValue();
+
+        Viaje viaje = Viaje.builder()
+                .agenciaId(agenciaId)
+                .rutaId(dto.rutaId())
+                .vehiculoId(dto.vehiculoId())
+                .conductorId(dto.conductorId())
+                .fechaHoraSal(dto.fechaHoraSal())
+                .estado("PROGRAMADO")
+                .observaciones(dto.observaciones())
+                .createdAt(java.time.OffsetDateTime.now())
+                .updatedAt(java.time.OffsetDateTime.now())
+                .build();
+
+        viaje = viajeRepository.save(viaje);
+
+        List<Asiento> asientosNuevos = new ArrayList<>(numAsientos);
+        for (int i = 1; i <= numAsientos; i++) {
+            asientosNuevos.add(Asiento.builder()
+                    .agenciaId(agenciaId)
+                    .viajeId(viaje.getId())
+                    .vehiculoId(dto.vehiculoId())
+                    .numero(i)
+                    .estado("LIBRE")
+                    .build());
+        }
+        asientoRepository.saveAll(asientosNuevos);
+
+        logService.logOperacion(auth.getName(), "VIAJES", "PROGRAMAR",
+                Map.of("viajeId", viaje.getId(), "rutaId", dto.rutaId(), "vehiculoId", dto.vehiculoId()));
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Viaje programado", enrich(viaje)));
+    }
 
     /**
      * Viajes disponibles para venta de pasajes.
@@ -47,9 +103,10 @@ public class ViajeController {
             @RequestParam(required = false) String fecha) {
 
         Long agenciaId = AgenciaContext.getAgenciaId();
+        List<String> estadosActivos = List.of("PROGRAMADO", "EN_RUTA");
         List<Viaje> todos = agenciaId != null
-                ? viajeRepository.findByAgenciaId(agenciaId)
-                : viajeRepository.findAll();
+                ? viajeRepository.findByAgenciaIdAndEstadoIn(agenciaId, estadosActivos)
+                : viajeRepository.findByEstadoIn(estadosActivos);
 
         LocalDate fechaFiltro = null;
         if (fecha != null && !fecha.isBlank()) {
@@ -59,7 +116,6 @@ public class ViajeController {
 
         List<Map<String, Object>> resultado = new ArrayList<>();
         for (Viaje v : todos) {
-            if (!"PROGRAMADO".equals(v.getEstado()) && !"EN_RUTA".equals(v.getEstado())) continue;
             long libres = asientoRepository.countByViajeIdAndEstado(v.getId(), "LIBRE");
             if (libres == 0) continue;
             try {
@@ -151,7 +207,8 @@ public class ViajeController {
         // Cambia todas las encomiendas pre-tránsito asignadas a este viaje
         java.util.Set<String> preTransito = java.util.Set.of(
                 "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
-        encomiendaRepository.findByViajeId(id).forEach(enc -> {
+        List<Encomienda> encomiendas = encomiendaRepository.findByViajeId(id);
+        encomiendas.forEach(enc -> {
             if (preTransito.contains(enc.getEstado())) {
                 enc.setEstado("EN_TRANSITO");
                 encomiendaRepository.save(enc);
@@ -160,6 +217,14 @@ public class ViajeController {
 
         logService.logOperacion(auth.getName(), "VIAJES", "CONFIRMAR_SALIDA",
                 Map.of("viajeId", id, "operador", auth.getName()));
+
+        // Notify each destino agencia that their encomiendas are en camino
+        encomiendas.stream()
+                .map(Encomienda::getAgenciaDestinoId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .forEach(agDestId -> wsPublisher.publicarEncomiendaEnCamino(agDestId,
+                        Map.of("viajeId", id, "tipo", "EN_CAMINO")));
 
         return ResponseEntity.ok(ApiResponse.ok("Viaje confirmado — en ruta", enrich(viaje)));
     }
