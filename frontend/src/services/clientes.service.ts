@@ -4,8 +4,10 @@ import { Cliente } from '@/types'
 export type { Cliente }
 
 export interface ClienteDTO {
-  nombres: string
-  apellidos: string
+  tipo?: 'PERSONA' | 'EMPRESA'
+  nombres?: string
+  apellidos?: string
+  razonSocial?: string
   tipoDoc: string
   numDoc: string
   telefono?: string

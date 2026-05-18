@@ -57,15 +57,21 @@ public class ClienteService {
 
     public Cliente crear(ClienteDTO dto) {
         Long agenciaId = AgenciaContext.getAgenciaId();
+        boolean empresa = dto.isEmpresa();
         Cliente c = Cliente.builder()
                 .agenciaId(agenciaId != null ? agenciaId : 1L)
-                .nombres(dto.getNombres())
-                .apellidos(dto.getApellidos())
+                .tipo(empresa ? "EMPRESA" : "PERSONA")
+                .razonSocial(empresa ? dto.getRazonSocial() : null)
+                .nombres(empresa
+                        ? (dto.getRazonSocial() != null ? dto.getRazonSocial() : dto.getNumDoc())
+                        : dto.getNombres())
+                .apellidos(empresa ? "-" : dto.getApellidos())
                 .tipoDoc(dto.getTipoDoc())
                 .numDoc(dto.getNumDoc())
                 .telefono(dto.getTelefono())
                 .email(dto.getEmail())
                 .fechaNac(dto.getFechaNac())
+                .direccion(dto.getDireccion())
                 .build();
         Cliente saved = clienteRepository.save(c);
         logService.logOperacion("sistema", "CLIENTES", "CREAR", saved);
@@ -75,13 +81,19 @@ public class ClienteService {
     public Cliente actualizar(Long id, ClienteDTO dto) {
         Cliente c = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
-        c.setNombres(dto.getNombres());
-        c.setApellidos(dto.getApellidos());
+        boolean empresa = dto.isEmpresa();
+        c.setTipo(empresa ? "EMPRESA" : "PERSONA");
+        c.setRazonSocial(empresa ? dto.getRazonSocial() : null);
+        c.setNombres(empresa
+                ? (dto.getRazonSocial() != null ? dto.getRazonSocial() : dto.getNumDoc())
+                : dto.getNombres());
+        c.setApellidos(empresa ? "-" : dto.getApellidos());
         c.setTipoDoc(dto.getTipoDoc());
         c.setNumDoc(dto.getNumDoc());
         c.setTelefono(dto.getTelefono());
         c.setEmail(dto.getEmail());
         c.setFechaNac(dto.getFechaNac());
+        c.setDireccion(dto.getDireccion());
         return clienteRepository.save(c);
     }
 
