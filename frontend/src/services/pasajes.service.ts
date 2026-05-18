@@ -13,6 +13,7 @@ export interface VentaPasajeDTO {
   descuento: number
   formaPago: string
   motivoDescuento?: string
+  tipo?: 'VENTA' | 'RESERVA'
 }
 
 export interface PasajeResponseDTO {
@@ -38,6 +39,9 @@ export const pasajesService = {
 
   anular: (id: number, motivoAnulacion: string) =>
     api.post<any, ApiResponse<void>>(`/api/pasajes/${id}/anular`, { motivoAnulacion }),
+
+  confirmar: (id: number, formaPago: string) =>
+    api.post<any, ApiResponse<PasajeResponseDTO>>(`/api/pasajes/${id}/confirmar`, { formaPago }),
 
   getLista: (params?: { estado?: string; codigoBoleta?: string }) =>
     api.get<any, ApiResponse<Pasaje[]>>('/api/pasajes', { params }),

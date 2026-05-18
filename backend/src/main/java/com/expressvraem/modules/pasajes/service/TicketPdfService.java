@@ -34,7 +34,7 @@ public class TicketPdfService {
     private static final float MARGIN  = 10f;
     private static final String EMPRESA = "EXPRESS QUINUAPATA VRAEM S.A.C.";
     private static final String RUC     = "RUC: 20601234567";
-    private static final String DIR     = "Jr. Lima 245, Mercado Andrés F. Vivanco";
+    private static final String DIR     = "Jr. Lima 245, Mercado Andres F. Vivanco";
     private static final String CIUDAD  = "Huamanga - Ayacucho  Telf: 066-312456";
 
     @SuppressWarnings("unchecked")
@@ -84,9 +84,18 @@ public class TicketPdfService {
 
             String fechaViaje = ""; String horaViaje = "";
             if (viajeRow != null && viajeRow[1] != null) {
-                java.time.OffsetDateTime fhs = (java.time.OffsetDateTime) viajeRow[1];
-                fechaViaje = fhs.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-                horaViaje  = fhs.format(DateTimeFormatter.ofPattern("hh:mm a"));
+                java.time.LocalDateTime ldt;
+                if (viajeRow[1] instanceof java.time.OffsetDateTime odt) {
+                    ldt = odt.toLocalDateTime();
+                } else if (viajeRow[1] instanceof java.sql.Timestamp ts) {
+                    ldt = ts.toLocalDateTime();
+                } else {
+                    ldt = null;
+                }
+                if (ldt != null) {
+                    fechaViaje = ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+                    horaViaje  = ldt.format(DateTimeFormatter.ofPattern("hh:mm a"));
+                }
             }
 
             float pageH = 520f;
@@ -117,10 +126,10 @@ public class TicketPdfService {
 
                 y = dashes(cs, y); y -= 3;
 
-                y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",    origen + " → " + destino, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",    ascii(origen) + " > " + ascii(destino), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",   fechaViaje, y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:",horaViaje, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "VEHÍCULO:",tipoVeh + " — " + placa, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:",ascii(tipoVeh) + " - " + ascii(placa), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 8f, "ASIENTO N°:",
                         String.valueOf(p.getAsientoNumero() != null ? p.getAsientoNumero() : "?"), y);
                 y -= 4;
@@ -128,7 +137,7 @@ public class TicketPdfService {
                 y = dashes(cs, y); y -= 3;
                 y = ctext(cs, fontBold, 7.5f, "DATOS DEL PASAJERO", y); y -= 3;
 
-                y = lbl(cs, fontBold, fontNorm, 7f, "Pasajero:", clienteApellidos + " " + clienteNombres, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "Pasajero:", ascii(clienteApellidos) + " " + ascii(clienteNombres), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "DNI:", clienteDni, y); y -= 4;
 
                 y = dashes(cs, y); y -= 3;
@@ -147,7 +156,7 @@ public class TicketPdfService {
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Emitido:", emitido, y); y -= 4;
 
                 y = dashes(cs, y); y -= 3;
-                y = ctext(cs, fontBold, 8f, "¡Buen viaje!", y); y -= 2;
+                y = ctext(cs, fontBold, 8f, "Buen viaje!", y); y -= 2;
                 y = ctext(cs, fontNorm, 6.5f, "Conserve este voucher durante todo el trayecto", y); y -= 1;
                 ctext(cs, fontNorm, 6.5f, EMPRESA, y);
             }
@@ -175,7 +184,7 @@ public class TicketPdfService {
         float lw = fB.getStringWidth(label + " ") / 1000f * sz;
         String display = val;
         if (fN.getStringWidth(val) / 1000f * sz > PAGE_W - MARGIN - lw - MARGIN && val.length() > 25)
-            display = val.substring(0, 25) + "…";
+            display = val.substring(0, 25) + "...";
         cs.beginText(); cs.setFont(fN, sz);
         cs.newLineAtOffset(MARGIN + lw, y - sz); cs.showText(display); cs.endText();
         return y - sz - 1;
@@ -184,6 +193,27 @@ public class TicketPdfService {
     private float dashes(PDPageContentStream cs, float y) throws Exception {
         cs.setLineWidth(0.5f); cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
         return y - 3;
+    }
+
+    private String ascii(String s) {
+        if (s == null) return "";
+        return s
+            .replace('á','a').replace('à','a').replace('ä','a').replace('â','a')
+            .replace('é','e').replace('è','e').replace('ë','e').replace('ê','e')
+            .replace('í','i').replace('ì','i').replace('ï','i').replace('î','i')
+            .replace('ó','o').replace('ò','o').replace('ö','o').replace('ô','o')
+            .replace('ú','u').replace('ù','u').replace('ü','u').replace('û','u')
+            .replace('ñ','n').replace('ç','c')
+            .replace('Á','A').replace('À','A').replace('Ä','A').replace('Â','A')
+            .replace('É','E').replace('È','E').replace('Ë','E').replace('Ê','E')
+            .replace('Í','I').replace('Ì','I').replace('Ï','I').replace('Î','I')
+            .replace('Ó','O').replace('Ò','O').replace('Ö','O').replace('Ô','O')
+            .replace('Ú','U').replace('Ù','U').replace('Ü','U').replace('Û','U')
+            .replace('Ñ','N').replace('Ç','C')
+            .replace('→', '>').replace('←', '<').replace('—', '-').replace('–', '-')
+            .replace('…', '.').replace('"', '"').replace('"', '"')
+            .replace('¡', '!').replace('¿', '?')
+            .replaceAll("[^\\x00-\\x7E]", "?");
     }
 
     private PDImageXObject buildQr(PDDocument doc, String text) throws Exception {

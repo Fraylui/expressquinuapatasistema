@@ -314,8 +314,8 @@ CREATE TABLE pasajes (
     monto_descuento NUMERIC(8,2)    NOT NULL DEFAULT 0,
     precio_final    NUMERIC(8,2)    NOT NULL,
     forma_pago      VARCHAR(20)     NOT NULL DEFAULT 'EFECTIVO',
-    estado          VARCHAR(20)     NOT NULL DEFAULT 'EMITIDO'
-                        CHECK (estado IN ('EMITIDO','CONFIRMADO','ANULADO','USADO')),
+    estado          VARCHAR(20)     NOT NULL DEFAULT 'VENDIDO'
+                        CHECK (estado IN ('VENDIDO','RESERVADO','ANULADO')),
     codigo_pasaje   VARCHAR(20),
     serie           VARCHAR(5),
     correlativo     VARCHAR(10),

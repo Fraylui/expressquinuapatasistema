@@ -24,6 +24,9 @@ public class AuditoriaInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
                                 Object handler, Exception ex) {
+        // Solo auditar operaciones de escritura (GET genera demasiado ruido y no cabe en el constraint)
+        String method = request.getMethod().toUpperCase();
+        if ("GET".equals(method) || "HEAD".equals(method) || "OPTIONS".equals(method)) return;
         registrarAsync(request, response);
     }
 
@@ -50,7 +53,9 @@ public class AuditoriaInterceptor implements HandlerInterceptor {
             auditoria.setUserAgent(request.getHeader("User-Agent"));
             auditoria.setDatosDespues("HTTP/" + response.getStatus());
             auditoria.setFecha(LocalDateTime.now());
-            auditoria.setAgenciaId(AgenciaContext.getAgenciaId());
+            Long agId = AgenciaContext.getAgenciaId();
+            if (agId == null) agId = 1L; // fallback para SUPER_ADMIN sin agencia específica
+            auditoria.setAgenciaId(agId);
 
             auditoriaRepository.save(auditoria);
         } catch (Exception e) {

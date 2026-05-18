@@ -45,10 +45,18 @@ public record VentaPasajeDTO(
                 message = "Forma de pago inválida")
         String formaPago,
 
-        String motivoDescuento
+        String motivoDescuento,
+
+        /* ── VENTA | RESERVA ───────────────────── */
+        @Pattern(regexp = "^(VENTA|RESERVA)$", message = "Tipo debe ser VENTA o RESERVA")
+        String tipo
 
 ) {
     public BigDecimal precioFinal() {
         return precioBase.subtract(descuento == null ? BigDecimal.ZERO : descuento);
+    }
+
+    public boolean esReserva() {
+        return "RESERVA".equalsIgnoreCase(tipo);
     }
 }

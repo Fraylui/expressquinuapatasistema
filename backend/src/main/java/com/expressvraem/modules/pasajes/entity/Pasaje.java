@@ -61,7 +61,7 @@ public class Pasaje {
 
     @Builder.Default
     @Column(length = 20)
-    private String estado = "VENDIDO"; // VENDIDO | ANULADO
+    private String estado = "VENDIDO"; // VENDIDO | RESERVADO | ANULADO
 
     @Column(name = "codigo_boleta", length = 20, unique = true)
     private String codigoBoleta;

@@ -295,8 +295,9 @@ function formatFecha(iso?: string) {
 }
 
 function estadoPasajeBadge(estado: string) {
-  if (estado === 'VENDIDO') return 'bg-green-100 text-green-700 border-green-300'
-  if (estado === 'ANULADO') return 'bg-red-100 text-red-700 border-red-300'
+  if (estado === 'VENDIDO')   return 'bg-green-100 text-green-700 border-green-300'
+  if (estado === 'RESERVADO') return 'bg-amber-100 text-amber-700 border-amber-300'
+  if (estado === 'ANULADO')   return 'bg-red-100 text-red-700 border-red-300'
   return 'bg-gray-100 text-gray-600 border-gray-300'
 }
 
@@ -328,7 +329,10 @@ export default function PasajesPage() {
   const [pApellidos, setPApellidos]   = useState('')
   const [pTelefono, setPTelefono]     = useState('')
 
-  // List + anular
+  // Tipo de operación
+  const [tipoOp, setTipoOp] = useState<'VENTA' | 'RESERVA'>('VENTA')
+
+  // List + anular + confirmar
   const [listFiltroEstado, setListFiltroEstado]   = useState('')
   const [listFiltroCodigo, setListFiltroCodigo]   = useState('')
   const [anularModal, setAnularModal] = useState<{ open: boolean; id: number; codigo: string }>({
@@ -336,6 +340,11 @@ export default function PasajesPage() {
   })
   const [anularMotivo, setAnularMotivo] = useState('')
   const [anulando, setAnulando]         = useState(false)
+  const [confirmarModal, setConfirmarModal] = useState<{ open: boolean; id: number; codigo: string }>({
+    open: false, id: 0, codigo: ''
+  })
+  const [confirmarFormaPago, setConfirmarFormaPago] = useState('EFECTIVO')
+  const [confirmando, setConfirmando] = useState(false)
 
   // Data
   const { data: viajesData, mutate: mutateViajes } =
@@ -408,15 +417,16 @@ export default function PasajesPage() {
       clienteTelefono: pTelefono.trim(),
       precioBase: base,
       descuento: desc,
-      formaPago,
+      formaPago: tipoOp === 'RESERVA' ? 'EFECTIVO' : formaPago,
       motivoDescuento: desc > 0 ? motivoDesc.trim() || undefined : undefined,
+      tipo: tipoOp,
     }
 
     setLoading(true)
     try {
       const res = await pasajesService.vender(dto)
       setResultado(res.data)
-      toast.success(`Pasaje emitido — ${res.data.codigoBoleta}`)
+      toast.success(tipoOp === 'RESERVA' ? `Reserva registrada — ${res.data.codigoBoleta}` : `Pasaje emitido — ${res.data.codigoBoleta}`)
       setStep(4)
       setTicketOpen(true)
       mutateList()
@@ -444,11 +454,27 @@ export default function PasajesPage() {
     }
   }
 
+  const handleConfirmar = async () => {
+    setConfirmando(true)
+    try {
+      await pasajesService.confirmar(confirmarModal.id, confirmarFormaPago)
+      toast.success(`Reserva ${confirmarModal.codigo} confirmada y pagada`)
+      setConfirmarModal({ open: false, id: 0, codigo: '' })
+      setConfirmarFormaPago('EFECTIVO')
+      mutateList()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error al confirmar la reserva')
+    } finally {
+      setConfirmando(false)
+    }
+  }
+
   const resetWizard = () => {
     setStep(1); setViaje(null); setAsientoNum(null)
     setClienteFound(null); setResultado(null); setTicketOpen(false)
     setPNombres(''); setPApellidos(''); setPTelefono('')
     setPrecioBase(''); setDescuento('0'); setFormaPago('EFECTIVO'); setMotivoDesc('')
+    setTipoOp('VENTA')
   }
 
   // ── Ticket info para preview ─────────────────────────────────────────────
@@ -677,6 +703,29 @@ export default function PasajesPage() {
               </div>
             )}
 
+            {/* Tipo operación: VENTA o RESERVA */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Tipo de operación</label>
+              <div className="flex gap-2">
+                {(['VENTA', 'RESERVA'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setTipoOp(t)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
+                      tipoOp === t
+                        ? t === 'VENTA' ? 'bg-[#1F3864] text-white border-[#1F3864]' : 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                    }`}>
+                    {t === 'VENTA' ? 'Venta (pago ahora)' : 'Reserva (pago luego)'}
+                  </button>
+                ))}
+              </div>
+              {tipoOp === 'RESERVA' && (
+                <p className="mt-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                  La reserva bloquea el asiento. El pasajero paga al confirmar en caja.
+                </p>
+              )}
+            </div>
+
+            {tipoOp === 'VENTA' && (
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Forma de pago *</label>
               <div className="flex flex-wrap gap-2">
@@ -693,6 +742,7 @@ export default function PasajesPage() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Total */}
             {baseNum > 0 && (
@@ -711,7 +761,7 @@ export default function PasajesPage() {
               disabled={loading}
               onClick={handleVender}
             >
-              Emitir pasaje · S/ {totalNum.toFixed(2)}
+              {tipoOp === 'RESERVA' ? 'Reservar asiento' : `Emitir pasaje · S/ ${totalNum.toFixed(2)}`}
             </Button>
           </div>
         </div>
@@ -723,7 +773,9 @@ export default function PasajesPage() {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle size={32} className="text-green-500" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900">¡Pasaje emitido!</h3>
+          <h3 className="text-xl font-bold text-gray-900">
+            {resultado.estado === 'RESERVADO' ? 'Reserva registrada' : 'Pasaje emitido'}
+          </h3>
           <div className="space-y-1 text-sm text-gray-500">
             <p className="font-semibold text-gray-800 text-base">
               {resultado.clienteApellidos}, {resultado.clienteNombres}
@@ -746,9 +798,11 @@ export default function PasajesPage() {
 
           <div className="flex gap-3 justify-center pt-2">
             <Button variant="secondary" onClick={resetWizard}>Nueva venta</Button>
-            <Button variant="primary" icon={Printer} onClick={() => setTicketOpen(true)}>
-              Ver e imprimir ticket
-            </Button>
+            {resultado.estado !== 'RESERVADO' && (
+              <Button variant="primary" icon={Printer} onClick={() => setTicketOpen(true)}>
+                Ver e imprimir ticket
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -786,6 +840,7 @@ export default function PasajesPage() {
             >
               <option value="">Todos los estados</option>
               <option value="VENDIDO">VENDIDO</option>
+              <option value="RESERVADO">RESERVADO</option>
               <option value="ANULADO">ANULADO</option>
             </select>
           </div>
@@ -834,14 +889,24 @@ export default function PasajesPage() {
                       {formatFecha(p.fechaVenta)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {p.estado === 'VENDIDO' && (
-                        <button
-                          onClick={() => setAnularModal({ open: true, id: p.id, codigo: p.codigoBoleta })}
-                          className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1 ml-auto"
-                        >
-                          <X size={12} /> Anular
-                        </button>
-                      )}
+                      <div className="flex flex-col items-end gap-1">
+                        {p.estado === 'RESERVADO' && (
+                          <button
+                            onClick={() => { setConfirmarModal({ open: true, id: p.id, codigo: p.codigoBoleta }); setConfirmarFormaPago('EFECTIVO') }}
+                            className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1"
+                          >
+                            <CheckCircle size={12} /> Confirmar pago
+                          </button>
+                        )}
+                        {(p.estado === 'VENDIDO' || p.estado === 'RESERVADO') && (
+                          <button
+                            onClick={() => setAnularModal({ open: true, id: p.id, codigo: p.codigoBoleta })}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
+                          >
+                            <X size={12} /> Anular
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -850,6 +915,44 @@ export default function PasajesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Modal confirmar reserva ── */}
+      <Modal
+        open={confirmarModal.open}
+        onClose={() => { setConfirmarModal({ open: false, id: 0, codigo: '' }); setConfirmarFormaPago('EFECTIVO') }}
+        title="Confirmar pago de reserva"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Confirma el pago de la reserva <span className="font-semibold text-gray-900">{confirmarModal.codigo}</span>.
+            Esto registrará el ingreso en caja y emitirá el pasaje.
+          </p>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Forma de pago</label>
+            <div className="flex flex-wrap gap-2">
+              {['EFECTIVO','YAPE','PLIN','TRANSFERENCIA'].map(fp => (
+                <button key={fp} type="button" onClick={() => setConfirmarFormaPago(fp)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                    confirmarFormaPago === fp
+                      ? 'bg-[#1F3864] text-white border-[#1F3864]'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-[#1F3864]'
+                  }`}>
+                  {fp}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setConfirmarModal({ open: false, id: 0, codigo: '' })} className="flex-1">
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={handleConfirmar} loading={confirmando} disabled={confirmando} className="flex-1">
+              Confirmar y registrar pago
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* ── Modal anulación ── */}
       <Modal
