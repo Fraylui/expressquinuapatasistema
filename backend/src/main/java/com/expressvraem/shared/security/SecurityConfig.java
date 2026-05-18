@@ -81,7 +81,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/viajes/publico").permitAll()
                 .requestMatchers("/api/tarifas/publico").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/agencias").permitAll()
-                .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/ws/**", "/ws-stomp", "/ws-stomp/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
 
                 // ── SOLO SUPER_ADMIN ─────────────────────────────────
