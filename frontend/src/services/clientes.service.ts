@@ -10,6 +10,8 @@ export interface ClienteDTO {
   razonSocial?: string
   tipoDoc: string
   numDoc: string
+  /** DNI del representante/contacto — solo para tipo EMPRESA */
+  dniContacto?: string
   telefono?: string
   email?: string
   fechaNac?: string

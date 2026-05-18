@@ -62,12 +62,12 @@ public class ClienteService {
                 .agenciaId(agenciaId != null ? agenciaId : 1L)
                 .tipo(empresa ? "EMPRESA" : "PERSONA")
                 .razonSocial(empresa ? dto.getRazonSocial() : null)
-                .nombres(empresa
-                        ? (dto.getRazonSocial() != null ? dto.getRazonSocial() : dto.getNumDoc())
-                        : dto.getNombres())
-                .apellidos(empresa ? "-" : dto.getApellidos())
+                .nombres(dto.getNombres() != null ? dto.getNombres()
+                        : (empresa && dto.getRazonSocial() != null ? dto.getRazonSocial() : dto.getNumDoc()))
+                .apellidos(dto.getApellidos() != null ? dto.getApellidos() : "-")
                 .tipoDoc(dto.getTipoDoc())
                 .numDoc(dto.getNumDoc())
+                .dni(empresa ? dto.getDniContacto() : dto.getNumDoc().length() == 8 ? dto.getNumDoc() : null)
                 .telefono(dto.getTelefono())
                 .email(dto.getEmail())
                 .fechaNac(dto.getFechaNac())
@@ -84,12 +84,12 @@ public class ClienteService {
         boolean empresa = dto.isEmpresa();
         c.setTipo(empresa ? "EMPRESA" : "PERSONA");
         c.setRazonSocial(empresa ? dto.getRazonSocial() : null);
-        c.setNombres(empresa
-                ? (dto.getRazonSocial() != null ? dto.getRazonSocial() : dto.getNumDoc())
-                : dto.getNombres());
-        c.setApellidos(empresa ? "-" : dto.getApellidos());
+        c.setNombres(dto.getNombres() != null ? dto.getNombres()
+                : (empresa && dto.getRazonSocial() != null ? dto.getRazonSocial() : dto.getNumDoc()));
+        c.setApellidos(dto.getApellidos() != null ? dto.getApellidos() : "-");
         c.setTipoDoc(dto.getTipoDoc());
         c.setNumDoc(dto.getNumDoc());
+        c.setDni(empresa ? dto.getDniContacto() : null);
         c.setTelefono(dto.getTelefono());
         c.setEmail(dto.getEmail());
         c.setFechaNac(dto.getFechaNac());
