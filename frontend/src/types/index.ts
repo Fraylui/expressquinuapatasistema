@@ -164,6 +164,7 @@ export interface Cliente {
   apellidos: string
   tipoDoc: string
   numDoc: string
+  dni?: string
   telefono?: string
   email?: string
   direccion?: string
@@ -250,10 +251,14 @@ export interface Caja {
 export interface MovimientoCaja {
   id: number
   cajaId: number
+  agenciaId: number
+  usuarioId: number
   tipo: 'INGRESO' | 'EGRESO'
   concepto: string
   monto: number
   saldoAcumulado: number
+  referenciaTipo?: string
+  referenciaId?: number
   createdAt: string
 }
 
@@ -269,7 +274,9 @@ export interface Auditoria {
   datosAntes?: string
   datosDespues?: string
   ip?: string
+  userAgent?: string
   fecha: string
+  detalle?: string
 }
 
 export interface AsientoUpdate {

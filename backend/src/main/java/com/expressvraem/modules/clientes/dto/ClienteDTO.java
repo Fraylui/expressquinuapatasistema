@@ -33,6 +33,10 @@ public class ClienteDTO {
     @Size(max = 100)
     private String email;
 
+    /** DNI del representante/contacto — solo para tipo EMPRESA */
+    @Size(max = 8)
+    private String dniContacto;
+
     private LocalDate fechaNac;
 
     private String direccion;

@@ -36,7 +36,6 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       if (!value && !registrando) setEditData(null)
     }, [value?.id])
 
-    // Reset form tipo when tipoDoc prop changes
     useEffect(() => {
       setForm(f => ({
         ...f,
@@ -53,23 +52,22 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       saveIfNeeded: async () => {
         if (registrando) {
           if (esEmpresa) {
-            if (!form.razonSocial?.trim() || !form.numDoc?.trim()) {
-              toast.error('Razón social y RUC son obligatorios')
-              return false
+            if (!form.razonSocial?.trim()) { toast.error('La razón social es obligatoria'); return false }
+            if (!form.nombres?.trim())     { toast.error('El nombre del representante es obligatorio'); return false }
+            if (!form.apellidos?.trim())   { toast.error('Los apellidos del representante son obligatorios'); return false }
+            if (!form.dniContacto?.trim() || !/^\d{8}$/.test(form.dniContacto)) {
+              toast.error('El DNI del representante debe tener 8 dígitos'); return false
             }
+            if (!form.numDoc?.trim())      { toast.error('El RUC es obligatorio'); return false }
           } else {
             if (!form.nombres?.trim() || !form.apellidos?.trim() || !form.numDoc?.trim()) {
               toast.error('Nombres, apellidos y documento son obligatorios')
               return false
             }
           }
-          if (!form.telefono?.trim()) {
-            toast.error('El teléfono es obligatorio')
-            return false
-          }
-          if (!validatePhone(form.telefono)) {
-            toast.error('Teléfono debe tener 9 dígitos y empezar con 9')
-            return false
+          if (!form.telefono?.trim()) { toast.error('El teléfono es obligatorio'); return false }
+          if (!validatePhone(form.telefono!)) {
+            toast.error('Teléfono debe tener 9 dígitos y empezar con 9'); return false
           }
           return await guardarNuevo()
         }
@@ -120,10 +118,10 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
         setEditData({ ...nuevo })
         onChange(nuevo)
         setRegistrando(false)
-        toast.success('Cliente registrado')
+        toast.success(esEmpresa ? 'Empresa registrada' : 'Cliente registrado')
         return true
       } catch {
-        toast.error('Error al registrar cliente')
+        toast.error('Error al registrar')
         return false
       } finally {
         setGuardando(false)
@@ -143,9 +141,12 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
         setForm(v => ({ ...v, [k]: e.target.value }))
 
     const docLabel = tipoDoc === 'RUC' ? 'RUC' : tipoDoc === 'CE' ? 'CE' : 'DNI'
-    const isEmpresaFound = value?.tipo === 'EMPRESA' || (value?.tipoDoc === 'RUC')
+    const isEmpresaFound = value?.tipo === 'EMPRESA' || value?.tipoDoc === 'RUC'
 
-    // ── Cliente encontrado — panel editable ──────────────────────────────────
+    const inputCls = 'w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500'
+    const formCls  = 'px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400'
+
+    // ── Cliente / empresa encontrado — panel editable ────────────────────────
     if (value && editData) {
       return (
         <div>
@@ -154,8 +155,8 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
                 {isEmpresaFound
-                  ? <><Building2 size={12} /> Empresa encontrada — RUC {editData.numDoc}</>
-                  : <><UserCheck size={12} /> Cliente encontrado — {docLabel} {editData.numDoc}</>
+                  ? <><Building2 size={12} /> Empresa — RUC {editData.numDoc}</>
+                  : <><UserCheck size={12} /> Cliente — {docLabel} {editData.numDoc}</>
                 }
               </p>
               <button onClick={limpiar} className="p-1 rounded text-gray-400 hover:text-red-500 shrink-0">
@@ -164,41 +165,77 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
             </div>
 
             {isEmpresaFound ? (
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-0.5">Razón Social *</label>
-                <input value={editData.razonSocial ?? ''} onChange={sfEdit('razonSocial')}
-                  placeholder="Razón social"
-                  className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
-              </div>
+              <>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Razón Social *</label>
+                  <input value={editData.razonSocial ?? ''} onChange={sfEdit('razonSocial')}
+                    placeholder="Razón social" className={inputCls} />
+                </div>
+                <p className="text-[10px] font-semibold text-gray-500 pt-1">Representante / Contacto</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Nombres *</label>
+                    <input value={editData.nombres ?? ''} onChange={sfEdit('nombres')}
+                      placeholder="Nombres" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Apellidos *</label>
+                    <input value={editData.apellidos ?? ''} onChange={sfEdit('apellidos')}
+                      placeholder="Apellidos" className={inputCls} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">DNI representante</label>
+                    <input value={editData.dni ?? ''} onChange={sfEdit('dni')}
+                      placeholder="DNI 8 dígitos" maxLength={8}
+                      className={inputCls + ' font-mono'} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Teléfono</label>
+                    <input value={editData.telefono ?? ''} onChange={sfEdit('telefono')}
+                      placeholder="9XXXXXXXX" className={inputCls} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Email</label>
+                    <input value={editData.email ?? ''} onChange={sfEdit('email')}
+                      placeholder="email@empresa.com" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Dirección</label>
+                    <input value={editData.direccion ?? ''} onChange={sfEdit('direccion')}
+                      placeholder="Dirección" className={inputCls} />
+                  </div>
+                </div>
+              </>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-0.5">Nombres *</label>
-                  <input value={editData.nombres} onChange={sfEdit('nombres')}
-                    className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Nombres *</label>
+                    <input value={editData.nombres} onChange={sfEdit('nombres')} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Apellidos *</label>
+                    <input value={editData.apellidos} onChange={sfEdit('apellidos')} className={inputCls} />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-0.5">Apellidos *</label>
-                  <input value={editData.apellidos} onChange={sfEdit('apellidos')}
-                    className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Teléfono</label>
+                    <input value={editData.telefono ?? ''} onChange={sfEdit('telefono')}
+                      placeholder="9XXXXXXXX" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Dirección</label>
+                    <input value={editData.direccion ?? ''} onChange={sfEdit('direccion')}
+                      placeholder="Dirección (opcional)" className={inputCls} />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-0.5">Teléfono</label>
-                <input value={editData.telefono ?? ''} onChange={sfEdit('telefono')}
-                  placeholder="9XXXXXXXX"
-                  className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
-              </div>
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-0.5">Dirección</label>
-                <input value={editData.direccion ?? ''} onChange={sfEdit('direccion')}
-                  placeholder="Dirección (opcional)"
-                  className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
-              </div>
-            </div>
           </div>
         </div>
       )
@@ -206,9 +243,11 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
 
     // ── Mini-formulario de registro inline ───────────────────────────────────
     if (registrando) {
-      const telOk = form.telefono ? validatePhone(form.telefono) : false
+      const telOk  = form.telefono ? validatePhone(form.telefono) : false
+      const dniOk  = !esEmpresa || (form.dniContacto ? /^\d{8}$/.test(form.dniContacto) : false)
       const formOk = esEmpresa
-        ? !!(form.razonSocial?.trim() && form.numDoc?.trim() && telOk)
+        ? !!(form.razonSocial?.trim() && form.nombres?.trim() && form.apellidos?.trim()
+             && form.dniContacto?.trim() && form.numDoc?.trim() && telOk)
         : !!(form.nombres?.trim() && form.apellidos?.trim() && form.numDoc?.trim() && telOk)
 
       return (
@@ -217,53 +256,91 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
           <div className="border border-amber-200 rounded-lg bg-amber-50 p-3 space-y-2">
             <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
               {esEmpresa
-                ? <><Building2 size={12} /> Empresa no encontrada. Completa los datos para registrarla.</>
-                : 'Cliente no encontrado. Completa los datos para registrarlo.'
+                ? <><Building2 size={12} /> Empresa no encontrada — completa los datos</>
+                : 'Cliente no encontrado — completa los datos para registrarlo'
               }
             </p>
 
-            {esEmpresa ? (
-              <input value={form.razonSocial ?? ''} onChange={sf('razonSocial')}
-                placeholder="Razón social *"
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
-            ) : (
+            {/* ── Datos empresa ── */}
+            {esEmpresa && (
+              <>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-600 mb-0.5">Empresa</label>
+                  <input value={form.razonSocial ?? ''} onChange={sf('razonSocial')}
+                    placeholder="Razón social *"
+                    className={'w-full ' + formCls} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <select value={form.tipoDoc ?? 'RUC'} onChange={sf('tipoDoc')}
+                    className={'bg-white ' + formCls}>
+                    <option>RUC</option>
+                  </select>
+                  <input value={form.numDoc ?? ''} onChange={sf('numDoc')}
+                    placeholder="RUC (11 dígitos) *" maxLength={11}
+                    className={'col-span-2 font-mono ' + formCls} />
+                </div>
+              </>
+            )}
+
+            {/* ── Datos persona / representante ── */}
+            {esEmpresa && (
+              <p className="text-[10px] font-semibold text-gray-600 pt-1 border-t border-amber-200">
+                Representante / Contacto
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <input value={form.nombres ?? ''} onChange={sf('nombres')}
+                placeholder={esEmpresa ? 'Nombres del representante *' : 'Nombres *'}
+                className={formCls} />
+              <input value={form.apellidos ?? ''} onChange={sf('apellidos')}
+                placeholder={esEmpresa ? 'Apellidos del representante *' : 'Apellidos *'}
+                className={formCls} />
+            </div>
+
+            {/* DNI del representante (solo empresa) */}
+            {esEmpresa && (
               <div className="grid grid-cols-2 gap-2">
-                <input value={form.nombres ?? ''} onChange={sf('nombres')} placeholder="Nombres *"
-                  className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
-                <input value={form.apellidos ?? ''} onChange={sf('apellidos')} placeholder="Apellidos *"
-                  className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
+                <div>
+                  <input value={form.dniContacto ?? ''} onChange={sf('dniContacto')}
+                    placeholder="DNI representante * (8 dígitos)"
+                    maxLength={8}
+                    className={'w-full font-mono ' + formCls + (
+                      form.dniContacto && !dniOk ? ' border-red-300 focus:ring-red-400' : ''
+                    )} />
+                  {form.dniContacto && !dniOk && (
+                    <p className="text-[10px] text-red-500 mt-0.5">8 dígitos numéricos</p>
+                  )}
+                </div>
+                <input value={form.email ?? ''} onChange={sf('email')}
+                  placeholder="Email (opcional)"
+                  className={formCls} />
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2">
-              <select value={form.tipoDoc ?? tipoDoc} onChange={sf('tipoDoc')}
-                className="px-2 py-1.5 border border-gray-300 rounded text-xs bg-white focus:ring-1 focus:ring-amber-400">
-                {['DNI', 'CE', 'PASAPORTE', 'RUC'].map(t => <option key={t}>{t}</option>)}
-              </select>
-              <input value={form.numDoc ?? ''} onChange={sf('numDoc')}
-                placeholder={`N° ${docLabel} *`}
-                maxLength={maxLen}
-                className="col-span-2 px-2 py-1.5 border border-gray-300 rounded text-xs font-mono focus:ring-1 focus:ring-amber-400" />
-            </div>
+            {/* Número de documento (persona) */}
+            {!esEmpresa && (
+              <div className="grid grid-cols-3 gap-2">
+                <select value={form.tipoDoc ?? tipoDoc} onChange={sf('tipoDoc')}
+                  className={'bg-white ' + formCls}>
+                  {['DNI', 'CE', 'PASAPORTE', 'RUC'].map(t => <option key={t}>{t}</option>)}
+                </select>
+                <input value={form.numDoc ?? ''} onChange={sf('numDoc')}
+                  placeholder={`N° ${docLabel} *`} maxLength={maxLen}
+                  className={'col-span-2 font-mono ' + formCls} />
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <input
-                  value={form.telefono ?? ''} onChange={sf('telefono')}
-                  placeholder="Teléfono * (9XXXXXXXX)"
-                  maxLength={9}
-                  className={`w-full px-2 py-1.5 border rounded text-xs focus:ring-1 ${
-                    form.telefono && !telOk
-                      ? 'border-red-300 focus:ring-red-400'
-                      : 'border-gray-300 focus:ring-amber-400'
-                  }`}
-                />
+                <input value={form.telefono ?? ''} onChange={sf('telefono')}
+                  placeholder="Teléfono * (9XXXXXXXX)" maxLength={9}
+                  className={'w-full ' + formCls + (form.telefono && !telOk ? ' border-red-300' : '')} />
                 {form.telefono && !telOk && (
                   <p className="text-[10px] text-red-500 mt-0.5">9 dígitos, empieza en 9</p>
                 )}
               </div>
-              <input value={form.direccion ?? ''} onChange={sf('direccion')} placeholder="Dirección (opcional)"
-                className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
+              <input value={form.direccion ?? ''} onChange={sf('direccion')}
+                placeholder="Dirección (opcional)" className={formCls} />
             </div>
 
             <div className="flex gap-2">
@@ -301,17 +378,14 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
               tipoDoc === 'DNI' ? 'DNI (8 dígitos)'
               : tipoDoc === 'RUC' ? 'RUC (11 dígitos)'
               : tipoDoc === 'CE' ? 'Carnet de extranjería'
-              : `${tipoDoc}`
+              : tipoDoc
             }
             maxLength={maxLen}
             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          <button
-            type="button"
-            onClick={buscar}
+          <button type="button" onClick={buscar}
             disabled={buscando || docInput.length < (tipoDoc === 'DNI' ? 8 : tipoDoc === 'RUC' ? 11 : 3)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 text-sm rounded-lg transition-colors"
-          >
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 text-sm rounded-lg transition-colors">
             {buscando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
             Buscar
           </button>
@@ -321,11 +395,8 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
             <span className="text-xs text-yellow-700">
               No encontrado: {docLabel} {docInput}
             </span>
-            <button
-              type="button"
-              onClick={iniciarRegistro}
-              className="text-xs text-[#0070C0] font-semibold hover:underline ml-2 shrink-0"
-            >
+            <button type="button" onClick={iniciarRegistro}
+              className="text-xs text-[#0070C0] font-semibold hover:underline ml-2 shrink-0">
               + Registrar aquí
             </button>
           </div>
