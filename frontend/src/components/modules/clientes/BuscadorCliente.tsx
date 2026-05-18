@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
 import toast from 'react-hot-toast'
-import { Search, X, UserCheck, Loader2 } from 'lucide-react'
+import { Search, X, UserCheck, Building2, Loader2 } from 'lucide-react'
 import { clientesService, type ClienteDTO } from '@/services/clientes.service'
 import type { Cliente } from '@/types'
 
@@ -18,20 +18,32 @@ interface Props {
 
 export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
   function BuscadorCliente({ label, value, onChange, tipoDoc = 'DNI' }, ref) {
+    const esEmpresa = tipoDoc === 'RUC'
+
     const [docInput, setDocInput]         = useState('')
     const [buscando, setBuscando]         = useState(false)
     const [noEncontrado, setNoEncontrado] = useState(false)
     const [registrando, setRegistrando]   = useState(false)
-    const [form, setForm]                 = useState<Partial<ClienteDTO>>({ tipoDoc })
+    const [form, setForm]                 = useState<Partial<ClienteDTO>>({
+      tipoDoc,
+      tipo: esEmpresa ? 'EMPRESA' : 'PERSONA',
+    })
     const [guardando, setGuardando]       = useState(false)
-    // Local editable copy when client is found
     const [editData, setEditData]         = useState<Cliente | null>(null)
 
-    // Sync editData when value is set externally (e.g. after component remount)
     useEffect(() => {
       if (value && !editData) setEditData({ ...value })
       if (!value && !registrando) setEditData(null)
     }, [value?.id])
+
+    // Reset form tipo when tipoDoc prop changes
+    useEffect(() => {
+      setForm(f => ({
+        ...f,
+        tipoDoc,
+        tipo: tipoDoc === 'RUC' ? 'EMPRESA' : 'PERSONA',
+      }))
+    }, [tipoDoc])
 
     const maxLen = tipoDoc === 'DNI' ? 8 : tipoDoc === 'RUC' ? 11 : 20
 
@@ -40,9 +52,16 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
     useImperativeHandle(ref, () => ({
       saveIfNeeded: async () => {
         if (registrando) {
-          if (!form.nombres?.trim() || !form.apellidos?.trim() || !form.numDoc?.trim()) {
-            toast.error('Nombres, apellidos y documento son obligatorios')
-            return false
+          if (esEmpresa) {
+            if (!form.razonSocial?.trim() || !form.numDoc?.trim()) {
+              toast.error('Razón social y RUC son obligatorios')
+              return false
+            }
+          } else {
+            if (!form.nombres?.trim() || !form.apellidos?.trim() || !form.numDoc?.trim()) {
+              toast.error('Nombres, apellidos y documento son obligatorios')
+              return false
+            }
           }
           if (!form.telefono?.trim()) {
             toast.error('El teléfono es obligatorio')
@@ -81,11 +100,15 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       setNoEncontrado(false)
       setRegistrando(false)
       setEditData(null)
-      setForm({ tipoDoc })
+      setForm({ tipoDoc, tipo: esEmpresa ? 'EMPRESA' : 'PERSONA' })
     }
 
     const iniciarRegistro = () => {
-      setForm({ tipoDoc, numDoc: docInput })
+      setForm({
+        tipoDoc,
+        tipo: esEmpresa ? 'EMPRESA' : 'PERSONA',
+        numDoc: docInput,
+      })
       setRegistrando(true)
       setNoEncontrado(false)
     }
@@ -119,7 +142,10 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
         setForm(v => ({ ...v, [k]: e.target.value }))
 
-    // ── Cliente encontrado — panel editable ────────────────────────────────
+    const docLabel = tipoDoc === 'RUC' ? 'RUC' : tipoDoc === 'CE' ? 'CE' : 'DNI'
+    const isEmpresaFound = value?.tipo === 'EMPRESA' || (value?.tipoDoc === 'RUC')
+
+    // ── Cliente encontrado — panel editable ──────────────────────────────────
     if (value && editData) {
       return (
         <div>
@@ -127,24 +153,38 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
           <div className="border border-green-200 rounded-lg bg-green-50 p-3 space-y-2">
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
-                <UserCheck size={12} /> Cliente encontrado — {tipoDoc} {editData.numDoc}
+                {isEmpresaFound
+                  ? <><Building2 size={12} /> Empresa encontrada — RUC {editData.numDoc}</>
+                  : <><UserCheck size={12} /> Cliente encontrado — {docLabel} {editData.numDoc}</>
+                }
               </p>
               <button onClick={limpiar} className="p-1 rounded text-gray-400 hover:text-red-500 shrink-0">
                 <X size={14} />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+
+            {isEmpresaFound ? (
               <div>
-                <label className="block text-[10px] text-gray-500 mb-0.5">Nombres *</label>
-                <input value={editData.nombres} onChange={sfEdit('nombres')}
+                <label className="block text-[10px] text-gray-500 mb-0.5">Razón Social *</label>
+                <input value={editData.razonSocial ?? ''} onChange={sfEdit('razonSocial')}
+                  placeholder="Razón social"
                   className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
               </div>
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-0.5">Apellidos *</label>
-                <input value={editData.apellidos} onChange={sfEdit('apellidos')}
-                  className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Nombres *</label>
+                  <input value={editData.nombres} onChange={sfEdit('nombres')}
+                    className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Apellidos *</label>
+                  <input value={editData.apellidos} onChange={sfEdit('apellidos')}
+                    className="w-full px-2 py-1.5 border border-green-300 rounded text-xs bg-white focus:ring-1 focus:ring-green-500" />
+                </div>
               </div>
-            </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[10px] text-gray-500 mb-0.5">Teléfono</label>
@@ -164,32 +204,48 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       )
     }
 
-    // ── Mini-formulario de registro inline ─────────────────────────────────
+    // ── Mini-formulario de registro inline ───────────────────────────────────
     if (registrando) {
       const telOk = form.telefono ? validatePhone(form.telefono) : false
-      const formOk = !!(form.nombres?.trim() && form.apellidos?.trim() && form.numDoc?.trim() && telOk)
+      const formOk = esEmpresa
+        ? !!(form.razonSocial?.trim() && form.numDoc?.trim() && telOk)
+        : !!(form.nombres?.trim() && form.apellidos?.trim() && form.numDoc?.trim() && telOk)
 
       return (
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
           <div className="border border-amber-200 rounded-lg bg-amber-50 p-3 space-y-2">
             <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-              Cliente no encontrado. Completa los datos para registrarlo.
+              {esEmpresa
+                ? <><Building2 size={12} /> Empresa no encontrada. Completa los datos para registrarla.</>
+                : 'Cliente no encontrado. Completa los datos para registrarlo.'
+              }
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <input value={form.nombres ?? ''} onChange={sf('nombres')} placeholder="Nombres *"
-                className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
-              <input value={form.apellidos ?? ''} onChange={sf('apellidos')} placeholder="Apellidos *"
-                className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
-            </div>
+
+            {esEmpresa ? (
+              <input value={form.razonSocial ?? ''} onChange={sf('razonSocial')}
+                placeholder="Razón social *"
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <input value={form.nombres ?? ''} onChange={sf('nombres')} placeholder="Nombres *"
+                  className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
+                <input value={form.apellidos ?? ''} onChange={sf('apellidos')} placeholder="Apellidos *"
+                  className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-2">
               <select value={form.tipoDoc ?? tipoDoc} onChange={sf('tipoDoc')}
                 className="px-2 py-1.5 border border-gray-300 rounded text-xs bg-white focus:ring-1 focus:ring-amber-400">
                 {['DNI', 'CE', 'PASAPORTE', 'RUC'].map(t => <option key={t}>{t}</option>)}
               </select>
-              <input value={form.numDoc ?? ''} onChange={sf('numDoc')} placeholder="N° doc *"
+              <input value={form.numDoc ?? ''} onChange={sf('numDoc')}
+                placeholder={`N° ${docLabel} *`}
+                maxLength={maxLen}
                 className="col-span-2 px-2 py-1.5 border border-gray-300 rounded text-xs font-mono focus:ring-1 focus:ring-amber-400" />
             </div>
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <input
@@ -209,6 +265,7 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
               <input value={form.direccion ?? ''} onChange={sf('direccion')} placeholder="Dirección (opcional)"
                 className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amber-400" />
             </div>
+
             <div className="flex gap-2">
               <button onClick={limpiar}
                 className="flex-1 py-1.5 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-100">
@@ -217,7 +274,7 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
               <button onClick={guardarNuevo} disabled={guardando || !formOk}
                 className="flex-1 py-1.5 text-xs text-white bg-[#1F3864] rounded hover:bg-[#16294d] disabled:opacity-50 flex items-center justify-center gap-1">
                 {guardando && <Loader2 size={11} className="animate-spin" />}
-                Registrar cliente
+                {esEmpresa ? 'Registrar empresa' : 'Registrar cliente'}
               </button>
             </div>
           </div>
@@ -225,7 +282,7 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       )
     }
 
-    // ── Buscador inicial ────────────────────────────────────────────────────
+    // ── Buscador inicial ─────────────────────────────────────────────────────
     return (
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
@@ -240,7 +297,12 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
               setNoEncontrado(false)
             }}
             onKeyDown={e => e.key === 'Enter' && buscar()}
-            placeholder={`${tipoDoc} (${maxLen} dígitos)`}
+            placeholder={
+              tipoDoc === 'DNI' ? 'DNI (8 dígitos)'
+              : tipoDoc === 'RUC' ? 'RUC (11 dígitos)'
+              : tipoDoc === 'CE' ? 'Carnet de extranjería'
+              : `${tipoDoc}`
+            }
             maxLength={maxLen}
             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
@@ -257,7 +319,7 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
         {noEncontrado && (
           <div className="mt-1.5 flex items-center justify-between bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
             <span className="text-xs text-yellow-700">
-              No encontrado: {tipoDoc} {docInput}
+              No encontrado: {docLabel} {docInput}
             </span>
             <button
               type="button"
