@@ -90,7 +90,9 @@ public class ComprobantePdfService {
                             viajeHora = odt.format(hFmt);
                     }
                     viajePlaca = vRow[1] != null ? String.valueOf(vRow[1]) : "";
-                    viajeRuta  = vRow[2] + " → " + vRow[3];
+                    viajeRuta  = ascii(vRow[2] != null ? String.valueOf(vRow[2]) : "")
+                               + " > "
+                               + ascii(vRow[3] != null ? String.valueOf(vRow[3]) : "");
                 } catch (Exception ignored) {}
             }
 
@@ -216,32 +218,34 @@ public class ComprobantePdfService {
 
     private float drawCenteredText(PDPageContentStream cs, PDType1Font font, float size,
                                    String text, float y) throws Exception {
-        float tw = font.getStringWidth(text) / 1000f * size;
+        String safe = ascii(text);
+        float tw = font.getStringWidth(safe) / 1000f * size;
         float x  = (PAGE_W - tw) / 2f;
         cs.beginText();
         cs.setFont(font, size);
         cs.newLineAtOffset(x, y - size);
-        cs.showText(text);
+        cs.showText(safe);
         cs.endText();
         return y - size - 1;
     }
 
     private float drawLabel(PDPageContentStream cs, PDType1Font fontB, PDType1Font fontN,
                             float size, String label, String value, float y) throws Exception {
+        String safeLabel = ascii(label) + " ";
         cs.beginText();
         cs.setFont(fontB, size);
         cs.newLineAtOffset(MARGIN, y - size);
-        cs.showText(label + " ");
+        cs.showText(safeLabel);
         cs.endText();
 
-        float labelW = fontB.getStringWidth(label + " ") / 1000f * size;
+        float labelW = fontB.getStringWidth(safeLabel) / 1000f * size;
         float valueX = MARGIN + labelW;
         float maxW   = PAGE_W - MARGIN - valueX;
 
-        String display = value != null ? value : "—";
+        String display = ascii(value != null ? value : "-");
         float valW = fontN.getStringWidth(display) / 1000f * size;
         if (valW > maxW && display.length() > 22) {
-            display = display.substring(0, Math.min(display.length(), 28)) + "…";
+            display = display.substring(0, Math.min(display.length(), 28)) + "...";
         }
 
         cs.beginText();
@@ -258,6 +262,15 @@ public class ComprobantePdfService {
         cs.lineTo(PAGE_W - MARGIN, y);
         cs.stroke();
         return y - 3;
+    }
+
+    private String ascii(String s) {
+        if (s == null) return "";
+        return s.replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u')
+                .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
+                .replace('ñ','n').replace('Ñ','N').replace('ü','u').replace('Ü','U')
+                .replace('→','>').replace('—','-').replace('–','-').replace('…','.')
+                .replace('¡','!').replace('¿','?').replaceAll("[^\\x00-\\x7E]", "?");
     }
 
     private PDImageXObject buildQrImage(PDDocument doc, String text) throws Exception {
