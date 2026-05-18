@@ -22,7 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,12 +54,14 @@ public class PasajeService {
 
         if (!"LIBRE".equals(asiento.getEstado())) {
             throw new BusinessException(
-                    "El asiento número " + dto.asientoNumero() + " ya fue ocupado. Por favor selecciona otro asiento.",
+                    "El asiento número " + dto.asientoNumero() + " ya fue ocupado o reservado. Por favor selecciona otro asiento.",
                     "ASIENTO_NO_DISPONIBLE");
         }
 
-        // Marcar asiento como OCUPADO
-        asiento.setEstado("OCUPADO");
+        boolean esReserva = dto.esReserva();
+
+        // Marcar asiento según tipo de operación
+        asiento.setEstado(esReserva ? "RESERVADO" : "OCUPADO");
         asientoRepository.save(asiento);
 
         // Buscar o crear cliente
@@ -97,31 +103,33 @@ public class PasajeService {
                 .precioFinal(precioFinal)
                 .motivoDescuento(dto.motivoDescuento())
                 .formaPago(dto.formaPago())
-                .estado("VENDIDO")
+                .estado(esReserva ? "RESERVADO" : "VENDIDO")
                 .codigoBoleta(codigoBoleta)
-                .serie("VTA")
+                .serie(esReserva ? "RSV" : "VTA")
                 .correlativo(String.format("%06d", seq))
                 .codigoPasaje(codigoBoleta)
                 .build();
 
         Pasaje saved = pasajeRepository.save(pasaje);
 
-        // Registrar en caja si hay turno activo
-        try {
-            cajaService.registrarMovimiento(
-                    cajaService.getTurnoActual(operadorId).getId(),
-                    "INGRESO",
-                    "Pasaje " + codigoBoleta + " — asiento " + dto.asientoNumero(),
-                    precioFinal, operadorId, "PASAJE", saved.getId());
-        } catch (Exception ex) {
-            log.warn("Sin turno activo para registrar pasaje {}: {}", codigoBoleta, ex.getMessage());
+        // Registrar en caja solo si es venta con pago inmediato (no reserva)
+        if (!esReserva) {
+            try {
+                cajaService.registrarMovimiento(
+                        cajaService.getTurnoActual(operadorId).getId(),
+                        "INGRESO",
+                        "Pasaje " + codigoBoleta + " - asiento " + dto.asientoNumero(),
+                        precioFinal, operadorId, "PASAJE", saved.getId());
+            } catch (Exception ex) {
+                log.warn("Sin turno activo para registrar pasaje {}: {}", codigoBoleta, ex.getMessage());
+            }
         }
 
         // WebSocket
         wsPublisher.publicarActualizacionAsientos(dto.viajeId(),
-                new AsientoUpdateDTO(dto.viajeId(), dto.asientoNumero(), "OCUPADO", LocalDateTime.now()));
+                new AsientoUpdateDTO(dto.viajeId(), dto.asientoNumero(), esReserva ? "RESERVADO" : "OCUPADO", LocalDateTime.now()));
 
-        log.info("Pasaje vendido: {} asiento={} precio={}", codigoBoleta, dto.asientoNumero(), precioFinal);
+        log.info("Pasaje {}: {} asiento={} precio={}", esReserva ? "reservado" : "vendido", codigoBoleta, dto.asientoNumero(), precioFinal);
 
         return toDTO(saved, cliente);
     }
@@ -149,6 +157,42 @@ public class PasajeService {
                 new AsientoUpdateDTO(pasaje.getViajeId(), pasaje.getAsientoNumero(), "LIBRE", LocalDateTime.now()));
     }
 
+    @Transactional
+    public PasajeResponseDTO confirmarReserva(Long id, String formaPago, Long operadorId) {
+        Pasaje pasaje = pasajeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pasaje", id));
+        if (!"RESERVADO".equals(pasaje.getEstado()))
+            throw new BusinessException("Solo se pueden confirmar pasajes en estado RESERVADO", "ESTADO_INVALIDO");
+        if (formaPago == null || formaPago.isBlank())
+            throw new BusinessException("La forma de pago es obligatoria para confirmar", "FORMA_PAGO_REQUERIDA");
+
+        pasaje.setEstado("VENDIDO");
+        pasaje.setFormaPago(formaPago);
+        pasaje.setSerie("VTA");
+        pasajeRepository.save(pasaje);
+
+        asientoRepository.findByViajeIdAndNumero(pasaje.getViajeId(), pasaje.getAsientoNumero())
+                .ifPresent(a -> { a.setEstado("OCUPADO"); asientoRepository.save(a); });
+
+        try {
+            cajaService.registrarMovimiento(
+                    cajaService.getTurnoActual(operadorId).getId(),
+                    "INGRESO",
+                    "Confirmacion reserva " + pasaje.getCodigoBoleta() + " - asiento " + pasaje.getAsientoNumero(),
+                    pasaje.getPrecioFinal(), operadorId, "PASAJE", pasaje.getId());
+        } catch (Exception ex) {
+            log.warn("Sin turno activo para confirmar reserva {}: {}", pasaje.getCodigoBoleta(), ex.getMessage());
+        }
+
+        wsPublisher.publicarActualizacionAsientos(pasaje.getViajeId(),
+                new AsientoUpdateDTO(pasaje.getViajeId(), pasaje.getAsientoNumero(), "OCUPADO", LocalDateTime.now()));
+
+        log.info("Reserva confirmada: {}", pasaje.getCodigoBoleta());
+
+        Cliente cliente = clienteRepository.findById(pasaje.getClienteId()).orElse(null);
+        return toDTO(pasaje, cliente);
+    }
+
     public List<Asiento> getAsientosPorViaje(Long viajeId) {
         return asientoRepository.findByViajeIdOrderByNumeroAsc(viajeId);
     }
@@ -158,20 +202,42 @@ public class PasajeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Pasaje", id));
     }
 
-    public List<Pasaje> getLista(Long agenciaId, String estado, String codigoBoleta) {
+    public List<PasajeResponseDTO> getLista(Long agenciaId, String estado, String codigoBoleta) {
+        List<Pasaje> pasajes;
         if (codigoBoleta != null && !codigoBoleta.isBlank())
-            return pasajeRepository.searchByCodigoBoleta(codigoBoleta);
-        if (agenciaId != null && estado != null)
-            return pasajeRepository.findByAgenciaIdAndEstado(agenciaId, estado);
-        if (agenciaId != null)
-            return pasajeRepository.findByAgenciaIdOrderByFechaVentaDesc(agenciaId);
-        return pasajeRepository.findAll();
+            pasajes = pasajeRepository.searchByCodigoBoleta(codigoBoleta);
+        else if (agenciaId != null && estado != null)
+            pasajes = pasajeRepository.findByAgenciaIdAndEstado(agenciaId, estado);
+        else if (agenciaId != null)
+            pasajes = pasajeRepository.findByAgenciaIdOrderByFechaVentaDesc(agenciaId);
+        else
+            pasajes = pasajeRepository.findAll();
+
+        Set<Long> clienteIds = pasajes.stream()
+                .map(Pasaje::getClienteId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Cliente> clienteMap = clienteRepository.findAllById(clienteIds).stream()
+                .collect(Collectors.toMap(Cliente::getId, c -> c));
+
+        return pasajes.stream().map(p -> {
+            Cliente c = clienteMap.get(p.getClienteId());
+            return new PasajeResponseDTO(
+                    p.getId(), p.getCodigoBoleta(), p.getViajeId(), p.getAsientoNumero(),
+                    p.getClienteId(),
+                    c != null ? c.getNombres() : "",
+                    c != null ? c.getApellidos() : "",
+                    c != null ? c.getNumDoc() : "",
+                    p.getPrecioBase(), p.getMontoDescuento(), p.getPrecioFinal(),
+                    p.getFormaPago(), p.getEstado(), p.getFechaVenta());
+        }).toList();
     }
 
     private PasajeResponseDTO toDTO(Pasaje p, Cliente c) {
         return new PasajeResponseDTO(
                 p.getId(), p.getCodigoBoleta(), p.getViajeId(), p.getAsientoNumero(),
-                c.getId(), c.getNombres(), c.getApellidos(), c.getNumDoc(),
+                c != null ? c.getId() : p.getClienteId(),
+                c != null ? c.getNombres() : "",
+                c != null ? c.getApellidos() : "",
+                c != null ? c.getNumDoc() : "",
                 p.getPrecioBase(), p.getMontoDescuento(), p.getPrecioFinal(),
                 p.getFormaPago(), p.getEstado(), p.getFechaVenta());
     }

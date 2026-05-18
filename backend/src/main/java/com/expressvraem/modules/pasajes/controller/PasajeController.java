@@ -52,7 +52,7 @@ public class PasajeController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Pasaje>>> lista(
+    public ResponseEntity<ApiResponse<List<PasajeResponseDTO>>> lista(
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) String codigoBoleta) {
         Long agenciaId = AgenciaContext.getAgenciaId();
@@ -62,6 +62,17 @@ public class PasajeController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<Pasaje>> detalle(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(pasajeService.findById(id)));
+    }
+
+    @PostMapping("/{id}/confirmar")
+    @RequiereModulo("VENTAS")
+    public ResponseEntity<ApiResponse<PasajeResponseDTO>> confirmar(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        String formaPago = body.getOrDefault("formaPago", "EFECTIVO");
+        PasajeResponseDTO result = pasajeService.confirmarReserva(id, formaPago, resolveUserId(auth));
+        return ResponseEntity.ok(ApiResponse.ok("Reserva confirmada y pagada", result));
     }
 
     @PostMapping("/{id}/anular")
