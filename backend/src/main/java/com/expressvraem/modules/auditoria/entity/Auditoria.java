@@ -50,6 +50,9 @@ public class Auditoria {
     @Column(nullable = false)
     private LocalDateTime fecha;
 
+    @Transient
+    private String detalle;
+
     @PrePersist
     public void prePersist() {
         if (fecha == null) fecha = LocalDateTime.now();

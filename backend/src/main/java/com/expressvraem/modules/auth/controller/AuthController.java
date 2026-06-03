@@ -36,7 +36,12 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout() {
+    public ResponseEntity<ApiResponse<Void>> logout(
+            Authentication auth,
+            HttpServletRequest request) {
+        if (auth != null) {
+            authService.registrarLogout(auth.getName(), extraerIp(request));
+        }
         SecurityContextHolder.clearContext();
         return ResponseEntity.ok(ApiResponse.ok("Sesión cerrada correctamente", null));
     }
