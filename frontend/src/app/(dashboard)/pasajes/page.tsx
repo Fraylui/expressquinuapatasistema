@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React, { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import toast from 'react-hot-toast'
@@ -508,14 +508,14 @@ export default function PasajesPage() {
 
   // Data
   const { data: viajesData, mutate: mutateViajes } =
-    useSWR<any>('/api/viajes/disponibles', fetcher, { refreshInterval: 15000 })
+    useSWR<any>('/api/viajes/disponibles', fetcher, { refreshInterval: 60000 })
   const viajes: ViajeDisponible[] = viajesData ?? []
 
   const listParams = new URLSearchParams()
   if (listFiltroEstado) listParams.set('estado', listFiltroEstado)
   if (listFiltroCodigo) listParams.set('codigoBoleta', listFiltroCodigo)
   const { data: listData, mutate: mutateList } =
-    useSWR<any>(`/api/pasajes?${listParams.toString()}`, fetcher, { refreshInterval: 10000 })
+    useSWR<any>(`/api/pasajes?${listParams.toString()}`, fetcher, { refreshInterval: 30000 })
   const pasajes: Pasaje[] = listData ?? []
 
   // Tarifa automática al elegir viaje

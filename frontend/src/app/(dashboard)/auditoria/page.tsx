@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React, { useState, useCallback } from 'react'
 import useSWR from 'swr'
 import {
@@ -229,8 +229,8 @@ export default function AuditoriaPage() {
   }
 
   const { data, mutate }          = useSWR(buildQuery(filtros))
-  const { data: resumen }         = useSWR('/api/auditoria/resumen', { refreshInterval: 60_000 })
-  const { data: actividadRaw }    = useSWR(`/api/auditoria/actividad?periodo=${periodo}`, { refreshInterval: 60_000 })
+  const { data: resumen }         = useSWR('/api/auditoria/resumen', { refreshInterval: 300_000 })
+  const { data: actividadRaw }    = useSWR(`/api/auditoria/actividad?periodo=${periodo}`, { refreshInterval: 300_000 })
   const actividadData: any[]      = actividadRaw ?? []
 
   const logs: Auditoria[]         = data?.content       ?? []

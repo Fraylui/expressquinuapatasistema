@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
 import toast from 'react-hot-toast'
 import {
@@ -58,7 +58,8 @@ const ESTADO_STYLES: Record<string, { border: string; iconBg: string; iconText: 
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function ViajesPage() {
-  const { data, mutate } = useSWR('/api/viajes', { refreshInterval: 60000 })
+  // Sin refreshInterval — WebSocket notifica cambios en tiempo real
+  const { data, mutate } = useSWR('/api/viajes', { revalidateOnFocus: false })
   const viajes: ViajeDTO[] = data || []
   const { user, hasModulo } = useAuthStore()
 
@@ -67,6 +68,7 @@ export default function ViajesPage() {
   const [confirmCancelId,       setConfirmCancelId]       = useState<number | null>(null)
   const [imprimiendoManifiesto, setImprimiendoManifiesto] = useState<number | null>(null)
   const [busqueda,              setBusqueda]              = useState('')
+  const [busquedaDebounced,     setBusquedaDebounced]     = useState('')
   const [mostrarHistorial,      setMostrarHistorial]      = useState(false)
   const [filtroFecha,           setFiltroFecha]           = useState<FiltroFecha>('todos')
 
@@ -92,17 +94,22 @@ export default function ViajesPage() {
   const rol         = user?.rol ?? ''
   const puedeOperar = ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR'].includes(rol)
 
-  // Filtrado
+  // Debounce búsqueda — evita filtrar en cada keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaDebounced(busqueda), 250)
+    return () => clearTimeout(t)
+  }, [busqueda])
+
   const viajesFiltrados = useMemo(() => {
-    if (!busqueda.trim()) return viajes
-    const q = busqueda.toLowerCase()
+    if (!busquedaDebounced.trim()) return viajes
+    const q = busquedaDebounced.toLowerCase()
     return viajes.filter(v =>
       v.ruta?.origen?.toLowerCase().includes(q) ||
       v.ruta?.destino?.toLowerCase().includes(q) ||
       v.conductorNombre?.toLowerCase().includes(q) ||
       v.vehiculo?.placa?.toLowerCase().includes(q)
     )
-  }, [viajes, busqueda])
+  }, [viajes, busquedaDebounced])
 
   const pasaFiltroFecha = (v: ViajeDTO) => {
     if (filtroFecha === 'todos') return true

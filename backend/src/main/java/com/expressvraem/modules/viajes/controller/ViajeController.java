@@ -29,9 +29,11 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 
 @RestController
@@ -104,6 +106,7 @@ public class ViajeController {
      * Retorna viajes PROGRAMADO/EN_RUTA con al menos 1 asiento LIBRE.
      */
     @GetMapping("/disponibles")
+    @SuppressWarnings("unchecked")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> disponibles(
             @RequestParam(required = false) String origen,
             @RequestParam(required = false) String destino,
@@ -115,47 +118,55 @@ public class ViajeController {
                 ? viajeRepository.findByAgenciaIdAndEstadoIn(agenciaId, estadosActivos)
                 : viajeRepository.findByEstadoIn(estadosActivos);
 
+        if (todos.isEmpty()) return ResponseEntity.ok(ApiResponse.ok(List.of()));
+
         LocalDate fechaFiltro = null;
         if (fecha != null && !fecha.isBlank()) {
             try { fechaFiltro = LocalDate.parse(fecha); } catch (Exception ignored) {}
         }
         final LocalDate fechaFinal = fechaFiltro;
 
-        List<Map<String, Object>> resultado = new ArrayList<>();
-        for (Viaje v : todos) {
-            long libres = asientoRepository.countByViajeIdAndEstado(v.getId(), "LIBRE");
-            if (libres == 0) continue;
-            try {
-                ViajeResponseDTO dto = enrich(v);
-                if (origen != null && !origen.isBlank() && dto.getRuta() != null
-                        && !dto.getRuta().getOrigen().toLowerCase().contains(origen.toLowerCase())) continue;
-                if (destino != null && !destino.isBlank() && dto.getRuta() != null
-                        && !dto.getRuta().getDestino().toLowerCase().contains(destino.toLowerCase())) continue;
-                if (fechaFinal != null && v.getFechaHoraSal() != null
-                        && !v.getFechaHoraSal().toLocalDate().equals(fechaFinal)) continue;
+        // 1 query para todos los conteos de asientos libres en vez de N queries
+        List<Long> ids = todos.stream().map(Viaje::getId).toList();
+        Map<Long, Long> libresCnt = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, COUNT(*) FROM asientos WHERE viaje_id IN :ids AND estado = 'LIBRE' GROUP BY viaje_id")
+                .setParameter("ids", ids).getResultList())
+                .forEach(r -> libresCnt.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
 
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("id", v.getId());
-                m.put("estado", v.getEstado());
-                m.put("fechaHoraSal", v.getFechaHoraSal());
-                m.put("ruta", dto.getRuta());
-                m.put("vehiculo", dto.getVehiculo());
-                m.put("asientosLibres", libres);
-                resultado.add(m);
-            } catch (Exception ignored) {}
-        }
+        List<Viaje> conLibres = todos.stream()
+                .filter(v -> libresCnt.getOrDefault(v.getId(), 0L) > 0)
+                .filter(v -> fechaFinal == null || v.getFechaHoraSal() == null
+                        || v.getFechaHoraSal().toLocalDate().equals(fechaFinal))
+                .toList();
+
+        List<ViajeResponseDTO> enriched = batchEnrich(conLibres);
+
+        List<Map<String, Object>> resultado = enriched.stream()
+                .filter(dto -> origen == null || origen.isBlank() || dto.getRuta() == null
+                        || dto.getRuta().getOrigen().toLowerCase().contains(origen.toLowerCase()))
+                .filter(dto -> destino == null || destino.isBlank() || dto.getRuta() == null
+                        || dto.getRuta().getDestino().toLowerCase().contains(destino.toLowerCase()))
+                .map(dto -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id",           dto.getId());
+                    m.put("estado",       dto.getEstado());
+                    m.put("fechaHoraSal", dto.getFechaHoraSal());
+                    m.put("ruta",         dto.getRuta());
+                    m.put("vehiculo",     dto.getVehiculo());
+                    m.put("asientosLibres", dto.getAsientosLibres());
+                    return m;
+                }).toList();
+
         return ResponseEntity.ok(ApiResponse.ok(resultado));
     }
 
-    /** Endpoint público — sin autenticación. Filtra por origen, destino y fecha. */
     @GetMapping("/publico")
     public ResponseEntity<ApiResponse<List<ViajeResponseDTO>>> listarPublico(
             @RequestParam(required = false) String origen,
             @RequestParam(required = false) String destino) {
-        List<Viaje> todos = viajeRepository.findAll();
-        List<ViajeResponseDTO> dtos = todos.stream()
-                .map(this::enrich)
-                .filter(v -> v.getEstado() == null || !v.getEstado().equals("CANCELADO"))
+        List<Viaje> todos = viajeRepository.findByEstadoIn(List.of("PROGRAMADO", "EN_RUTA"));
+        List<ViajeResponseDTO> dtos = batchEnrich(todos).stream()
                 .filter(v -> origen == null || origen.isBlank() ||
                         (v.getRuta() != null && v.getRuta().getOrigen() != null &&
                          v.getRuta().getOrigen().equalsIgnoreCase(origen)))
@@ -176,13 +187,12 @@ public class ViajeController {
                     ? viajeRepository.findByAgenciaId(agenciaId)
                     : viajeRepository.findAll();
 
-        List<ViajeResponseDTO> dtos = viajes.stream()
+        List<Viaje> sorted = viajes.stream()
                 .sorted(Comparator.comparing(Viaje::getFechaHoraSal,
                         Comparator.nullsLast(Comparator.naturalOrder())))
-                .map(this::enrich)
                 .toList();
 
-        return ResponseEntity.ok(ApiResponse.ok(dtos));
+        return ResponseEntity.ok(ApiResponse.ok(batchEnrich(sorted)));
     }
 
     @GetMapping("/{id}")
@@ -390,53 +400,107 @@ public class ViajeController {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private List<ViajeResponseDTO> batchEnrich(List<Viaje> viajes) {
+        if (viajes.isEmpty()) return List.of();
+
+        List<Long> rutaIds  = viajes.stream().map(Viaje::getRutaId).filter(Objects::nonNull).distinct().toList();
+        List<Long> vehIds   = viajes.stream().map(Viaje::getVehiculoId).filter(Objects::nonNull).distinct().toList();
+        List<Long> condIds  = viajes.stream().map(Viaje::getConductorId).filter(Objects::nonNull).distinct().toList();
+        List<Long> viajeIds = viajes.stream().map(Viaje::getId).toList();
+
+        Map<Long, Object[]> rutas = new HashMap<>();
+        if (!rutaIds.isEmpty())
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, origen, destino, distancia_km FROM rutas WHERE id IN :ids")
+                    .setParameter("ids", rutaIds).getResultList())
+                    .forEach(r -> rutas.put(((Number) r[0]).longValue(), r));
+
+        Map<Long, Object[]> vehs = new HashMap<>();
+        if (!vehIds.isEmpty())
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, placa, tipo, num_asientos FROM vehiculos WHERE id IN :ids")
+                    .setParameter("ids", vehIds).getResultList())
+                    .forEach(r -> vehs.put(((Number) r[0]).longValue(), r));
+
+        Map<Long, String> conds = new HashMap<>();
+        if (!condIds.isEmpty())
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, nombres || ' ' || apellidos FROM usuarios WHERE id IN :ids")
+                    .setParameter("ids", condIds).getResultList())
+                    .forEach(r -> conds.put(((Number) r[0]).longValue(), String.valueOf(r[1])));
+
+        Map<Long, long[]> asientosCnt = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, " +
+                "COUNT(*) FILTER (WHERE estado = 'LIBRE'), " +
+                "COUNT(*) FILTER (WHERE estado IN ('OCUPADO','RESERVADO')) " +
+                "FROM asientos WHERE viaje_id IN :ids GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> asientosCnt.put(((Number) r[0]).longValue(),
+                        new long[]{((Number) r[1]).longValue(), ((Number) r[2]).longValue()}));
+
+        Map<Long, Long> encCnt = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, COUNT(*) FROM encomiendas WHERE viaje_id IN :ids GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> encCnt.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
+
+        return viajes.stream().map(v -> {
+            Object[] ruta = rutas.get(v.getRutaId());
+            Object[] veh  = vehs.get(v.getVehiculoId());
+            if (ruta == null || veh == null) return null;
+
+            ViajeResponseDTO dto = ViajeResponseDTO.from(v,
+                    String.valueOf(ruta[1]), String.valueOf(ruta[2]),
+                    ruta[3] != null ? ((Number) ruta[3]).doubleValue() : null,
+                    ((Number) ruta[0]).longValue(),
+                    String.valueOf(veh[1]), String.valueOf(veh[2]),
+                    ((Number) veh[3]).intValue(), ((Number) veh[0]).longValue());
+
+            dto.setConductorId(v.getConductorId());
+            dto.setConductorNombre(conds.getOrDefault(v.getConductorId(), "—"));
+
+            long[] cnt = asientosCnt.getOrDefault(v.getId(), new long[]{0L, 0L});
+            dto.setAsientosLibres(cnt[0]);
+            dto.setAsientosOcupados(cnt[1]);
+            dto.setCantEncomiendas(encCnt.getOrDefault(v.getId(), 0L));
+            return dto;
+        }).filter(Objects::nonNull).toList();
+    }
+
     private ViajeResponseDTO enrich(Viaje v) {
         Object[] rutaRow = (Object[]) entityManager
                 .createNativeQuery("SELECT id, origen, destino, distancia_km FROM rutas WHERE id = :rid")
-                .setParameter("rid", v.getRutaId())
-                .getSingleResult();
+                .setParameter("rid", v.getRutaId()).getSingleResult();
 
         Object[] vehRow = (Object[]) entityManager
                 .createNativeQuery("SELECT id, placa, tipo, num_asientos FROM vehiculos WHERE id = :vid")
-                .setParameter("vid", v.getVehiculoId())
-                .getSingleResult();
-
-        Double distKm = rutaRow[3] != null ? ((Number) rutaRow[3]).doubleValue() : null;
-        int numAsientos = ((Number) vehRow[3]).intValue();
+                .setParameter("vid", v.getVehiculoId()).getSingleResult();
 
         ViajeResponseDTO dto = ViajeResponseDTO.from(v,
-                String.valueOf(rutaRow[1]),
-                String.valueOf(rutaRow[2]),
-                distKm,
+                String.valueOf(rutaRow[1]), String.valueOf(rutaRow[2]),
+                rutaRow[3] != null ? ((Number) rutaRow[3]).doubleValue() : null,
                 ((Number) rutaRow[0]).longValue(),
-                String.valueOf(vehRow[1]),
-                String.valueOf(vehRow[2]),
-                numAsientos,
-                ((Number) vehRow[0]).longValue()
-        );
+                String.valueOf(vehRow[1]), String.valueOf(vehRow[2]),
+                ((Number) vehRow[3]).intValue(), ((Number) vehRow[0]).longValue());
 
-        // Conductor name + id
         dto.setConductorId(v.getConductorId());
         try {
             Object[] condRow = (Object[]) entityManager
                     .createNativeQuery("SELECT nombres, apellidos FROM usuarios WHERE id = :cid")
-                    .setParameter("cid", v.getConductorId())
-                    .getSingleResult();
+                    .setParameter("cid", v.getConductorId()).getSingleResult();
             dto.setConductorNombre(condRow[0] + " " + condRow[1]);
-        } catch (Exception e) {
+        } catch (Exception ignored) {
             dto.setConductorNombre("—");
         }
 
-        // Seat occupancy (excluding driver seat 1)
         long libres   = asientoRepository.countByViajeIdAndEstado(v.getId(), "LIBRE");
         long ocupados = asientoRepository.countByViajeIdAndEstado(v.getId(), "OCUPADO")
                       + asientoRepository.countByViajeIdAndEstado(v.getId(), "RESERVADO");
         dto.setAsientosLibres(libres);
         dto.setAsientosOcupados(ocupados);
-
-        // Encomiendas count
         dto.setCantEncomiendas(encomiendaRepository.countByViajeId(v.getId()));
-
         return dto;
     }
 }
