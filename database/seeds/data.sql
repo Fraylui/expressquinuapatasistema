@@ -3,6 +3,28 @@
 -- Nota: Los datos principales están en schema.sql
 -- ============================================================
 
+-- ── Migración: agencias — jerarquía agencia/sucursal ────────────────────────
+ALTER TABLE agencias ADD COLUMN IF NOT EXISTS agencia_padre_id BIGINT REFERENCES agencias(id);
+ALTER TABLE agencias ADD COLUMN IF NOT EXISTS tipo VARCHAR(10) NOT NULL DEFAULT 'AGENCIA';
+
+DO $$ BEGIN
+  ALTER TABLE agencias ADD CONSTRAINT agencias_tipo_chk CHECK (tipo IN ('AGENCIA','SUCURSAL'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Marcar agencias existentes sin padre como AGENCIA
+UPDATE agencias SET tipo = 'AGENCIA' WHERE agencia_padre_id IS NULL AND tipo = 'AGENCIA';
+
+-- Sucursales de prueba
+INSERT INTO agencias (codigo, nombre, ciudad, direccion, telefono, estado, tipo, agencia_padre_id)
+SELECT 'HUA-SUC-01', 'Sucursal Huamanga Terminal', 'Ayacucho', 'Terminal Terrestre Libertadores', '066-312457', 'ACTIVA', 'SUCURSAL', id
+FROM agencias WHERE codigo = 'AYA-01'
+ON CONFLICT (codigo) DO NOTHING;
+
+INSERT INTO agencias (codigo, nombre, ciudad, direccion, telefono, estado, tipo, agencia_padre_id)
+SELECT 'KIM-SUC-01', 'Sucursal Kimbiri Mercado', 'Kimbiri', 'Mercado Central de Kimbiri', '084-201346', 'ACTIVA', 'SUCURSAL', id
+FROM agencias WHERE codigo = 'KIM-01'
+ON CONFLICT (codigo) DO NOTHING;
+
 -- Migración segura: agrega columnas nuevas a encomiendas si no existen
 ALTER TABLE encomiendas ADD COLUMN IF NOT EXISTS agencia_destino_id BIGINT REFERENCES agencias(id);
 ALTER TABLE encomiendas ADD COLUMN IF NOT EXISTS tamano VARCHAR(10) CHECK (tamano IN ('PEQUEÑO','MEDIANO','GRANDE'));
