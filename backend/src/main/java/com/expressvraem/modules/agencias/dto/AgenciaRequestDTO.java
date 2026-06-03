@@ -16,4 +16,6 @@ public class AgenciaRequestDTO {
     private Long encargadoId;
     private boolean esSedePrincipal;
     private LocalDate fechaApertura;
+    private String tipo;           // AGENCIA | SUCURSAL
+    private Long agenciaPadreId;   // requerido si tipo=SUCURSAL
 }

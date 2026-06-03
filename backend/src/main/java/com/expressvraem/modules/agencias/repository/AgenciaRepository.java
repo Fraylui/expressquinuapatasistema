@@ -11,6 +11,9 @@ public interface AgenciaRepository extends JpaRepository<Agencia, Long> {
     List<Agencia> findByEstado(String estado);
     List<Agencia> findByActivo(boolean activo);
     List<Agencia> findByCiudad(String ciudad);
+    List<Agencia> findByTipo(String tipo);
+    List<Agencia> findByTipoAndEstado(String tipo, String estado);
+    List<Agencia> findByAgenciaPadreId(Long agenciaPadreId);
     boolean existsByNombre(String nombre);
     boolean existsByCodigo(String codigo);
     boolean existsByCodigoAndIdNot(String codigo, Long id);

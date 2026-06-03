@@ -49,6 +49,8 @@ CREATE TABLE agencias (
     email             VARCHAR(150),
     ruc               VARCHAR(11),
     encargado_id      BIGINT,
+    agencia_padre_id  BIGINT,
+    tipo              VARCHAR(10)  NOT NULL DEFAULT 'AGENCIA' CHECK (tipo IN ('AGENCIA','SUCURSAL')),
     estado            VARCHAR(10)  NOT NULL DEFAULT 'ACTIVA' CHECK (estado IN ('ACTIVA','INACTIVA')),
     es_sede_principal BOOLEAN      NOT NULL DEFAULT false,
     fecha_apertura    DATE,
@@ -339,8 +341,10 @@ CREATE TABLE encomiendas (
     descripcion          TEXT            NOT NULL,
     peso_kg              NUMERIC(8,3),
     num_bultos           INT             DEFAULT 1,
+    es_fragil            BOOLEAN         NOT NULL DEFAULT FALSE,
     monto                NUMERIC(8,2),
     precio_envio         NUMERIC(8,2)    NOT NULL,
+    monto_descuento      NUMERIC(8,2)    DEFAULT 0.00,
     forma_cobro          VARCHAR(20),
     estado               VARCHAR(20)     NOT NULL DEFAULT 'REGISTRADO'
                              CHECK (estado IN (
@@ -479,10 +483,12 @@ CREATE INDEX idx_clientes_doc           ON clientes(tipo_doc, num_doc);
 -- ============================================================
 -- AGENCIAS (3 sedes VRAEM)
 -- ============================================================
-INSERT INTO agencias (codigo, nombre, direccion, ciudad, departamento, telefono, email, ruc, estado, es_sede_principal) VALUES
-('AYA-01', 'Express Quinuapata VRAEM SAC — Huamanga',  'Jr. Lima 245, Mercado Andrés F. Vivanco', 'Ayacucho',  'Ayacucho', '066-312456', 'huamanga@quinuapata.com', '20601234567', 'ACTIVA', true),
-('KIM-01', 'Express Quinuapata VRAEM SAC — Kimbiri',   'Av. Perú 180, Plaza Principal',          'Kimbiri',   'Cusco',    '084-201345', 'kimbiri@quinuapata.com',  '20601234567', 'ACTIVA', false),
-('PIC-01', 'Express Quinuapata VRAEM SAC — Pichari',   'Jr. Ayacucho 90, frente al mercado',     'Pichari',   'Cusco',    '084-301456', 'pichari@quinuapata.com',  '20601234567', 'ACTIVA', false);
+INSERT INTO agencias (codigo, nombre, direccion, ciudad, departamento, telefono, email, ruc, estado, es_sede_principal, tipo, agencia_padre_id) VALUES
+('AYA-01', 'Express Quinuapata VRAEM SAC — Huamanga',  'Jr. Lima 245, Mercado Andrés F. Vivanco', 'Ayacucho',  'Ayacucho', '066-312456', 'huamanga@quinuapata.com', '20601234567', 'ACTIVA', true,  'AGENCIA',  NULL),
+('KIM-01', 'Express Quinuapata VRAEM SAC — Kimbiri',   'Av. Perú 180, Plaza Principal',          'Kimbiri',   'Cusco',    '084-201345', 'kimbiri@quinuapata.com',  '20601234567', 'ACTIVA', false, 'AGENCIA',  NULL),
+('PIC-01', 'Express Quinuapata VRAEM SAC — Pichari',   'Jr. Ayacucho 90, frente al mercado',     'Pichari',   'Cusco',    '084-301456', 'pichari@quinuapata.com',  '20601234567', 'ACTIVA', false, 'AGENCIA',  NULL);
+
+-- Sucursales de prueba (agencia_padre_id resuelto por subquery en data.sql)
 
 -- ============================================================
 -- ROLES (4 globales — COBIT APO01.02)
@@ -755,6 +761,37 @@ INSERT INTO auditoria (agencia_id, usuario_id, usuario_nombre, accion, modulo, e
 (1,2,'María Ccencho López',        'INSERT', 'ENCOMIENDAS','encomiendas', 1, '{"id":1,"estado":"REGISTRADO"}'),
 (1,2,'María Ccencho López',        'UPDATE', 'VIAJES',     'viajes',      7, '{"id":7,"estado":"COMPLETADO"}'),
 (1,4,'Kevin Sandoval Torres',      'LOGIN',  'AUTH',       'usuarios',    4, '{"ip":"192.168.1.10"}');
+
+-- ============================================================
+-- ENCOMIENDAS EXTERNAS (depósitos de conductores externos)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS encomiendas_externas (
+    id                  BIGSERIAL PRIMARY KEY,
+    agencia_id          BIGINT NOT NULL,
+    correlativo         VARCHAR(20) NOT NULL UNIQUE,
+    secuencia           INT NOT NULL,
+    anio                INT NOT NULL,
+    conductor_nombre    VARCHAR(200) NOT NULL,
+    conductor_dni       VARCHAR(15) NOT NULL,
+    conductor_tel       VARCHAR(20),
+    conductor_placa     VARCHAR(20),
+    destinatario_nombre VARCHAR(200) NOT NULL,
+    destinatario_dni    VARCHAR(20) NOT NULL,
+    destinatario_tel    VARCHAR(20),
+    descripcion         TEXT NOT NULL,
+    observaciones       TEXT,
+    monto               NUMERIC(8,2) NOT NULL,
+    estado_pago         VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+    forma_pago          VARCHAR(20),
+    estado              VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+    fecha_entrega       TIMESTAMP,
+    entregado_a         VARCHAR(200),
+    entregado_dni       VARCHAR(20),
+    operador_id         BIGINT NOT NULL,
+    operador_entrega_id BIGINT,
+    fecha_recepcion     TIMESTAMP,
+    created_at          TIMESTAMP
+);
 
 -- ============================================================
 -- FIN DEL SCHEMA v2.0
