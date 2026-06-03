@@ -71,7 +71,6 @@ public class AuditoriaService {
         return page;
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getResumenHoy(Long agenciaId) {
         LocalDateTime inicioHoy = LocalDate.now().atStartOfDay();
         LocalDateTime finHoy    = inicioHoy.plusDays(1);
@@ -96,7 +95,6 @@ public class AuditoriaService {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getActividad(Long agenciaId, String periodo) {
         boolean esSemana = "semana".equalsIgnoreCase(periodo);
         List<String> acciones = List.of("INSERT", "UPDATE", "DELETE", "LOGIN", "LOGIN_FALLIDO");
