@@ -24,11 +24,9 @@ public class CajaReportePdfService {
     private static final float H        = PDRectangle.A4.getHeight();
     private static final float ML       = 50f;
     private static final float MR       = 50f;
-    private static final float CONTENT_W = W - ML - MR;
-    private static final float MIN_Y    = 70f;  // margen inferior antes de nueva página
+    private static final float MIN_Y    = 70f;
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-    // Columnas de la tabla de movimientos
     private static final float[] COLS    = {ML, ML + 45, ML + 90, ML + 165, W - MR - 70};
     private static final String[] HEADERS = {"Hora", "Tipo", "Concepto", "Referencia", "Monto"};
 
