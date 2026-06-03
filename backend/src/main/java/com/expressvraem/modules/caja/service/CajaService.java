@@ -373,7 +373,6 @@ public class CajaService {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
     private String resolveNombreUsuario(Long id) {
         try {
             Object[] row = (Object[]) entityManager
@@ -386,7 +385,6 @@ public class CajaService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private String resolveNombreAgencia(Long id) {
         try {
             Object[] row = (Object[]) entityManager
