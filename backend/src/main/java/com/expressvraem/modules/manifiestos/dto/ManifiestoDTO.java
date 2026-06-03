@@ -32,6 +32,10 @@ public class ManifiestoDTO {
     private int totalPasajeros;
     private BigDecimal totalRecaudado;
 
+    private List<EncomiendaItem> encomiendas;
+    private int totalEncomiendas;
+    private BigDecimal totalMontoEncomiendas;
+
     @Data
     public static class PasajeroItem {
         private int item;
@@ -45,5 +49,20 @@ public class ManifiestoDTO {
         private BigDecimal precioFinal;
         private String formaPago;
         private String estadoPasaje;
+    }
+
+    @Data
+    public static class EncomiendaItem {
+        private int item;
+        private Long encomiendaId;
+        private String codigoTracking;
+        private String descripcion;
+        private BigDecimal pesoKg;
+        private Integer numBultos;
+        private BigDecimal precioEnvio;
+        private String formaCobro;
+        private String estado;
+        private String remitente;
+        private String destinatario;
     }
 }
