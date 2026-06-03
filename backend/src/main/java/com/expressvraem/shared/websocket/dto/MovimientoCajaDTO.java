@@ -5,8 +5,14 @@ import java.time.LocalDateTime;
 
 public record MovimientoCajaDTO(
         Long cajaId,
+        Long movimientoId,
         String tipo,
+        String referenciaTipo,
+        String concepto,
         BigDecimal monto,
-        BigDecimal totalAcumulado,
+        BigDecimal saldoAcumulado,
+        BigDecimal totalIngresos,
+        BigDecimal totalEgresos,
+        BigDecimal montoApertura,
         LocalDateTime timestamp
 ) {}
