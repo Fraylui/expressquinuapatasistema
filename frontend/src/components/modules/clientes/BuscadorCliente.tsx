@@ -47,6 +47,7 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
     const maxLen = tipoDoc === 'DNI' ? 8 : tipoDoc === 'RUC' ? 11 : 20
 
     const validatePhone = (tel: string) => /^9\d{8}$/.test(tel.trim())
+    const validateRuc   = (ruc: string) => /^(10|20)\d{9}$/.test(ruc.trim())
 
     useImperativeHandle(ref, () => ({
       saveIfNeeded: async () => {
@@ -58,7 +59,8 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
             if (!form.dniContacto?.trim() || !/^\d{8}$/.test(form.dniContacto)) {
               toast.error('El DNI del representante debe tener 8 dígitos'); return false
             }
-            if (!form.numDoc?.trim())      { toast.error('El RUC es obligatorio'); return false }
+            if (!form.numDoc?.trim())         { toast.error('El RUC es obligatorio'); return false }
+            if (!validateRuc(form.numDoc))  { toast.error('RUC inválido — debe comenzar con 10 o 20 y tener 11 dígitos'); return false }
           } else {
             if (!form.nombres?.trim() || !form.apellidos?.trim() || !form.numDoc?.trim()) {
               toast.error('Nombres, apellidos y documento son obligatorios')
@@ -245,9 +247,10 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
     if (registrando) {
       const telOk  = form.telefono ? validatePhone(form.telefono) : false
       const dniOk  = !esEmpresa || (form.dniContacto ? /^\d{8}$/.test(form.dniContacto) : false)
+      const rucOk  = !esEmpresa || (form.numDoc ? validateRuc(form.numDoc) : false)
       const formOk = esEmpresa
         ? !!(form.razonSocial?.trim() && form.nombres?.trim() && form.apellidos?.trim()
-             && form.dniContacto?.trim() && form.numDoc?.trim() && telOk)
+             && form.dniContacto?.trim() && form.numDoc?.trim() && rucOk && telOk)
         : !!(form.nombres?.trim() && form.apellidos?.trim() && form.numDoc?.trim() && telOk)
 
       return (
@@ -275,9 +278,16 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
                     className={'bg-white ' + formCls}>
                     <option>RUC</option>
                   </select>
-                  <input value={form.numDoc ?? ''} onChange={sf('numDoc')}
-                    placeholder="RUC (11 dígitos) *" maxLength={11}
-                    className={'col-span-2 font-mono ' + formCls} />
+                  <div className="col-span-2">
+                    <input
+                      value={form.numDoc ?? ''}
+                      onChange={e => setForm(v => ({ ...v, numDoc: e.target.value.replace(/\D/g, '').slice(0, 11) }))}
+                      placeholder="RUC (11 dígitos) *" maxLength={11}
+                      className={'w-full font-mono ' + formCls + (form.numDoc && !rucOk ? ' border-red-300 focus:ring-red-400' : '')} />
+                    {form.numDoc && form.numDoc.length === 11 && !rucOk && (
+                      <p className="text-[10px] text-red-500 mt-0.5">RUC debe comenzar con 10 o 20</p>
+                    )}
+                  </div>
                 </div>
               </>
             )}
@@ -349,7 +359,7 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
                 Cancelar
               </button>
               <button onClick={guardarNuevo} disabled={guardando || !formOk}
-                className="flex-1 py-1.5 text-xs text-white bg-[#1F3864] rounded hover:bg-[#16294d] disabled:opacity-50 flex items-center justify-center gap-1">
+                className="flex-1 py-1.5 text-xs text-white bg-[#064e3b] rounded hover:bg-[#16294d] disabled:opacity-50 flex items-center justify-center gap-1">
                 {guardando && <Loader2 size={11} className="animate-spin" />}
                 {esEmpresa ? 'Registrar empresa' : 'Registrar cliente'}
               </button>

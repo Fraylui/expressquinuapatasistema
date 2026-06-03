@@ -7,7 +7,7 @@ export interface AuthUser {
   id: number
   nombre: string
   email: string
-  rol: 'SUPER_ADMIN' | 'GERENTE' | 'OPERADOR' | 'CONDUCTOR'
+  rol: 'SUPER_ADMIN' | 'GERENTE' | 'ADMIN_AGENCIA' | 'OPERADOR' | 'CONDUCTOR'
   agenciaId: number
   permisos: string[]
   modulosActivos: string[]

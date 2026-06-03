@@ -929,7 +929,7 @@ export default function CajaPage() {
                 />
                 <MetricCard
                   label="Saldo en caja"
-                  value={`S/ ${turno.saldoActual?.toFixed(2)}`}
+                  value={`S/ ${(turno.saldoActual ?? 0).toFixed(2)}`}
                   sub={`Egresos: -S/ ${turno.totalEgresos?.toFixed(2)}`}
                   icon={<Wallet size={16} />}
                   color="indigo"

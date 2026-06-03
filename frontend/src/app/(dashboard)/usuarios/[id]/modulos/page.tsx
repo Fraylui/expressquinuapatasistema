@@ -78,15 +78,14 @@ export default function ModulosUsuarioPage() {
   useEffect(() => {
     Promise.all([
       api.get(`/api/usuarios/${id}/modulos`),
-      api.get(`/api/usuarios`),
+      api.get(`/api/usuarios/${id}`),
     ]).then(([modRes, usrRes]) => {
       setModulos(modRes.data?.data ?? modRes.data ?? [])
-      const lista = usrRes.data?.data ?? usrRes.data ?? []
-      const u = lista.find((x: any) => String(x.id) === String(id))
+      const u = usrRes.data?.data ?? usrRes.data
       if (u) {
         setUsuario({
           id: u.id,
-          nombre: u.nombre ?? u.nombres + ' ' + u.apellidos,
+          nombre: u.nombre ?? `${u.nombres} ${u.apellidos}`,
           email: u.email,
           rol: u.rol,
           agencia: u.agencia ?? u.agenciaNombre ?? `Agencia #${u.agenciaId}`,

@@ -20,6 +20,7 @@ export interface RegistrarEncomiendaDTO {
   descripcion: string
   pesoKg?: number
   numBultos?: number
+  esFragil?: boolean
   viajeId?: number
   agenciaDestinoId: number
   // Cobro
@@ -81,6 +82,11 @@ export const encomiendaService = {
 
   getComprobanteEntregaPDF: async (id: number): Promise<Blob> => {
     const response = await api.get(`/api/encomiendas/${id}/comprobante-entrega`, { responseType: 'blob' })
+    return response as unknown as Blob
+  },
+
+  getEtiquetaPDF: async (id: number): Promise<Blob> => {
+    const response = await api.get(`/api/encomiendas/${id}/etiqueta`, { responseType: 'blob' })
     return response as unknown as Blob
   },
 }

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   Package, Plus, Search, X, ChevronRight, ChevronLeft,
   Printer, Check, Loader2, Eye, RefreshCw, CheckCircle2,
-  Truck, Bell, MapPin, Clock, Tag,
+  Truck, Bell, MapPin, Clock, Tag, AlertTriangle, QrCode,
 } from 'lucide-react'
 import { encomiendaService, type RegistrarEncomiendaDTO, type EntregarEncomiendaDTO } from '@/services/encomiendas.service'
 import { promocionesService, type PromocionDTO } from '@/services/promociones.service'
@@ -60,6 +60,9 @@ type EncomiendaEnriquecida = Encomienda & {
   destinatarioNombre?: string
   destinatarioTel?: string
   fechaLlegada?: string
+  montoDescuento?: number
+  promocionId?: number
+  esFragil?: boolean
   [k: string]: any
 }
 
@@ -71,52 +74,68 @@ interface SuccessData {
   agenciaDestNombre: string
 }
 
-function RegistroSuccessScreen({ data, onNueva, onPrint }: {
+function RegistroSuccessScreen({ data, onNueva, onPrint, onEtiqueta }: {
   data: SuccessData
   onNueva: () => void
   onPrint: () => void
+  onEtiqueta: () => void
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center space-y-5">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-5 max-w-md mx-auto">
       <div className="flex justify-center">
-        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center animate-bounce">
-          <CheckCircle2 size={36} className="text-green-500" />
+        <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center">
+          <CheckCircle2 size={32} className="text-emerald-500" />
         </div>
       </div>
+
       <div>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">¡Encomienda registrada!</h3>
-        <p className="text-xs text-gray-500">Código de seguimiento</p>
-        <div className="inline-block mt-2 px-6 py-2 bg-cyan-50 border-2 border-cyan-300 rounded-xl">
-          <span className="text-xl font-bold font-mono text-cyan-700">{data.enc.codigoTracking}</span>
-        </div>
+        <h3 className="text-lg font-bold text-gray-900">¡Encomienda registrada!</h3>
+        <p className="text-xs text-gray-400 mt-0.5">Código de seguimiento</p>
       </div>
-      <div className="bg-gray-50 rounded-lg border border-gray-200 text-left divide-y divide-gray-100 text-sm mx-auto max-w-xs">
+
+      {/* Código tracking destacado */}
+      <div className="bg-gradient-to-br from-[#064e3b] to-[#065f46] rounded-2xl px-6 py-4 text-white">
+        <p className="text-[10px] text-emerald-300 font-semibold uppercase tracking-widest mb-1">Tracking</p>
+        <p className="text-2xl font-black font-mono">{data.enc.codigoTracking}</p>
+        <p className="text-sm font-bold text-emerald-200 mt-2">
+          S/ {Number(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}
+          {' · '}
+          <span className="font-normal">{FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}</span>
+        </p>
+      </div>
+
+      <div className="bg-gray-50 rounded-xl border border-gray-100 text-left divide-y divide-gray-100">
         {[
           ['Remitente', data.remitenteNombre],
           ['Destinatario', data.destinatarioNombre],
           ['Destino', data.agenciaDestNombre],
-          ['Monto', `S/ ${(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed ? Number(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2) : '0.00'} — ${FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}`],
         ].map(([label, value]) => (
-          <div key={label} className="flex gap-2 px-4 py-2">
-            <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">{label}</span>
-            <span className="text-xs text-gray-800">{value}</span>
+          <div key={label} className="flex gap-3 px-4 py-2.5">
+            <span className="text-xs font-semibold text-gray-400 w-24 shrink-0">{label}</span>
+            <span className="text-xs text-gray-800 font-medium">{value}</span>
           </div>
         ))}
       </div>
+
       {data.enc.formaCobro === 'POR_COBRAR' && (
-        <div className="mx-auto max-w-xs p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 text-left space-y-1">
-          <p className="font-semibold">Pago en destino</p>
-          <p>El cobro de <strong>S/ {Number(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}</strong> será realizado por el operador de la agencia destino al momento de entregar el paquete.</p>
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 text-left">
+          <p className="font-semibold mb-0.5">Pago en destino</p>
+          <p>El cobro de <strong>S/ {Number(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}</strong> lo realiza el operador destino al entregar.</p>
         </div>
       )}
-      <div className="flex gap-3 justify-center">
+
+      <div className="flex gap-3 justify-center flex-wrap">
         <button onClick={onPrint}
-          className="flex items-center gap-2 px-5 py-2 bg-[#064e3b] text-white text-sm rounded-lg hover:bg-[#16294d]">
-          <Printer size={15} /> Imprimir comprobante
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold">
+          <Printer size={14} /> Comprobante
+        </button>
+        <button onClick={onEtiqueta}
+          className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm rounded-xl hover:bg-amber-700 transition-colors font-semibold">
+          <QrCode size={14} /> Etiqueta paquete
         </button>
         <button onClick={onNueva}
-          className="flex items-center gap-2 px-5 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
-          <Plus size={15} /> Nueva encomienda
+          className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
+          <Plus size={14} /> Nueva
         </button>
       </div>
     </div>
@@ -131,41 +150,44 @@ function EntregaSuccessScreen({ enc, cobrado, onVolver, onPrint }: {
   onPrint: () => void
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center space-y-5">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-5 max-w-md mx-auto">
       <div className="flex justify-center">
-        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-          <CheckCircle2 size={36} className="text-green-500" />
+        <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center">
+          <CheckCircle2 size={32} className="text-emerald-500" />
         </div>
       </div>
       <div>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">¡Encomienda entregada!</h3>
-        <p className="text-xs text-gray-500 font-mono">{enc.codigoTracking}</p>
+        <h3 className="text-lg font-bold text-gray-900">¡Encomienda entregada!</h3>
+        <p className="text-xs text-gray-400 font-mono mt-0.5">{enc.codigoTracking}</p>
       </div>
-      <div className="bg-gray-50 rounded-lg border border-gray-200 text-left divide-y divide-gray-100 mx-auto max-w-xs">
+
+      <div className="bg-gray-50 rounded-xl border border-gray-100 text-left divide-y divide-gray-100">
         {[
           ['Recibió', enc.recibidoPorNombre ?? '—'],
           ['DNI', enc.recibidoPorDni ?? '—'],
           ['Fecha', enc.fechaEntregaReal ? format(new Date(enc.fechaEntregaReal), 'dd/MM/yyyy HH:mm') : '—'],
           ...(cobrado ? [['Cobrado', `S/ ${Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)} en caja`]] : []),
         ].map(([label, value]) => (
-          <div key={label} className="flex gap-2 px-4 py-2">
-            <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">{label}</span>
-            <span className="text-xs text-gray-800">{value}</span>
+          <div key={label} className="flex gap-3 px-4 py-2.5">
+            <span className="text-xs font-semibold text-gray-400 w-24 shrink-0">{label}</span>
+            <span className="text-xs text-gray-800 font-medium">{value}</span>
           </div>
         ))}
       </div>
+
       {cobrado && (
-        <div className="mx-auto max-w-xs p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-medium">
-          Cobro registrado automáticamente en caja
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-medium flex items-center gap-2">
+          <CheckCircle2 size={14} /> Cobro registrado automáticamente en caja
         </div>
       )}
+
       <div className="flex gap-3 justify-center">
         <button onClick={onPrint}
-          className="flex items-center gap-2 px-5 py-2 bg-[#064e3b] text-white text-sm rounded-lg hover:bg-[#16294d]">
-          <Printer size={15} /> Comprobante de entrega
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold">
+          <Printer size={14} /> Comprobante de entrega
         </button>
         <button onClick={onVolver}
-          className="flex items-center gap-2 px-5 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
+          className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
           Volver a la lista
         </button>
       </div>
@@ -180,6 +202,7 @@ interface FormState {
   tipoRemitente: TipoEntidad; remitente: Cliente | null
   tipoDestinatario: TipoEntidad; destinatario: Cliente | null
   descripcion: string; pesoKg: string; numBultos: string
+  esFragil: boolean
   agenciaDestinoId: string; viajeId: string
   monto: string; formaCobro: string; observaciones: string
 }
@@ -187,6 +210,7 @@ const INIT: FormState = {
   tipoRemitente: 'PERSONA_DNI', remitente: null,
   tipoDestinatario: 'PERSONA_DNI', destinatario: null,
   descripcion: '', pesoKg: '', numBultos: '1',
+  esFragil: false,
   agenciaDestinoId: '', viajeId: '',
   monto: '', formaCobro: 'EFECTIVO', observaciones: '',
 }
@@ -278,15 +302,15 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h3 className="font-semibold text-gray-900">Registrar entrega</h3>
-            <p className="text-xs text-gray-500 font-mono">{enc.codigoTracking}</p>
+            <h3 className="font-bold text-gray-900">Registrar entrega</h3>
+            <p className="text-xs text-gray-400 font-mono mt-0.5">{enc.codigoTracking}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
-            <X size={18} />
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+            <X size={16} />
           </button>
         </div>
 
@@ -324,7 +348,7 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
                 onBlur={handleDniBlur}
                 placeholder="12345678"
                 maxLength={8}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none"
               />
               <button onClick={buscarPorDni} disabled={dniReceptor.length !== 8 || buscandoDni}
                 className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg disabled:opacity-50 flex items-center gap-1">
@@ -340,7 +364,7 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
               value={nombreReceptor}
               onChange={e => setNombreReceptor(e.target.value)}
               placeholder="Apellidos y nombres"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none"
             />
           </div>
 
@@ -351,33 +375,32 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
               onChange={e => setNota(e.target.value)}
               rows={2}
               placeholder="Observaciones sobre la entrega..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none"
             />
           </div>
 
-          {/* Pago en destino — cobro obligatorio */}
+          {/* Pago en destino */}
           {esPorCobrar && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
-              <div className="flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5">⚠</span>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+              <div className="flex items-start gap-2 text-xs">
+                <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-amber-900">
-                    Pago en destino — cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
-                  </p>
-                  <p className="text-xs text-amber-700 mt-0.5">
-                    Esta encomienda se paga aquí. El cobro ingresará a tu caja activa.
-                    <strong> Debes tener un turno de caja abierto.</strong>
-                  </p>
+                  <p className="font-semibold text-amber-900">Cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)} al entregar</p>
+                  <p className="text-amber-700 mt-0.5">El cobro ingresará a tu caja activa. <strong>Debes tener turno abierto.</strong></p>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Forma de pago recibida *</label>
-                <select value={formaPago} onChange={e => setFormaPago(e.target.value)}
-                  className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Forma de pago recibida *</label>
+                <div className="flex gap-2 flex-wrap">
                   {['EFECTIVO', 'YAPE', 'PLIN', 'TRANSFERENCIA'].map(f => (
-                    <option key={f} value={f}>{f.charAt(0) + f.slice(1).toLowerCase()}</option>
+                    <button key={f} type="button" onClick={() => setFormaPago(f)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                        formaPago === f ? 'bg-[#064e3b] text-white border-[#064e3b]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#064e3b]'
+                      }`}>
+                      {f.charAt(0) + f.slice(1).toLowerCase()}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
             </div>
           )}
@@ -385,12 +408,12 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
 
         <div className="flex gap-3 px-5 pb-5">
           <button onClick={onClose}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
+            className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
             Cancelar
           </button>
           <button onClick={confirmar} disabled={guardando || !dniReceptor || !nombreReceptor}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">
-            {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={15} />}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold transition-colors">
+            {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
             Confirmar entrega
           </button>
         </div>
@@ -475,60 +498,61 @@ function ParaEntregarTab({ onEntregaSuccess, onCountChange }: {
 
   return (
     <div className="space-y-4">
-      {/* Filter bar + search + refresh */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex gap-2 flex-wrap">
-            {FILTROS.map(f => {
-              const count = f.key !== 'todos' ? lista.filter(e => e.estado === f.key).length : lista.filter(e => e.estado !== 'ENTREGADO').length
-              return (
-                <button key={f.key} onClick={() => setFiltro(f.key)}
-                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors font-medium ${
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Segmented control */}
+        <div className="flex items-center gap-0.5 p-1 bg-gray-100 rounded-xl flex-wrap">
+          {FILTROS.map(f => {
+            const count = f.key !== 'todos'
+              ? lista.filter(e => e.estado === f.key).length
+              : lista.filter(e => e.estado !== 'ENTREGADO').length
+            return (
+              <button key={f.key} onClick={() => setFiltro(f.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium transition-all ${
+                  filtro === f.key
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {f.label}
+                {count > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${
                     filtro === f.key
-                      ? f.key === 'ENTREGADO'
-                        ? 'bg-green-600 text-white border-green-600'
-                        : 'bg-[#064e3b] text-white border-[#064e3b]'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-[#064e3b]'
-                  }`}>
-                  {f.label}
-                  {count > 0 && (
-                    <span className={`ml-1.5 px-1.5 rounded-full text-[10px] font-bold ${
-                      filtro === f.key ? 'bg-white/25 text-white' : f.key === 'DISPONIBLE' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-          <button onClick={cargar}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-lg">
-            <RefreshCw size={13} /> Actualizar
-          </button>
+                      ? f.key === 'DISPONIBLE' ? 'bg-teal-100 text-teal-700' : f.key === 'ENTREGADO' ? 'bg-emerald-100 text-emerald-700' : 'bg-[#064e3b]/10 text-[#064e3b]'
+                      : 'bg-gray-200 text-gray-500'
+                  }`}>{count}</span>
+                )}
+              </button>
+            )
+          })}
         </div>
-        {lista.length > 3 && (
-          <div className="relative max-w-sm">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar por tracking, remitente o destinatario…"
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        )}
+
+        {/* Búsqueda */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar tracking, remitente, destinatario…"
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />
+        </div>
+
+        <button onClick={cargar}
+          className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 transition-colors shrink-0">
+          <RefreshCw size={12} /> Actualizar
+        </button>
       </div>
 
       {/* Cards */}
       {cargando ? (
         <div className="flex justify-center items-center py-16 text-gray-400">
-          <Loader2 size={24} className="animate-spin mr-2" /> Cargando...
+          <Loader2 size={22} className="animate-spin mr-2" /> Cargando…
         </div>
       ) : filtradas.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <Truck size={40} className="mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No hay encomiendas {filtro !== 'todos' ? 'con este estado' : 'para entregar'}</p>
+        <div className="text-center py-16">
+          <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+            <Truck size={22} className="text-gray-300" />
+          </div>
+          <p className="text-sm text-gray-500 font-medium">
+            {filtro !== 'todos' ? 'Sin encomiendas con este estado' : 'Sin encomiendas para entregar'}
+          </p>
         </div>
       ) : (
         <div className="grid gap-3">
@@ -541,108 +565,106 @@ function ParaEntregarTab({ onEntregaSuccess, onCountChange }: {
             const esEntregado = enc.estado === 'ENTREGADO'
             const esDisponible = enc.estado === 'DISPONIBLE'
 
+            // Color de franja según estado
+            const franjaColor = esEntregado ? 'bg-emerald-400'
+              : esDisponible ? 'bg-teal-500'
+              : enc.estado === 'EN_TRANSITO' ? 'bg-purple-400'
+              : enc.estado === 'LLEGADO_AGENCIA' ? 'bg-cyan-400'
+              : 'bg-gray-300'
+
             return (
-              <div key={enc.id} className={`rounded-xl border p-4 shadow-sm transition-all ${
-                esEntregado
-                  ? 'bg-green-50/50 border-green-200 opacity-80'
-                  : esDisponible
-                    ? 'bg-white border-teal-300 ring-1 ring-teal-200'
-                    : 'bg-white border-gray-200'
+              <div key={enc.id} className={`rounded-2xl border overflow-hidden transition-all ${
+                esEntregado ? 'bg-emerald-50/50 border-emerald-200 opacity-80'
+                : esDisponible ? 'bg-white border-teal-200 shadow-sm ring-1 ring-teal-100'
+                : 'bg-white border-gray-200'
               }`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1 min-w-0 flex-1">
+                {/* Franja de estado */}
+                <div className={`h-1 w-full ${franjaColor}`} />
+
+                <div className="p-4 flex items-start gap-4">
+                  {/* Info principal */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    {/* Código + badges */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`font-mono text-xs font-bold ${esEntregado ? 'text-green-700' : 'text-[#064e3b]'}`}>
+                      <span className={`font-mono text-xs font-bold ${esEntregado ? 'text-emerald-700' : 'text-[#064e3b]'}`}>
                         {enc.codigoTracking}
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg.color}`}>{cfg.label}</span>
                       {esDisponible && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-600 text-white animate-pulse">
-                          Listo para entregar
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-teal-600 text-white">
+                          Listo p/entregar
                         </span>
                       )}
                       {enc.formaCobro === 'POR_COBRAR' && !esEntregado && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
                           Cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
+                        </span>
+                      )}
+                      {enc.esFragil && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-yellow-100 text-yellow-700">
+                          <AlertTriangle size={10} /> Frágil
                         </span>
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs mt-2">
-                      <div className="text-gray-500">
-                        <span className="font-medium text-gray-700">Remitente: </span>
-                        {enc.remitenteNombre ?? `ID ${enc.remitenteId}`}
-                        {enc.agenciaOrigenNombre && (
-                          <span className="ml-1 text-gray-400">({enc.agenciaOrigenNombre})</span>
-                        )}
+                    {/* Datos */}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="text-gray-600">
+                        <span className="text-gray-400 mr-1">De:</span>
+                        <span className="font-medium">{enc.remitenteNombre ?? `ID ${enc.remitenteId}`}</span>
                       </div>
-                      <div className="text-gray-500">
-                        <span className="font-medium text-gray-700">Destinatario: </span>
-                        {enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}
+                      <div className="text-gray-600">
+                        <span className="text-gray-400 mr-1">Para:</span>
+                        <span className="font-medium">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</span>
                         {enc.destinatarioTel && (
-                          <span className="ml-1 text-blue-600 font-medium">· {enc.destinatarioTel}</span>
+                          <span className="text-[#064e3b] font-medium ml-1">· {enc.destinatarioTel}</span>
                         )}
                       </div>
-                      <div className="text-gray-500">
-                        <span className="font-medium text-gray-700">Contenido: </span>
-                        {enc.descripcion}
+                      <div className="col-span-2 text-gray-500">{enc.descripcion}
+                        {enc.pesoKg && <span className="ml-2 text-gray-400">· {enc.pesoKg} kg{enc.numBultos && enc.numBultos > 1 ? ` · ${enc.numBultos} bultos` : ''}</span>}
                       </div>
-                      {enc.pesoKg && (
-                        <div className="text-gray-500">
-                          <span className="font-medium text-gray-700">Peso: </span>
-                          {enc.pesoKg} kg
-                          {enc.numBultos && enc.numBultos > 1 && ` · ${enc.numBultos} bultos`}
-                        </div>
-                      )}
                       {esEntregado && enc.recibidoPorNombre && (
-                        <div className="col-span-2 text-green-700 font-medium mt-0.5">
-                          <Check size={11} className="inline mr-1" />
+                        <div className="col-span-2 flex items-center gap-1 text-emerald-700 font-medium">
+                          <Check size={11} />
                           Recibió: {enc.recibidoPorNombre}
-                          {enc.recibidoPorDni && <span className="text-green-600 font-normal"> (DNI {enc.recibidoPorDni})</span>}
-                          {enc.fechaEntregaReal && (
-                            <span className="text-green-600 font-normal ml-2">
-                              · {format(new Date(enc.fechaEntregaReal), 'HH:mm', { locale: es })}
-                            </span>
-                          )}
+                          {enc.recibidoPorDni && <span className="text-emerald-600 font-normal"> (DNI {enc.recibidoPorDni})</span>}
+                          {enc.fechaEntregaReal && <span className="text-emerald-600 font-normal ml-1">· {format(new Date(enc.fechaEntregaReal), 'HH:mm', { locale: es })}</span>}
                         </div>
                       )}
                     </div>
 
                     {tiempoLlegada && !esEntregado && (
-                      <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-                        <Clock size={11} />
-                        Llegó {tiempoLlegada}
+                      <div className="flex items-center gap-1 text-[11px] text-gray-400">
+                        <Clock size={10} /> Llegó {tiempoLlegada}
                       </div>
                     )}
                   </div>
 
-                  {/* Action button */}
+                  {/* Acción */}
                   <div className="shrink-0">
                     {enc.estado === 'EN_TRANSITO' && (
                       <button onClick={() => marcarLlegada(enc)} disabled={isActuando}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 whitespace-nowrap">
-                        {isActuando ? <Loader2 size={12} className="animate-spin" /> : <MapPin size={13} />}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 disabled:opacity-50 whitespace-nowrap transition-colors font-medium">
+                        {isActuando ? <Loader2 size={12} className="animate-spin" /> : <MapPin size={12} />}
                         Confirmar llegada
                       </button>
                     )}
                     {enc.estado === 'LLEGADO_AGENCIA' && (
                       <button onClick={() => marcarDisponible(enc)} disabled={isActuando}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 whitespace-nowrap">
-                        {isActuando ? <Loader2 size={12} className="animate-spin" /> : <Check size={13} />}
-                        Disponible p/entrega
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50 whitespace-nowrap transition-colors font-medium">
+                        {isActuando ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Marcar disponible
                       </button>
                     )}
                     {enc.estado === 'DISPONIBLE' && (
                       <button onClick={() => setModalEntrega(enc)}
-                        className="flex items-center gap-1.5 px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold whitespace-nowrap shadow-sm">
-                        <Package size={15} />
-                        Registrar entrega
+                        className="flex items-center gap-1.5 px-4 py-2.5 text-sm bg-[#064e3b] text-white rounded-xl hover:bg-[#065f46] font-semibold whitespace-nowrap shadow-sm transition-colors">
+                        <Package size={14} /> Entregar
                       </button>
                     )}
                     {esEntregado && (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold">
-                        <CheckCircle2 size={14} />
-                        Entregado
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-xl text-xs font-semibold">
+                        <CheckCircle2 size={13} /> Entregado
                       </div>
                     )}
                   </div>
@@ -668,7 +690,20 @@ function ParaEntregarTab({ onEntregaSuccess, onCountChange }: {
 // ── Enviadas tab (list) ────────────────────────────────────────────────────────
 const ESTADOS_DEVOLVIBLES = ['REGISTRADO', 'RECEPCIONADO', 'ALMACENADO', 'OBSERVADO']
 
-function EnviadasTab() {
+const HISTORIAL_ESTADO_COLOR: Record<string, string> = {
+  REGISTRADO:      'bg-blue-100 text-blue-700',
+  RECEPCIONADO:    'bg-indigo-100 text-indigo-700',
+  ALMACENADO:      'bg-yellow-100 text-yellow-700',
+  CARGADO:         'bg-orange-100 text-orange-700',
+  EN_TRANSITO:     'bg-purple-100 text-purple-700',
+  LLEGADO_AGENCIA: 'bg-cyan-100 text-cyan-700',
+  DISPONIBLE:      'bg-teal-100 text-teal-700',
+  ENTREGADO:       'bg-green-100 text-green-700',
+  OBSERVADO:       'bg-red-100 text-red-700',
+  DEVUELTO:        'bg-gray-100 text-gray-700',
+}
+
+function EnviadasTab({ viajes = [] }: { viajes?: ViajeSimple[] }) {
   const [lista, setLista] = useState<EncomiendaEnriquecida[]>([])
   const [cargando, setCargando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState('')
@@ -680,6 +715,7 @@ function EnviadasTab() {
   const [confirmDevolver, setConfirmDevolver] = useState<number | null>(null)
   const [historialesAbiertos, setHistorialesAbiertos] = useState<Set<number>>(new Set())
   const [historiales, setHistoriales] = useState<Record<number, any[]>>({})
+  const [asignandoViaje, setAsignandoViaje] = useState<number | null>(null)
 
   const cargarLista = async () => {
     setCargando(true)
@@ -710,6 +746,19 @@ function EnviadasTab() {
     }
   }
 
+  const asignarViajeEnc = async (encId: number, viajeId: string) => {
+    setAsignandoViaje(encId)
+    try {
+      await api.patch(`/api/encomiendas/${encId}/asignar-viaje`, {
+        viajeId: viajeId ? parseInt(viajeId) : null
+      })
+      toast.success(viajeId ? 'Viaje asignado' : 'Viaje removido')
+      cargarLista()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al asignar viaje')
+    } finally { setAsignandoViaje(null) }
+  }
+
   const devolverEncomienda = async (encId: number) => {
     setDevolviendo(encId)
     try {
@@ -735,123 +784,212 @@ function EnviadasTab() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Tracking / nombre</label>
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Tracking o contenido</label>
           <div className="relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={filtroQ} onChange={e => setFiltroQ(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && cargarLista()} placeholder="EXP-2026-..."
-              className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+              onKeyDown={e => e.key === 'Enter' && cargarLista()} placeholder="EXP-2026-…"
+              className="w-full pl-8 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Estado</label>
           <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white transition-colors focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none">
             <option value="">Todos</option>
             {Object.entries(ESTADO_CONFIG).map(([k, { label }]) => <option key={k} value={k}>{label}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Desde</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Desde</label>
           <input type="date" value={filtroDe} onChange={e => setFiltroDe(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Hasta</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Hasta</label>
           <input type="date" value={filtroHasta} onChange={e => setFiltroHasta(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />
         </div>
         <button onClick={cargarLista}
-          className="flex items-center gap-1.5 px-3 py-2 bg-[#064e3b] text-white text-sm rounded-lg hover:bg-[#16294d]">
-          <Search size={14} /> Buscar
+          className="flex items-center gap-1.5 px-4 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold">
+          <Search size={13} /> Buscar
         </button>
         {(filtroQ || filtroEstado || filtroDe || filtroHasta) && (
           <button onClick={() => { setFiltroQ(''); setFiltroEstado(''); setFiltroDe(''); setFiltroHasta(''); }}
-            className="px-3 py-2 border border-gray-300 text-gray-500 text-sm rounded-lg hover:bg-gray-50">
-            Limpiar
+            className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 text-gray-500 text-sm rounded-xl hover:bg-gray-50 transition-colors">
+            <X size={13} /> Limpiar
           </button>
         )}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         {cargando ? (
           <div className="flex justify-center items-center py-16 text-gray-400">
-            <Loader2 size={24} className="animate-spin mr-2" /> Cargando...
+            <Loader2 size={22} className="animate-spin mr-2" /> Cargando…
           </div>
         ) : lista.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <Package size={40} className="mx-auto mb-2 opacity-30" />
-            <p>No hay encomiendas</p>
+          <div className="text-center py-16">
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+              <Package size={20} className="text-gray-300" />
+            </div>
+            <p className="text-sm text-gray-500 font-medium">Sin encomiendas</p>
+            <p className="text-xs text-gray-400 mt-1">Ajusta los filtros o registra una nueva</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 border-b border-gray-100">
                   {['Tracking', 'Remitente', 'Destinatario', 'Destino', 'Estado', 'Monto', 'Fecha', ''].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">{h}</th>
+                    <th key={h} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {lista.map(enc => {
                   const cfg = ESTADO_CONFIG[enc.estado] ?? { label: enc.estado, color: 'bg-gray-100 text-gray-800' }
+                  const histAbierto = historialesAbiertos.has(enc.id)
+                  const hist = historiales[enc.id] ?? []
+                  const tieneDescuento = enc.montoDescuento && Number(enc.montoDescuento) > 0
                   return (
-                    <tr key={enc.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#064e3b]">{enc.codigoTracking}</td>
-                      <td className="px-4 py-3 text-gray-800 max-w-[120px] truncate">{enc.remitenteNombre ?? `ID ${enc.remitenteId}`}</td>
-                      <td className="px-4 py-3 text-gray-800 max-w-[120px] truncate">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[120px] truncate">{enc.agenciaDestinoNombre ?? '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-800">
-                        S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                        {enc.fechaRegistro ? format(new Date(enc.fechaRegistro), 'dd/MM/yy HH:mm') : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => imprimirComprobante(enc.id)}
-                            disabled={imprimiendo === enc.id}
-                            title="Imprimir comprobante"
-                            className="p-1.5 rounded text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 inline-flex disabled:opacity-40">
-                            {imprimiendo === enc.id
-                              ? <Loader2 size={14} className="animate-spin" />
-                              : <Printer size={14} />}
-                          </button>
-                          {ESTADOS_DEVOLVIBLES.includes(enc.estado) && (
-                            confirmDevolver === enc.id ? (
-                              <span className="flex items-center gap-1">
-                                <button
-                                  onClick={() => devolverEncomienda(enc.id)}
-                                  disabled={devolviendo === enc.id}
-                                  className="px-2 py-1 text-[10px] bg-red-600 text-white rounded font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center gap-1">
-                                  {devolviendo === enc.id ? <Loader2 size={10} className="animate-spin" /> : null}
-                                  Sí, devolver
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDevolver(null)}
-                                  className="px-2 py-1 text-[10px] border border-gray-300 text-gray-500 rounded hover:bg-gray-50">
-                                  Cancelar
-                                </button>
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => setConfirmDevolver(enc.id)}
-                                title="Devolver al remitente"
-                                className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 inline-flex">
-                                <X size={14} />
-                              </button>
-                            )
+                    <React.Fragment key={enc.id}>
+                      <tr className="hover:bg-gray-50/60 transition-colors group">
+                        <td className="px-4 py-3">
+                          <p className="font-mono text-xs font-bold text-[#064e3b]">{enc.codigoTracking}</p>
+                          {enc.descripcion && (
+                            <p className="text-[10px] text-gray-400 truncate max-w-[100px] mt-0.5" title={enc.descripcion}>{enc.descripcion}</p>
                           )}
-                        </div>
-                      </td>
-                    </tr>
+                          {enc.esFragil && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-600 font-semibold mt-0.5">
+                              <AlertTriangle size={9} /> Frágil
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-800 text-xs max-w-[130px] truncate font-medium">{enc.remitenteNombre ?? `ID ${enc.remitenteId}`}</td>
+                        <td className="px-4 py-3 text-gray-800 text-xs max-w-[130px] truncate font-medium">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</td>
+                        <td className="px-4 py-3 text-xs max-w-[150px]">
+                          <p className="text-gray-500 truncate">{enc.agenciaDestinoNombre ?? '—'}</p>
+                          {enc.estado === 'REGISTRADO' && (
+                            <select
+                              defaultValue={enc.viajeId ?? ''}
+                              disabled={asignandoViaje === enc.id}
+                              onChange={e => asignarViajeEnc(enc.id, e.target.value)}
+                              className="mt-1 w-full text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 focus:ring-1 focus:ring-emerald-400 cursor-pointer disabled:opacity-50"
+                              title="Asignar viaje"
+                            >
+                              <option value="">{enc.viajeId ? `Viaje #${enc.viajeId}` : 'Sin viaje'}</option>
+                              {viajes.filter(v => v.estado === 'PROGRAMADO' || v.estado === 'EN_RUTA').map(v => (
+                                <option key={v.id} value={v.id}>
+                                  {v.ruta?.origen ?? '?'}→{v.ruta?.destino ?? '?'} {v.vehiculo?.placa ?? ''} {v.fechaHoraSal ? format(new Date(v.fechaHoraSal), 'HH:mm') : ''}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg.color}`}>{cfg.label}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <p className="font-mono text-xs font-semibold text-gray-800 tabular-nums">
+                            S/ {Number(enc.precioEnvio ?? enc.monto ?? 0).toFixed(2)}
+                          </p>
+                          {tieneDescuento && (
+                            <p className="text-[10px] text-green-600 font-medium">
+                              −S/ {Number(enc.montoDescuento).toFixed(2)}
+                            </p>
+                          )}
+                          {enc.formaCobro === 'POR_COBRAR' && (
+                            <p className="text-[10px] text-amber-600 font-medium">En destino</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
+                          {enc.fechaRegistro ? format(new Date(enc.fechaRegistro), 'dd/MM/yy HH:mm') : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Historial */}
+                            <button onClick={() => toggleHistorial(enc.id)}
+                              title={histAbierto ? 'Ocultar historial' : 'Ver historial'}
+                              className={`p-1.5 rounded-lg transition-colors ${histAbierto ? 'text-[#064e3b] bg-emerald-50' : 'text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50'}`}>
+                              <Eye size={13} />
+                            </button>
+                            {/* Etiqueta */}
+                            <button onClick={() => imprimirEtiqueta(enc.id)}
+                              title="Imprimir etiqueta del paquete"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                              <QrCode size={13} />
+                            </button>
+                            {/* Imprimir */}
+                            <button onClick={() => imprimirComprobante(enc.id)} disabled={imprimiendo === enc.id}
+                              title="Imprimir comprobante"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50 disabled:opacity-40 transition-colors">
+                              {imprimiendo === enc.id ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+                            </button>
+                            {/* Devolver */}
+                            {ESTADOS_DEVOLVIBLES.includes(enc.estado) && (
+                              confirmDevolver === enc.id ? (
+                                <span className="flex items-center gap-1">
+                                  <button onClick={() => devolverEncomienda(enc.id)} disabled={devolviendo === enc.id}
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
+                                    {devolviendo === enc.id && <Loader2 size={10} className="animate-spin" />}
+                                    Sí
+                                  </button>
+                                  <button onClick={() => setConfirmDevolver(null)}
+                                    className="px-2 py-1 text-[10px] border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors">
+                                    No
+                                  </button>
+                                </span>
+                              ) : (
+                                <button onClick={() => setConfirmDevolver(enc.id)} title="Devolver al remitente"
+                                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                                  <X size={13} />
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* ── Fila de historial expandible ── */}
+                      {histAbierto && (
+                        <tr className="bg-gray-50/80">
+                          <td colSpan={8} className="px-6 py-3">
+                            {hist.length === 0 ? (
+                              <p className="text-xs text-gray-400 italic">Cargando historial…</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {hist.map((h: any, idx: number) => (
+                                  <div key={idx} className="flex items-center gap-1.5 text-[11px]">
+                                    {h.estadoAnterior && (
+                                      <>
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${HISTORIAL_ESTADO_COLOR[h.estadoAnterior] ?? 'bg-gray-100 text-gray-600'}`}>
+                                          {ESTADO_CONFIG[h.estadoAnterior]?.label ?? h.estadoAnterior}
+                                        </span>
+                                        <span className="text-gray-300">→</span>
+                                      </>
+                                    )}
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${HISTORIAL_ESTADO_COLOR[h.estadoNuevo] ?? 'bg-gray-100 text-gray-600'}`}>
+                                      {ESTADO_CONFIG[h.estadoNuevo]?.label ?? h.estadoNuevo}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      {h.createdAt ? format(new Date(h.createdAt), 'dd/MM HH:mm') : ''}
+                                    </span>
+                                    {h.observacion && (
+                                      <span className="text-gray-500 italic truncate max-w-[160px]" title={h.observacion}>
+                                        · {h.observacion}
+                                      </span>
+                                    )}
+                                    {idx < hist.length - 1 && <span className="text-gray-200 mx-1">|</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
@@ -889,17 +1027,14 @@ export default function EncomiendaPage() {
     { revalidateOnFocus: false }
   )
   const [entregaSuccessData, setEntregaSuccessData] = useState<{ enc: EncomiendaEnriquecida; cobrado: boolean } | null>(null)
-  const [agencias, setAgencias] = useState<Agencia[]>([])
-  const [viajes, setViajes] = useState<ViajeSimple[]>([])
   const [wsBadge, setWsBadge] = useState(0)
 
   const remitenteRef = useRef<BuscadorClienteRef>(null)
   const destinatarioRef = useRef<BuscadorClienteRef>(null)
 
-  useEffect(() => {
-    api.get<any, ApiResponse<Agencia[]>>('/api/agencias').then(r => setAgencias(r.data ?? []))
-    api.get<any, any>('/api/viajes').then(r => setViajes(r.data ?? []))
-  }, [])
+  const { data: agencias = [] } = useSWR<Agencia[]>('/api/agencias')
+  const { data: viajes  = [] } = useSWR<ViajeSimple[]>('/api/viajes/disponibles')
+  const { data: statsData }    = useSWR<Record<string, number>>('/api/encomiendas/stats')
 
   // Subscribe to WS notifications for this agency's incoming packages
   useEffect(() => {
@@ -971,6 +1106,7 @@ export default function EncomiendaPage() {
         descripcion: form.descripcion,
         pesoKg: form.pesoKg ? parseFloat(form.pesoKg) : undefined,
         numBultos: parseInt(form.numBultos || '1'),
+        esFragil: form.esFragil,
         agenciaDestinoId: parseInt(form.agenciaDestinoId),
         viajeId: form.viajeId ? parseInt(form.viajeId) : undefined,
         monto: parseFloat(form.monto || '0'),
@@ -1012,6 +1148,15 @@ export default function EncomiendaPage() {
     } catch { toast.error('Error al generar comprobante de entrega') }
   }
 
+  const imprimirEtiqueta = async (encId: number) => {
+    try {
+      const blob = await encomiendaService.getEtiquetaPDF(encId)
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { toast.error('Error al generar etiqueta') }
+  }
+
   const handleEntregaSuccess = (enc: EncomiendaEnriquecida, cobrado: boolean) => {
     setEntregaSuccessData({ enc, cobrado })
     setVista('exito-entrega')
@@ -1026,28 +1171,47 @@ export default function EncomiendaPage() {
     : '—'
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#064e3b] flex items-center justify-center">
             <Package size={20} className="text-white" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Encomiendas</h1>
-            <p className="text-xs text-gray-500">Gestión de paquetes y envíos</p>
+            <p className="text-xs text-gray-500">Registro y seguimiento de paquetes</p>
           </div>
         </div>
+        {vista === 'tabs' && statsData && (
+          <div className="hidden sm:flex items-center gap-2 text-xs">
+            {(statsData.registradasHoy ?? 0) > 0 && (
+              <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-medium">
+                {statsData.registradasHoy} hoy
+              </span>
+            )}
+            {(statsData.disponibles ?? 0) > 0 && (
+              <span className="bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full font-medium">
+                {statsData.disponibles} p/entregar
+              </span>
+            )}
+            {(statsData.enTransito ?? 0) > 0 && (
+              <span className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full font-medium">
+                {statsData.enTransito} en tránsito
+              </span>
+            )}
+          </div>
+        )}
         {vista === 'tabs' && (
           <button onClick={() => { setVista('nueva'); setPaso(0); setForm(INIT) }}
-            className="flex items-center gap-2 px-4 py-2 bg-[#064e3b] text-white text-sm rounded-lg hover:bg-[#16294d] transition-colors">
-            <Plus size={16} /> Nueva encomienda
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold shadow-sm">
+            <Plus size={15} /> Nueva encomienda
           </button>
         )}
         {vista === 'nueva' && (
           <button onClick={() => setVista('tabs')}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
-            <X size={16} /> Cancelar
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
+            <X size={15} /> Cancelar
           </button>
         )}
       </div>
@@ -1058,6 +1222,7 @@ export default function EncomiendaPage() {
           data={successData}
           onNueva={() => { setVista('nueva'); setSuccessData(null) }}
           onPrint={() => imprimirComprobante(successData.enc.id)}
+          onEtiqueta={() => imprimirEtiqueta(successData.enc.id)}
         />
       )}
 
@@ -1073,23 +1238,23 @@ export default function EncomiendaPage() {
 
       {/* ── Wizard ── */}
       {vista === 'nueva' && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-6 pt-5 pb-3">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
+          <div className="px-6 pt-5 pb-4 border-b border-gray-100 bg-gray-50/60">
             <div className="flex items-center">
               {PASOS.map((p, i) => (
                 <React.Fragment key={p}>
                   <div className="flex flex-col items-center">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                      i < paso ? 'bg-[#064e3b] border-[#064e3b] text-white'
-                        : i === paso ? 'border-[#064e3b] text-[#064e3b] bg-white'
-                        : 'border-gray-300 text-gray-400 bg-white'
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                      i < paso ? 'bg-[#064e3b] border-[#064e3b] text-white shadow-sm'
+                        : i === paso ? 'border-[#064e3b] text-[#064e3b] bg-white ring-4 ring-[#064e3b]/10'
+                        : 'border-gray-200 text-gray-400 bg-white'
                     }`}>
                       {i < paso ? <Check size={13} /> : i + 1}
                     </div>
-                    <span className={`text-[10px] mt-1 ${i === paso ? 'text-[#064e3b] font-semibold' : 'text-gray-400'}`}>{p}</span>
+                    <span className={`text-[10px] mt-1 whitespace-nowrap font-medium ${i === paso ? 'text-[#064e3b]' : i < paso ? 'text-emerald-600' : 'text-gray-400'}`}>{p}</span>
                   </div>
                   {i < PASOS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mb-4 mx-1 ${i < paso ? 'bg-[#064e3b]' : 'bg-gray-200'}`} />
+                    <div className={`flex-1 h-0.5 mb-5 mx-1 rounded-full transition-all ${i < paso ? 'bg-[#064e3b]' : 'bg-gray-200'}`} />
                   )}
                 </React.Fragment>
               ))}
@@ -1122,43 +1287,60 @@ export default function EncomiendaPage() {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Descripción del contenido *</label>
                   <textarea value={form.descripcion} onChange={sf('descripcion')} rows={2}
                     placeholder="Ej: Ropa, electrónicos, documentos..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Peso en kg</label>
                     <input type="number" step="0.1" min="0" value={form.pesoKg} onChange={sf('pesoKg')} placeholder="0.5"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">N° bultos</label>
                     <input type="number" min="1" max="99" value={form.numBultos} onChange={sf('numBultos')} placeholder="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
                   </div>
+                  <div className="flex flex-col justify-end pb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Frágil</label>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, esFragil: !f.esFragil }))}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                        form.esFragil
+                          ? 'bg-amber-50 border-amber-400 text-amber-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300'
+                      }`}
+                    >
+                      <AlertTriangle size={13} className={form.esFragil ? 'text-amber-500' : 'text-gray-400'} />
+                      {form.esFragil ? 'Frágil ✓' : 'Marcar frágil'}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Agencia destino *</label>
                     <select value={form.agenciaDestinoId} onChange={sf('agenciaDestinoId')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white transition-colors focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none">
                       <option value="">Seleccionar...</option>
                       {agencias.map(a => <option key={a.id} value={a.id}>{a.nombre} — {a.ciudad}</option>)}
                     </select>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Viaje asignado <span className="text-gray-400 font-normal">(opcional)</span>
-                  </label>
-                  <select value={form.viajeId} onChange={sf('viajeId')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-                    <option value="">Sin viaje asignado</option>
-                    {viajes
-                      .filter(v => v.estado === 'PROGRAMADO' || v.estado === 'EN_RUTA')
-                      .map(v => (
-                        <option key={v.id} value={v.id}>
-                          {v.ruta?.origen ?? '?'} → {v.ruta?.destino ?? '?'} · {v.vehiculo?.placa ?? ''} · {v.fechaHoraSal ? format(new Date(v.fechaHoraSal), 'HH:mm dd/MM') : ''}
-                        </option>
-                      ))}
-                  </select>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Viaje <span className="text-gray-400 font-normal">(opcional)</span>
+                    </label>
+                    <select value={form.viajeId} onChange={sf('viajeId')}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white transition-colors focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none">
+                      <option value="">Sin viaje</option>
+                      {viajes
+                        .filter(v => v.estado === 'PROGRAMADO' || v.estado === 'EN_RUTA')
+                        .map(v => (
+                          <option key={v.id} value={v.id}>
+                            {v.ruta?.origen ?? '?'}→{v.ruta?.destino ?? '?'} {v.vehiculo?.placa ?? ''} {v.fechaHoraSal ? format(new Date(v.fechaHoraSal), 'HH:mm') : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
@@ -1170,12 +1352,12 @@ export default function EncomiendaPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Monto (S/) *</label>
                     <input type="number" step="0.5" min="0" value={form.monto} onChange={sf('monto')} placeholder="0.00"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" />
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Forma de cobro *</label>
                     <select value={form.formaCobro} onChange={sf('formaCobro')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white transition-colors focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none">
                       {Object.entries(FORMA_COBRO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
@@ -1252,7 +1434,7 @@ export default function EncomiendaPage() {
                 <h3 className="font-semibold text-gray-800 text-sm">Observaciones (opcional)</h3>
                 <textarea value={form.observaciones} onChange={sf('observaciones')} rows={3}
                   placeholder="Frágil, requiere refrigeración, etc."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
               </div>
             )}
 
@@ -1265,6 +1447,7 @@ export default function EncomiendaPage() {
                   <Row label="Contenido" value={form.descripcion} />
                   {form.pesoKg && <Row label="Peso" value={form.pesoKg + ' kg'} />}
                   <Row label="Bultos" value={form.numBultos || '1'} />
+                  {form.esFragil && <Row label="Frágil" value="Sí — manejar con cuidado" />}
                   <Row label="Destino" value={agenciaDestNombre} />
                   {form.viajeId && <Row label="Viaje" value={viajeLabel} />}
                   <Row label="Monto" value={`S/ ${parseFloat(form.monto || '0').toFixed(2)}`} />
@@ -1274,24 +1457,24 @@ export default function EncomiendaPage() {
               </div>
             )}
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
               {paso > 0 && (
                 <button onClick={() => setPaso(p => p - 1)}
-                  className="flex items-center gap-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                  <ChevronLeft size={15} /> Anterior
+                  className="flex items-center gap-1.5 px-4 py-2.5 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors">
+                  <ChevronLeft size={14} /> Anterior
                 </button>
               )}
               <div className="flex-1" />
               {paso < PASOS.length - 1 ? (
                 <button onClick={avanzar} disabled={!puedeAvanzar()}
-                  className="flex items-center gap-1 px-4 py-2 text-sm bg-[#064e3b] text-white rounded-lg hover:bg-[#16294d] disabled:opacity-50">
-                  Siguiente <ChevronRight size={15} />
+                  className="flex items-center gap-1.5 px-5 py-2.5 text-sm bg-[#064e3b] text-white rounded-xl hover:bg-[#065f46] disabled:opacity-40 transition-colors font-semibold">
+                  Siguiente <ChevronRight size={14} />
                 </button>
               ) : (
                 <button onClick={registrar} disabled={guardando}
-                  className="flex items-center gap-2 px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                  className="flex items-center gap-2 px-6 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors font-semibold">
                   {guardando && <Loader2 size={14} className="animate-spin" />}
-                  <Check size={15} /> Registrar encomienda
+                  <Check size={14} /> Registrar encomienda
                 </button>
               )}
             </div>
@@ -1328,7 +1511,7 @@ export default function EncomiendaPage() {
             </button>
           </div>
 
-          {tab === 'enviadas' && <EnviadasTab />}
+          {tab === 'enviadas' && <EnviadasTab viajes={viajes} />}
           {tab === 'para-entregar' && (
             <ParaEntregarTab onEntregaSuccess={handleEntregaSuccess} />
           )}

@@ -87,6 +87,10 @@ export interface Agencia {
   encargadoNombre?: string
   estado: string
   esSedePrincipal: boolean
+  tipo: 'AGENCIA' | 'SUCURSAL'
+  agenciaPadreId?: number
+  agenciaPadreNombre?: string
+  sucursales?: Agencia[]
   fechaApertura?: string
   fechaRegistro?: string
   // legacy
@@ -168,6 +172,9 @@ export interface Cliente {
   telefono?: string
   email?: string
   direccion?: string
+  fechaNac?: string
+  fechaRegistro?: string
+  createdAt?: string
 }
 
 export interface Pasaje {
@@ -183,7 +190,7 @@ export interface Pasaje {
   descuento: number
   precioFinal: number
   formaPago: string
-  estado: 'VENDIDO' | 'ANULADO'
+  estado: 'VENDIDO' | 'ANULADO' | 'RESERVADO'
   codigoBoleta: string
   motivoDescuento?: string
   motivoAnulacion?: string

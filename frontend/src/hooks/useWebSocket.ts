@@ -76,11 +76,23 @@ export function useWebSocket() {
     []
   )
 
+  const suscribeToAgenciaEncomiendas = useCallback(
+    (agenciaId: number, callback: (msg: any) => void) => {
+      if (!clientRef.current?.active) return undefined
+      return clientRef.current.subscribe(
+        `/topic/encomiendas/agencia/${agenciaId}`,
+        (msg: IMessage) => callback(JSON.parse(msg.body))
+      )
+    },
+    []
+  )
+
   return {
     connected,
     suscribeToAsientos,
     suscribeToEncomienda,
     suscribeToCaja,
     suscribeToNotificaciones,
+    suscribeToAgenciaEncomiendas,
   }
 }
