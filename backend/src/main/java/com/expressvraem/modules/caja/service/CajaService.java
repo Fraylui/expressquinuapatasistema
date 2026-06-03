@@ -1,4 +1,4 @@
-package com.expressvraem.modules.caja.service;
+﻿package com.expressvraem.modules.caja.service;
 
 import com.expressvraem.modules.auditoria.entity.Auditoria;
 import com.expressvraem.modules.auditoria.service.AuditoriaService;
@@ -37,8 +37,6 @@ public class CajaService {
     private final EntityManager entityManager;
     private final AuditoriaService auditoriaService;
 
-    // ── Stats agregadas por tipo (reemplaza 6 queries individuales) ───────────────
-
     private record TipoStat(long count, BigDecimal sum) {
         static final TipoStat ZERO = new TipoStat(0L, BigDecimal.ZERO);
     }
@@ -67,8 +65,6 @@ public class CajaService {
         });
         return result;
     }
-
-    // ── Abrir turno ──────────────────────────────────────────────────────────────
 
     @Transactional
     public Caja abrirCaja(Long usuarioId, BigDecimal montoInicial, Long agenciaIdOverride,
@@ -106,8 +102,6 @@ public class CajaService {
 
         return saved;
     }
-
-    // ── Registrar movimiento (con bloqueo pesimista para evitar race condition) ───
 
     @Transactional
     public MovimientoCaja registrarMovimiento(Long cajaId, String tipo, String concepto,
@@ -154,7 +148,6 @@ public class CajaService {
         return saved;
     }
 
-    // ── Verificar que una caja pertenece al usuario (para endpoints HTTP) ─────────
 
     public void verificarOwnership(Long cajaId, Long usuarioId) {
         Caja caja = cajaRepository.findById(cajaId)
@@ -164,7 +157,6 @@ public class CajaService {
         }
     }
 
-    // ── Registrar egreso directo ─────────────────────────────────────────────────
 
     @Transactional
     public MovimientoCaja registrarEgreso(Long usuarioId, String concepto, BigDecimal monto,
@@ -186,7 +178,6 @@ public class CajaService {
         return mov;
     }
 
-    // ── Registrar ingreso manual ─────────────────────────────────────────────────
 
     @Transactional
     public MovimientoCaja registrarIngreso(Long usuarioId, String concepto, BigDecimal monto,
@@ -208,7 +199,6 @@ public class CajaService {
         return mov;
     }
 
-    // ── Cerrar turno ─────────────────────────────────────────────────────────────
 
     @Transactional
     public Caja cerrarTurno(Long usuarioId, BigDecimal montoFisico, String observacion,
@@ -247,7 +237,6 @@ public class CajaService {
         return saved;
     }
 
-    // ── Turno actual enriquecido ─────────────────────────────────────────────────
 
     public Map<String, Object> getTurnoActualEnriquecido(Long usuarioId) {
         Caja caja = cajaRepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA")
@@ -260,7 +249,6 @@ public class CajaService {
                 .orElseThrow(() -> new BusinessException("No tiene turno activo", "SIN_TURNO_ACTIVO"));
     }
 
-    // ── Movimientos del turno actual ─────────────────────────────────────────────
 
     public List<MovimientoCaja> getMovimientosActual(Long usuarioId) {
         Caja caja = cajaRepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA")
@@ -272,7 +260,6 @@ public class CajaService {
         return movimientoRepository.findByCajaIdOrderByCreatedAtDesc(cajaId);
     }
 
-    // ── Historial de turnos ──────────────────────────────────────────────────────
 
     public List<Map<String, Object>> getHistorial(Long usuarioId, String rol,
                                                    Long filtroAgencia, Long filtroUsuario,
@@ -297,7 +284,6 @@ public class CajaService {
         return enrichCajaList(cajas.getContent());
     }
 
-    // ── Resumen (legacy) ─────────────────────────────────────────────────────────
 
     public Map<String, Object> getResumenTurno(Long cajaId) {
         Caja caja = cajaRepository.findById(cajaId)
@@ -305,15 +291,13 @@ public class CajaService {
         return enrichCaja(caja);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────────
 
-    /** Enriquece una sola caja: 1 query de stats + 2 native lookups de nombre. */
     private Map<String, Object> enrichCaja(Caja caja) {
         Map<String, TipoStat> stats = loadStats(caja.getId());
         return buildMap(caja, stats, resolveNombreUsuario(caja.getUsuarioId()), resolveNombreAgencia(caja.getAgenciaId()));
     }
 
-    /** Enriquece una lista completa con 3 queries batch (sin N+1). */
+    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> enrichCajaList(List<Caja> cajas) {
         if (cajas.isEmpty()) return List.of();
 
@@ -321,10 +305,8 @@ public class CajaService {
         List<Long> usuarioIds = cajas.stream().map(Caja::getUsuarioId).distinct().toList();
         List<Long> agenciaIds = cajas.stream().map(Caja::getAgenciaId).distinct().toList();
 
-        // Batch stats (1 query)
         Map<Long, Map<String, TipoStat>> statsMap = batchStats(cajaIds);
 
-        // Batch nombres de operadores (1 native query)
         Map<Long, String> operadores = new HashMap<>();
         try {
             entityManager.createNativeQuery(
@@ -339,7 +321,6 @@ public class CajaService {
             log.warn("Batch usuarios fallido: {}", e.getMessage());
         }
 
-        // Batch nombres de agencias (1 native query)
         Map<Long, String> agencias = new HashMap<>();
         try {
             entityManager.createNativeQuery(

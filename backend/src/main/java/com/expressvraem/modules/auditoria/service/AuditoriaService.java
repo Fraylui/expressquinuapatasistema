@@ -1,4 +1,4 @@
-package com.expressvraem.modules.auditoria.service;
+﻿package com.expressvraem.modules.auditoria.service;
 
 import com.expressvraem.modules.auditoria.entity.Auditoria;
 import com.expressvraem.modules.auditoria.repository.AuditoriaRepository;
@@ -14,6 +14,8 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,7 +32,6 @@ public class AuditoriaService {
         auditoriaRepository.save(auditoria);
     }
 
-    /** Shorthand para registrar sin construir el builder manualmente. */
     public void registrar(Long usuarioId, String usuarioNombre, Long agenciaId,
                           String accion, String modulo, String entidad,
                           Long registroId, String datosDespues, String ip) {
@@ -70,13 +71,13 @@ public class AuditoriaService {
         return page;
     }
 
+    @SuppressWarnings("unchecked")
     public Map<String, Object> getResumenHoy(Long agenciaId) {
         LocalDateTime inicioHoy = LocalDate.now().atStartOfDay();
         LocalDateTime finHoy    = inicioHoy.plusDays(1);
 
-        // Una sola query GROUP BY en lugar de 5 queries de count separadas
         List<Object[]> rows = auditoriaRepository.countByAccionGrouped(agenciaId, inicioHoy, finHoy);
-        Map<String, Long> byAccion = new java.util.HashMap<>();
+        Map<String, Long> byAccion = new HashMap<>();
         long total = 0;
         for (Object[] r : rows) {
             String accion = r[0] != null ? String.valueOf(r[0]) : "OTRO";
@@ -85,7 +86,7 @@ public class AuditoriaService {
             total += cnt;
         }
 
-        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        Map<String, Object> m = new LinkedHashMap<>();
         m.put("total",   total);
         m.put("inserts", byAccion.getOrDefault("INSERT",        0L));
         m.put("updates", byAccion.getOrDefault("UPDATE",        0L));
@@ -95,25 +96,19 @@ public class AuditoriaService {
         return m;
     }
 
-    /**
-     * Actividad agrupada por hora (periodo=hoy) o por día (periodo=semana).
-     * Usa GROUP BY en SQL en lugar de cargar todos los registros en memoria.
-     */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getActividad(Long agenciaId, String periodo) {
         boolean esSemana = "semana".equalsIgnoreCase(periodo);
         List<String> acciones = List.of("INSERT", "UPDATE", "DELETE", "LOGIN", "LOGIN_FALLIDO");
 
         if (esSemana) {
-            // Inicializar estructura con ceros para los últimos 7 días
-            Map<String, Map<String, Long>> porDia = new java.util.LinkedHashMap<>();
+            Map<String, Map<String, Long>> porDia = new LinkedHashMap<>();
             for (int i = 6; i >= 0; i--) {
                 String key = LocalDate.now().minusDays(i).toString();
-                Map<String, Long> counts = new java.util.LinkedHashMap<>();
+                Map<String, Long> counts = new LinkedHashMap<>();
                 acciones.forEach(a -> counts.put(a, 0L));
                 porDia.put(key, counts);
             }
-            // Una sola query GROUP BY por fecha+accion
             List<Object[]> rows = auditoriaRepository.countByDiaAndAccion(
                     agenciaId,
                     LocalDate.now().minusDays(6).atStartOfDay(),
@@ -126,21 +121,19 @@ public class AuditoriaService {
                     porDia.get(dia).put(accion, cnt);
             }
             return porDia.entrySet().stream().map(e -> {
-                Map<String, Object> row = new java.util.LinkedHashMap<>();
+                Map<String, Object> row = new LinkedHashMap<>();
                 row.put("label", e.getKey().substring(5).replace("-", "/"));
                 row.putAll(e.getValue());
                 return row;
             }).collect(Collectors.toList());
 
         } else {
-            // Inicializar 24 horas con ceros
-            Map<Integer, Map<String, Long>> porHora = new java.util.LinkedHashMap<>();
+            Map<Integer, Map<String, Long>> porHora = new LinkedHashMap<>();
             for (int h = 0; h < 24; h++) {
-                Map<String, Long> counts = new java.util.LinkedHashMap<>();
+                Map<String, Long> counts = new LinkedHashMap<>();
                 acciones.forEach(a -> counts.put(a, 0L));
                 porHora.put(h, counts);
             }
-            // Una sola query GROUP BY hora+accion
             List<Object[]> rows = auditoriaRepository.countByHoraAndAccion(
                     agenciaId,
                     LocalDate.now().atStartOfDay(),
@@ -152,7 +145,7 @@ public class AuditoriaService {
                 if (acciones.contains(accion)) porHora.get(hora).put(accion, cnt);
             }
             return porHora.entrySet().stream().map(e -> {
-                Map<String, Object> row = new java.util.LinkedHashMap<>();
+                Map<String, Object> row = new LinkedHashMap<>();
                 row.put("label", String.format("%02d:00", e.getKey()));
                 row.putAll(e.getValue());
                 return row;
