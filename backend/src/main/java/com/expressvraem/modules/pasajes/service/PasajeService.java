@@ -8,7 +8,6 @@ import com.expressvraem.modules.pasajes.dto.PasajeResponseDTO;
 import com.expressvraem.modules.pasajes.dto.VentaPasajeDTO;
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
-import com.expressvraem.modules.promociones.entity.Promocion;
 import com.expressvraem.modules.promociones.service.PromocionService;
 import com.expressvraem.modules.viajes.entity.Asiento;
 import com.expressvraem.modules.viajes.repository.AsientoRepository;
