@@ -3,6 +3,7 @@ package com.expressvraem.modules.configuracion;
 import com.expressvraem.modules.vehiculos.entity.Vehiculo;
 import com.expressvraem.modules.vehiculos.repository.VehiculoRepository;
 import com.expressvraem.shared.exceptions.ApiResponse;
+import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.validation.Valid;
@@ -37,9 +38,14 @@ public class ConfiguracionVehiculoController {
         Long agenciaId = AgenciaContext.getAgenciaId();
         if (agenciaId == null) agenciaId = 1L;
 
+        String placa = dto.getPlaca().toUpperCase().trim();
+        if (vehiculoRepository.existsByPlacaAndIdNot(placa, 0L)) {
+            throw new BusinessException("Ya existe un vehículo con esa placa", "PLACA_DUPLICADA");
+        }
+
         Vehiculo v = new Vehiculo();
         v.setAgenciaId(agenciaId);
-        v.setPlaca(dto.getPlaca().toUpperCase().trim());
+        v.setPlaca(placa);
         v.setTipo(dto.getTipo());
         v.setMarca(dto.getMarca());
         v.setModelo(dto.getModelo());
@@ -60,7 +66,11 @@ public class ConfiguracionVehiculoController {
             @Valid @RequestBody VehiculoDTO dto) {
         Vehiculo v = vehiculoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Vehículo", id));
-        v.setPlaca(dto.getPlaca().toUpperCase().trim());
+        String placa = dto.getPlaca().toUpperCase().trim();
+        if (vehiculoRepository.existsByPlacaAndIdNot(placa, id)) {
+            throw new BusinessException("Ya existe un vehículo con esa placa", "PLACA_DUPLICADA");
+        }
+        v.setPlaca(placa);
         v.setTipo(dto.getTipo());
         v.setMarca(dto.getMarca());
         v.setModelo(dto.getModelo());

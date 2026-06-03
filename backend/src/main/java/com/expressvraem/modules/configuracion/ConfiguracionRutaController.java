@@ -3,6 +3,7 @@ package com.expressvraem.modules.configuracion;
 import com.expressvraem.modules.rutas.entity.Ruta;
 import com.expressvraem.modules.rutas.repository.RutaRepository;
 import com.expressvraem.shared.exceptions.ApiResponse;
+import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.validation.Valid;
@@ -28,8 +29,8 @@ public class ConfiguracionRutaController {
     public ResponseEntity<ApiResponse<List<Ruta>>> listar() {
         Long agenciaId = AgenciaContext.getAgenciaId();
         List<Ruta> rutas = agenciaId != null
-                ? rutaRepository.findByAgenciaIdAndActivoTrue(agenciaId)
-                : rutaRepository.findByActivoTrue();
+                ? rutaRepository.findByAgenciaId(agenciaId)
+                : rutaRepository.findAll();
         return ResponseEntity.ok(ApiResponse.ok(rutas));
     }
 
@@ -38,9 +39,14 @@ public class ConfiguracionRutaController {
         Long agenciaId = AgenciaContext.getAgenciaId();
         if (agenciaId == null) agenciaId = 1L;
 
+        String codigo = dto.getCodigo().toUpperCase().trim();
+        if (rutaRepository.existsByCodigoAndIdNot(codigo, 0L)) {
+            throw new BusinessException("Ya existe una ruta con ese código", "CODIGO_DUPLICADO");
+        }
+
         Ruta ruta = new Ruta();
         ruta.setAgenciaId(agenciaId);
-        ruta.setCodigo(dto.getCodigo().toUpperCase().trim());
+        ruta.setCodigo(codigo);
         ruta.setOrigen(dto.getOrigen().trim());
         ruta.setDestino(dto.getDestino().trim());
         ruta.setDistanciaKm(dto.getDistanciaKm());
@@ -59,7 +65,12 @@ public class ConfiguracionRutaController {
         Ruta ruta = rutaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Ruta", id));
 
-        ruta.setCodigo(dto.getCodigo().toUpperCase().trim());
+        String codigo = dto.getCodigo().toUpperCase().trim();
+        if (rutaRepository.existsByCodigoAndIdNot(codigo, id)) {
+            throw new BusinessException("Ya existe una ruta con ese código", "CODIGO_DUPLICADO");
+        }
+
+        ruta.setCodigo(codigo);
         ruta.setOrigen(dto.getOrigen().trim());
         ruta.setDestino(dto.getDestino().trim());
         ruta.setDistanciaKm(dto.getDistanciaKm());

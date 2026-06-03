@@ -1,5 +1,7 @@
 package com.expressvraem.modules.modulos.controller;
 
+import com.expressvraem.modules.auditoria.entity.Auditoria;
+import com.expressvraem.modules.auditoria.service.AuditoriaService;
 import com.expressvraem.modules.auth.entity.Usuario;
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.modulos.entity.Modulo;
@@ -27,6 +29,7 @@ public class ModuloController {
     private final ModuloRepository moduloRepository;
     private final UsuarioModuloRepository usuarioModuloRepository;
     private final UsuarioRepository usuarioRepository;
+    private final AuditoriaService auditoriaService;
 
     /** Lista todos los módulos del sistema */
     @GetMapping("/api/modulos")
@@ -101,6 +104,25 @@ public class ModuloController {
                 });
             });
         }
+
+        // Audit: registrar qué módulos se asignaron y a quién
+        List<String> codigos = moduloIds == null ? List.of() :
+                moduloIds.stream()
+                        .map(Long::valueOf)
+                        .map(mid -> moduloRepository.findById(mid)
+                                .map(Modulo::getCodigo).orElse("?" + mid))
+                        .collect(Collectors.toList());
+        try {
+            auditoriaService.registrar(Auditoria.builder()
+                    .usuarioNombre(auth.getName())
+                    .agenciaId(usuario.getAgenciaId())
+                    .accion("UPDATE").modulo("MODULOS").entidad("PERMISOS")
+                    .registroId(id)
+                    .datosAntes("{\"usuario\":\"" + usuario.getEmail() + "\"}")
+                    .datosDespues("{\"usuario\":\"" + usuario.getEmail()
+                            + "\",\"modulosAsignados\":" + codigos + "}")
+                    .build());
+        } catch (Exception ignored) {}
 
         return ResponseEntity.ok(ApiResponse.ok("Módulos actualizados correctamente", null));
     }
