@@ -55,7 +55,7 @@ public class AgenciaService {
             m.put("ruc",      a.getRuc());
             m.put("encargadoId", a.getEncargadoId());
             return MAPPER.writeValueAsString(m);
-        } catch (Exception e) { return null; }
+        } catch (Exception ignored) { return null; }
     }
 
     private void audit(String accion, Long registroId, Long agenciaId,
@@ -111,7 +111,7 @@ public class AgenciaService {
                 .collect(Collectors.toList());
         if (ids.isEmpty()) return Map.of();
         return usuarioRepository.findAllById(ids).stream()
-                .collect(Collectors.toMap(u -> u.getId(), u -> u.getNombres() + " " + u.getApellidos()));
+                .collect(Collectors.toMap(u -> u.getId(), u -> u.getNombres() + " " + u.getApellidos(), (a, b) -> a));
     }
 
     private Map<Long, String> buildPadreMap(List<Agencia> agencias) {
