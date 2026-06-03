@@ -1,17 +1,23 @@
 package com.expressvraem.modules.clientes.service;
 
+import com.expressvraem.modules.auditoria.entity.Auditoria;
+import com.expressvraem.modules.auditoria.service.AuditoriaService;
 import com.expressvraem.modules.clientes.dto.ClienteDTO;
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
-import com.expressvraem.shared.logs.LogService;
 import com.expressvraem.shared.middleware.AgenciaContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -19,7 +25,45 @@ import java.util.List;
 public class ClienteService {
 
     private final ClienteRepository clienteRepository;
-    private final LogService logService;
+    private final AuditoriaService auditoriaService;
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static String currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return (auth != null && auth.isAuthenticated()) ? auth.getName() : "sistema";
+    }
+
+    private static String toJson(Cliente c) {
+        if (c == null) return null;
+        try {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",       c.getId());
+            m.put("tipo",     c.getTipo());
+            m.put("tipoDoc",  c.getTipoDoc());
+            m.put("numDoc",   c.getNumDoc());
+            m.put("nombres",  c.getNombres());
+            m.put("apellidos",c.getApellidos());
+            m.put("telefono", c.getTelefono());
+            m.put("email",    c.getEmail());
+            return MAPPER.writeValueAsString(m);
+        } catch (Exception e) { return null; }
+    }
+
+    private void audit(String accion, Long registroId, Long agenciaId,
+                       String antes, String despues) {
+        try {
+            auditoriaService.registrar(Auditoria.builder()
+                    .usuarioNombre(currentUser())
+                    .agenciaId(agenciaId)
+                    .accion(accion).modulo("CLIENTES").entidad("CLIENTE")
+                    .registroId(registroId)
+                    .datosAntes(antes).datosDespues(despues)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Audit CLIENTES falló: {}", e.getMessage());
+        }
+    }
 
     public List<Cliente> listar() {
         Long agenciaId = AgenciaContext.getAgenciaId();
@@ -74,13 +118,14 @@ public class ClienteService {
                 .direccion(dto.getDireccion())
                 .build();
         Cliente saved = clienteRepository.save(c);
-        logService.logOperacion("sistema", "CLIENTES", "CREAR", saved);
+        audit("INSERT", saved.getId(), saved.getAgenciaId(), null, toJson(saved));
         return saved;
     }
 
     public Cliente actualizar(Long id, ClienteDTO dto) {
         Cliente c = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
+        String antes = toJson(c);
         boolean empresa = dto.isEmpresa();
         c.setTipo(empresa ? "EMPRESA" : "PERSONA");
         c.setRazonSocial(empresa ? dto.getRazonSocial() : null);
@@ -89,12 +134,28 @@ public class ClienteService {
         c.setApellidos(dto.getApellidos() != null ? dto.getApellidos() : "-");
         c.setTipoDoc(dto.getTipoDoc());
         c.setNumDoc(dto.getNumDoc());
-        c.setDni(empresa ? dto.getDniContacto() : null);
+        c.setDni(empresa ? dto.getDniContacto()
+                : (dto.getNumDoc() != null && dto.getNumDoc().length() == 8 ? dto.getNumDoc() : null));
         c.setTelefono(dto.getTelefono());
         c.setEmail(dto.getEmail());
         c.setFechaNac(dto.getFechaNac());
         c.setDireccion(dto.getDireccion());
-        return clienteRepository.save(c);
+        Cliente saved = clienteRepository.save(c);
+        audit("UPDATE", saved.getId(), saved.getAgenciaId(), antes, toJson(saved));
+        return saved;
+    }
+
+    public void eliminar(Long id) {
+        Cliente c = clienteRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
+        try {
+            String antes = toJson(c);
+            clienteRepository.deleteById(id);
+            audit("DELETE", id, c.getAgenciaId(), antes, null);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new com.expressvraem.shared.exceptions.BusinessException(
+                    "No se puede eliminar: el cliente tiene registros asociados (pasajes, encomiendas)", "CLIENTE_CON_REFERENCIAS");
+        }
     }
 
     @org.springframework.transaction.annotation.Transactional
