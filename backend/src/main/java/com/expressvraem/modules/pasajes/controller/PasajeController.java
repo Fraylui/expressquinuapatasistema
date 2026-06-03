@@ -11,6 +11,7 @@ import com.expressvraem.shared.annotations.RequiereModulo;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.middleware.AgenciaContext;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -37,12 +38,25 @@ public class PasajeController {
                 .getId();
     }
 
+    private String resolveNombre(Authentication auth) {
+        return usuarioRepository.findByEmail(auth.getName())
+                .map(u -> u.getNombres() + " " + u.getApellidos())
+                .orElse(auth.getName());
+    }
+
+    private String extraerIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        return (xff != null && !xff.isBlank()) ? xff.split(",")[0].trim() : request.getRemoteAddr();
+    }
+
     @PostMapping("/vender")
     @RequiereModulo("VENTAS")
     public ResponseEntity<ApiResponse<PasajeResponseDTO>> vender(
             @Valid @RequestBody VentaPasajeDTO dto,
-            Authentication auth) {
-        PasajeResponseDTO result = pasajeService.venderPasaje(dto, resolveUserId(auth));
+            Authentication auth,
+            HttpServletRequest request) {
+        PasajeResponseDTO result = pasajeService.venderPasaje(
+                dto, resolveUserId(auth), extraerIp(request), resolveNombre(auth));
         return ResponseEntity.ok(ApiResponse.ok("Pasaje vendido", result));
     }
 
@@ -69,9 +83,11 @@ public class PasajeController {
     public ResponseEntity<ApiResponse<PasajeResponseDTO>> confirmar(
             @PathVariable Long id,
             @RequestBody Map<String, String> body,
-            Authentication auth) {
+            Authentication auth,
+            HttpServletRequest request) {
         String formaPago = body.getOrDefault("formaPago", "EFECTIVO");
-        PasajeResponseDTO result = pasajeService.confirmarReserva(id, formaPago, resolveUserId(auth));
+        PasajeResponseDTO result = pasajeService.confirmarReserva(
+                id, formaPago, resolveUserId(auth), extraerIp(request), resolveNombre(auth));
         return ResponseEntity.ok(ApiResponse.ok("Reserva confirmada y pagada", result));
     }
 
@@ -80,9 +96,10 @@ public class PasajeController {
     public ResponseEntity<ApiResponse<Void>> anular(
             @PathVariable Long id,
             @RequestBody Map<String, String> body,
-            Authentication auth) {
+            Authentication auth,
+            HttpServletRequest request) {
         String motivo = body.getOrDefault("motivoAnulacion", "");
-        pasajeService.anularPasaje(id, motivo, resolveUserId(auth));
+        pasajeService.anularPasaje(id, motivo, resolveUserId(auth), extraerIp(request), resolveNombre(auth));
         return ResponseEntity.ok(ApiResponse.ok("Pasaje anulado", null));
     }
 

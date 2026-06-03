@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import jakarta.persistence.EntityManager;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.Map;
@@ -30,19 +32,21 @@ public class TicketPdfService {
 
     private final EntityManager em;
 
-    private static final float PAGE_W  = 226.77f; // 80mm
-    private static final float MARGIN  = 10f;
+    private static final float  PAGE_W  = 226.77f; // 80 mm
+    private static final float  MARGIN  = 10f;
     private static final String EMPRESA = "EXPRESS QUINUAPATA VRAEM S.A.C.";
     private static final String RUC     = "RUC: 20601234567";
     private static final String DIR     = "Jr. Lima 245, Mercado Andres F. Vivanco";
     private static final String CIUDAD  = "Huamanga - Ayacucho  Telf: 066-312456";
+    private static final String BASE_URL = "expressvraem.pe/verificar/";
 
     @SuppressWarnings("unchecked")
     public byte[] generarTicket(Pasaje p) {
         try (PDDocument doc = new PDDocument()) {
-            // Load related data
-            Object[] viajeRow = null; String origen = ""; String destino = "";
-            String placa = ""; String tipoVeh = "";
+
+            // ── Cargar datos relacionados ──────────────────────────────────────
+            Object[] viajeRow = null;
+            String origen = "", destino = "", placa = "", tipoVeh = "";
             try {
                 viajeRow = (Object[]) em.createNativeQuery(
                     "SELECT v.id, v.fecha_hora_sal, vh.placa, vh.tipo, r.origen, r.destino " +
@@ -55,93 +59,100 @@ public class TicketPdfService {
                 destino = String.valueOf(viajeRow[5]);
             } catch (Exception ignored) {}
 
-            String clienteNombres = ""; String clienteApellidos = ""; String clienteDni = "";
-            String operadorNombre = ""; String agenciaNombre = "";
+            String clienteNombres = "", clienteApellidos = "", clienteDni = "";
+            String operadorNombre = "", agenciaNombre = "";
             try {
-                Object[] clienteRow = (Object[]) em.createNativeQuery(
+                Object[] cr = (Object[]) em.createNativeQuery(
                     "SELECT nombres, apellidos, num_doc FROM clientes WHERE id=:cid")
                     .setParameter("cid", p.getClienteId()).getSingleResult();
-                clienteNombres   = String.valueOf(clienteRow[0]);
-                clienteApellidos = String.valueOf(clienteRow[1]);
-                clienteDni       = String.valueOf(clienteRow[2]);
+                clienteNombres   = String.valueOf(cr[0]);
+                clienteApellidos = String.valueOf(cr[1]);
+                clienteDni       = String.valueOf(cr[2]);
             } catch (Exception ignored) {}
             try {
-                Object[] opRow = (Object[]) em.createNativeQuery(
+                Object[] or2 = (Object[]) em.createNativeQuery(
                     "SELECT nombres || ' ' || apellidos FROM usuarios WHERE id=:uid")
                     .setParameter("uid", p.getVendedorId()).getSingleResult();
-                operadorNombre = String.valueOf(opRow[0]);
+                operadorNombre = String.valueOf(or2[0]);
             } catch (Exception ignored) {}
             try {
-                Object[] agRow = (Object[]) em.createNativeQuery(
+                Object[] ar = (Object[]) em.createNativeQuery(
                     "SELECT nombre FROM agencias WHERE id=:aid")
                     .setParameter("aid", p.getAgenciaId()).getSingleResult();
-                agenciaNombre = String.valueOf(agRow[0]);
+                agenciaNombre = String.valueOf(ar[0]);
             } catch (Exception ignored) {}
 
             DateTimeFormatter dtfDate = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-            DateTimeFormatter dtfHora = DateTimeFormatter.ofPattern("HH:mm");
+            DateTimeFormatter dtfHora = DateTimeFormatter.ofPattern("hh:mm a");
             DateTimeFormatter dtfFull = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
-            String fechaViaje = ""; String horaViaje = "";
+            String fechaViaje = "", horaViaje = "";
             if (viajeRow != null && viajeRow[1] != null) {
                 java.time.LocalDateTime ldt;
-                if (viajeRow[1] instanceof java.time.OffsetDateTime odt) {
-                    ldt = odt.toLocalDateTime();
-                } else if (viajeRow[1] instanceof java.sql.Timestamp ts) {
-                    ldt = ts.toLocalDateTime();
-                } else {
-                    ldt = null;
-                }
+                if (viajeRow[1] instanceof java.time.OffsetDateTime odt)      ldt = odt.toLocalDateTime();
+                else if (viajeRow[1] instanceof java.sql.Timestamp ts)        ldt = ts.toLocalDateTime();
+                else                                                           ldt = null;
                 if (ldt != null) {
-                    fechaViaje = ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-                    horaViaje  = ldt.format(DateTimeFormatter.ofPattern("hh:mm a"));
+                    fechaViaje = ldt.format(dtfDate);
+                    horaViaje  = ldt.format(dtfHora);
                 }
             }
 
-            float pageH = 520f;
+            String cb      = p.getCodigoBoleta() != null ? p.getCodigoBoleta() : "VTA-" + p.getId();
+            String qrUrl   = BASE_URL + cb;
+            String emitido = p.getFechaVenta() != null ? p.getFechaVenta().format(dtfFull) : "";
+            String serie   = p.getSerie()      != null ? p.getSerie()      : "T001";
+            String correl  = p.getCorrelativo()!= null ? p.getCorrelativo() : String.format("%08d", p.getId());
+            String hash    = computeHash(cb, p.getPrecioFinal().toPlainString(), clienteDni, emitido);
+
+            // ── Página (altura aumentada para sección de control) ──────────────
+            float pageH = 610f;
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
-            PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
-            PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDType1Font fontNorm = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
 
-                y = ctext(cs, fontBold, 9f, EMPRESA,  y);  y -= 2;
-                y = ctext(cs, fontNorm, 7f, RUC,       y);  y -= 1;
-                y = ctext(cs, fontNorm, 6f, DIR,       y);  y -= 1;
-                y = ctext(cs, fontNorm, 6f, CIUDAD,    y);  y -= 3;
+                // ── Encabezado empresa ─────────────────────────────────────────
+                y = ctext(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
+                y = ctext(cs, fontNorm, 7f, RUC,      y);  y -= 1;
+                y = ctext(cs, fontNorm, 6f, DIR,      y);  y -= 1;
+                y = ctext(cs, fontNorm, 6f, CIUDAD,   y);  y -= 3;
                 y = dashes(cs, y); y -= 3;
 
+                // ── Título ─────────────────────────────────────────────────────
                 y = ctext(cs, fontBold, 9f, "BOLETA DE VIAJE", y); y -= 2;
-                String cb = p.getCodigoBoleta() != null ? p.getCodigoBoleta() : "VTA-" + p.getId();
                 y = ctext(cs, fontNorm, 7f, cb, y); y -= 3;
 
-                // QR
-                PDImageXObject qr = buildQr(doc, cb);
+                // ── QR (URL de verificación) ───────────────────────────────────
+                PDImageXObject qr = buildQr(doc, qrUrl);
                 float qrSz = 80f;
                 cs.drawImage(qr, (PAGE_W - qrSz) / 2f, y - qrSz, qrSz, qrSz);
-                y -= (qrSz + 4);
+                y -= (qrSz + 3);
+                y = ctext(cs, fontNorm, 5.5f, "Escanea para verificar validez", y); y -= 2;
 
                 y = dashes(cs, y); y -= 3;
 
-                y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",    ascii(origen) + " > " + ascii(destino), y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",   fechaViaje, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:",horaViaje, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:",ascii(tipoVeh) + " - " + ascii(placa), y); y -= 1;
+                // ── Datos del viaje ────────────────────────────────────────────
+                y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",     ascii(origen) + " > " + ascii(destino), y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",    fechaViaje, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:", horaViaje, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:", ascii(tipoVeh) + " - " + ascii(placa), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 8f, "ASIENTO N°:",
                         String.valueOf(p.getAsientoNumero() != null ? p.getAsientoNumero() : "?"), y);
                 y -= 4;
 
+                // ── Pasajero ───────────────────────────────────────────────────
                 y = dashes(cs, y); y -= 3;
                 y = ctext(cs, fontBold, 7.5f, "DATOS DEL PASAJERO", y); y -= 3;
-
                 y = lbl(cs, fontBold, fontNorm, 7f, "Pasajero:", ascii(clienteApellidos) + " " + ascii(clienteNombres), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "DNI:", clienteDni, y); y -= 4;
 
+                // ── Cobro ──────────────────────────────────────────────────────
                 y = dashes(cs, y); y -= 3;
-
                 y = lbl(cs, fontBold, fontNorm, 8f, "PRECIO:", "S/ " + p.getPrecioBase().toPlainString(), y); y -= 1;
                 if (p.getMontoDescuento() != null && p.getMontoDescuento().compareTo(java.math.BigDecimal.ZERO) > 0) {
                     y = lbl(cs, fontBold, fontNorm, 7f, "DESCUENTO:", "- S/ " + p.getMontoDescuento().toPlainString(), y); y -= 1;
@@ -149,14 +160,23 @@ public class TicketPdfService {
                 y = lbl(cs, fontBold, fontNorm, 9f, "TOTAL:", "S/ " + p.getPrecioFinal().toPlainString(), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "FORMA PAGO:", p.getFormaPago(), y); y -= 4;
 
+                // ── Emisión ────────────────────────────────────────────────────
                 y = dashes(cs, y); y -= 3;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Atendido por:", operadorNombre, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Agencia:", agenciaNombre, y); y -= 1;
-                String emitido = p.getFechaVenta() != null ? p.getFechaVenta().format(dtfFull) : "";
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Emitido:", emitido, y); y -= 4;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Atendido por:", operadorNombre, y);  y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Agencia:", agenciaNombre, y);         y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Emitido:", emitido, y);               y -= 4;
 
+                // ── CONTROL INTERNO ────────────────────────────────────────────
+                y = dashes(cs, y); y -= 2;
+                y = ctext(cs, fontBold, 7f, "[ CONTROL INTERNO ]", y); y -= 3;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Serie/Correl.:", serie + "-" + correl, y);  y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Estado:", p.getEstado(), y);                 y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Verificacion:", qrUrl, y);                   y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Hash:",         hash, y);                    y -= 3;
                 y = dashes(cs, y); y -= 3;
-                y = ctext(cs, fontBold, 8f, "Buen viaje!", y); y -= 2;
+
+                // ── Pie ────────────────────────────────────────────────────────
+                y = ctext(cs, fontBold, 8f, "Buen viaje!", y);                                    y -= 2;
                 y = ctext(cs, fontNorm, 6.5f, "Conserve este voucher durante todo el trayecto", y); y -= 1;
                 ctext(cs, fontNorm, 6.5f, EMPRESA, y);
             }
@@ -164,16 +184,19 @@ public class TicketPdfService {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             doc.save(baos);
             return baos.toByteArray();
+
         } catch (Exception e) {
             throw new RuntimeException("Error generando ticket: " + e.getMessage(), e);
         }
     }
 
+    // ── Draw helpers ──────────────────────────────────────────────────────────
+
     private float ctext(PDPageContentStream cs, PDType1Font font, float sz, String t, float y) throws Exception {
-        float tw = font.getStringWidth(t) / 1000f * sz;
-        float x  = (PAGE_W - tw) / 2f;
+        String s = ascii(t);
+        float tw = font.getStringWidth(s) / 1000f * sz;
         cs.beginText(); cs.setFont(font, sz);
-        cs.newLineAtOffset(x, y - sz); cs.showText(t); cs.endText();
+        cs.newLineAtOffset((PAGE_W - tw) / 2f, y - sz); cs.showText(s); cs.endText();
         return y - sz - 1;
     }
 
@@ -182,17 +205,40 @@ public class TicketPdfService {
         cs.beginText(); cs.setFont(fB, sz);
         cs.newLineAtOffset(MARGIN, y - sz); cs.showText(label + " "); cs.endText();
         float lw = fB.getStringWidth(label + " ") / 1000f * sz;
-        String display = val;
-        if (fN.getStringWidth(val) / 1000f * sz > PAGE_W - MARGIN - lw - MARGIN && val.length() > 25)
-            display = val.substring(0, 25) + "...";
+        String display = ascii(val);
+        float maxW = PAGE_W - MARGIN - lw - MARGIN;
+        if (fN.getStringWidth(display) / 1000f * sz > maxW && display.length() > 25)
+            display = display.substring(0, 25) + "...";
         cs.beginText(); cs.setFont(fN, sz);
         cs.newLineAtOffset(MARGIN + lw, y - sz); cs.showText(display); cs.endText();
         return y - sz - 1;
     }
 
     private float dashes(PDPageContentStream cs, float y) throws Exception {
-        cs.setLineWidth(0.5f); cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
+        cs.setLineWidth(0.5f);
+        cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
         return y - 3;
+    }
+
+    private PDImageXObject buildQr(PDDocument doc, String text) throws Exception {
+        QRCodeWriter w = new QRCodeWriter();
+        Map<EncodeHintType, Object> h = new EnumMap<>(EncodeHintType.class);
+        h.put(EncodeHintType.MARGIN, 1);
+        BitMatrix m = w.encode(text, BarcodeFormat.QR_CODE, 200, 200, h);
+        BufferedImage img = MatrixToImageWriter.toBufferedImage(m);
+        return LosslessFactory.createFromImage(doc, img);
+    }
+
+    /** SHA-256 de los campos clave, primeros 8 caracteres hex en mayúsculas. */
+    private String computeHash(String... parts) {
+        try {
+            String input = String.join("|", parts);
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) sb.append(String.format("%02X", b & 0xFF));
+            return sb.substring(0, 8);
+        } catch (Exception e) { return "00000000"; }
     }
 
     private String ascii(String s) {
@@ -210,18 +256,9 @@ public class TicketPdfService {
             .replace('Ó','O').replace('Ò','O').replace('Ö','O').replace('Ô','O')
             .replace('Ú','U').replace('Ù','U').replace('Ü','U').replace('Û','U')
             .replace('Ñ','N').replace('Ç','C')
-            .replace('→', '>').replace('←', '<').replace('—', '-').replace('–', '-')
-            .replace('…', '.').replace('"', '"').replace('"', '"')
-            .replace('¡', '!').replace('¿', '?')
+            .replace('→','>').replace('←','<').replace('—','-').replace('–','-')
+            .replace('…','.').replace('"','"').replace('"','"')
+            .replace('¡','!').replace('¿','?')
             .replaceAll("[^\\x00-\\x7E]", "?");
-    }
-
-    private PDImageXObject buildQr(PDDocument doc, String text) throws Exception {
-        QRCodeWriter w = new QRCodeWriter();
-        Map<EncodeHintType, Object> h = new EnumMap<>(EncodeHintType.class);
-        h.put(EncodeHintType.MARGIN, 1);
-        BitMatrix m = w.encode(text, BarcodeFormat.QR_CODE, 200, 200, h);
-        BufferedImage img = MatrixToImageWriter.toBufferedImage(m);
-        return LosslessFactory.createFromImage(doc, img);
     }
 }
