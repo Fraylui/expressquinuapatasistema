@@ -1,4 +1,4 @@
-package com.expressvraem.modules.pasajes.service;
+﻿package com.expressvraem.modules.pasajes.service;
 
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.google.zxing.BarcodeFormat;
@@ -40,11 +40,9 @@ public class TicketPdfService {
     private static final String CIUDAD  = "Huamanga - Ayacucho  Telf: 066-312456";
     private static final String BASE_URL = "expressvraem.pe/verificar/";
 
-    @SuppressWarnings("unchecked")
     public byte[] generarTicket(Pasaje p) {
         try (PDDocument doc = new PDDocument()) {
 
-            // ── Cargar datos relacionados ──────────────────────────────────────
             Object[] viajeRow = null;
             String origen = "", destino = "", placa = "", tipoVeh = "";
             try {
@@ -105,7 +103,6 @@ public class TicketPdfService {
             String correl  = p.getCorrelativo()!= null ? p.getCorrelativo() : String.format("%08d", p.getId());
             String hash    = computeHash(cb, p.getPrecioFinal().toPlainString(), clienteDni, emitido);
 
-            // ── Página (altura aumentada para sección de control) ──────────────
             float pageH = 610f;
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
@@ -116,19 +113,16 @@ public class TicketPdfService {
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
 
-                // ── Encabezado empresa ─────────────────────────────────────────
-                y = ctext(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
+                    y = ctext(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
                 y = ctext(cs, fontNorm, 7f, RUC,      y);  y -= 1;
                 y = ctext(cs, fontNorm, 6f, DIR,      y);  y -= 1;
                 y = ctext(cs, fontNorm, 6f, CIUDAD,   y);  y -= 3;
                 y = dashes(cs, y); y -= 3;
 
-                // ── Título ─────────────────────────────────────────────────────
-                y = ctext(cs, fontBold, 9f, "BOLETA DE VIAJE", y); y -= 2;
+                    y = ctext(cs, fontBold, 9f, "BOLETA DE VIAJE", y); y -= 2;
                 y = ctext(cs, fontNorm, 7f, cb, y); y -= 3;
 
-                // ── QR (URL de verificación) ───────────────────────────────────
-                PDImageXObject qr = buildQr(doc, qrUrl);
+                    PDImageXObject qr = buildQr(doc, qrUrl);
                 float qrSz = 80f;
                 cs.drawImage(qr, (PAGE_W - qrSz) / 2f, y - qrSz, qrSz, qrSz);
                 y -= (qrSz + 3);
@@ -136,8 +130,7 @@ public class TicketPdfService {
 
                 y = dashes(cs, y); y -= 3;
 
-                // ── Datos del viaje ────────────────────────────────────────────
-                y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",     ascii(origen) + " > " + ascii(destino), y); y -= 1;
+                    y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",     ascii(origen) + " > " + ascii(destino), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",    fechaViaje, y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:", horaViaje, y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:", ascii(tipoVeh) + " - " + ascii(placa), y); y -= 1;
@@ -145,14 +138,12 @@ public class TicketPdfService {
                         String.valueOf(p.getAsientoNumero() != null ? p.getAsientoNumero() : "?"), y);
                 y -= 4;
 
-                // ── Pasajero ───────────────────────────────────────────────────
-                y = dashes(cs, y); y -= 3;
+                    y = dashes(cs, y); y -= 3;
                 y = ctext(cs, fontBold, 7.5f, "DATOS DEL PASAJERO", y); y -= 3;
                 y = lbl(cs, fontBold, fontNorm, 7f, "Pasajero:", ascii(clienteApellidos) + " " + ascii(clienteNombres), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "DNI:", clienteDni, y); y -= 4;
 
-                // ── Cobro ──────────────────────────────────────────────────────
-                y = dashes(cs, y); y -= 3;
+                    y = dashes(cs, y); y -= 3;
                 y = lbl(cs, fontBold, fontNorm, 8f, "PRECIO:", "S/ " + p.getPrecioBase().toPlainString(), y); y -= 1;
                 if (p.getMontoDescuento() != null && p.getMontoDescuento().compareTo(java.math.BigDecimal.ZERO) > 0) {
                     y = lbl(cs, fontBold, fontNorm, 7f, "DESCUENTO:", "- S/ " + p.getMontoDescuento().toPlainString(), y); y -= 1;
@@ -160,14 +151,12 @@ public class TicketPdfService {
                 y = lbl(cs, fontBold, fontNorm, 9f, "TOTAL:", "S/ " + p.getPrecioFinal().toPlainString(), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "FORMA PAGO:", p.getFormaPago(), y); y -= 4;
 
-                // ── Emisión ────────────────────────────────────────────────────
-                y = dashes(cs, y); y -= 3;
+                    y = dashes(cs, y); y -= 3;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Atendido por:", operadorNombre, y);  y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Agencia:", agenciaNombre, y);         y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Emitido:", emitido, y);               y -= 4;
 
-                // ── CONTROL INTERNO ────────────────────────────────────────────
-                y = dashes(cs, y); y -= 2;
+                    y = dashes(cs, y); y -= 2;
                 y = ctext(cs, fontBold, 7f, "[ CONTROL INTERNO ]", y); y -= 3;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Serie/Correl.:", serie + "-" + correl, y);  y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Estado:", p.getEstado(), y);                 y -= 1;
@@ -175,8 +164,7 @@ public class TicketPdfService {
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Hash:",         hash, y);                    y -= 3;
                 y = dashes(cs, y); y -= 3;
 
-                // ── Pie ────────────────────────────────────────────────────────
-                y = ctext(cs, fontBold, 8f, "Buen viaje!", y);                                    y -= 2;
+                    y = ctext(cs, fontBold, 8f, "Buen viaje!", y);                                    y -= 2;
                 y = ctext(cs, fontNorm, 6.5f, "Conserve este voucher durante todo el trayecto", y); y -= 1;
                 ctext(cs, fontNorm, 6.5f, EMPRESA, y);
             }
