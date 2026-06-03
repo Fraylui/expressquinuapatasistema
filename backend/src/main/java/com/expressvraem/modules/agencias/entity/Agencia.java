@@ -42,6 +42,13 @@ public class Agencia {
     @Column(name = "encargado_id")
     private Long encargadoId;
 
+    @Column(name = "agencia_padre_id")
+    private Long agenciaPadreId;
+
+    @Builder.Default
+    @Column(nullable = false, length = 10)
+    private String tipo = "AGENCIA";
+
     @Builder.Default
     @Column(nullable = false, length = 10)
     private String estado = "ACTIVA";
