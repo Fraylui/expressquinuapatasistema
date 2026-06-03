@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React, { useState } from 'react'
 import useSWR from 'swr'
 import {
@@ -108,10 +108,10 @@ export default function ReportesPage() {
   const [periodo, setPeriodo]       = useState<PeriodoType>('7')
   const [cajaId, setCajaId]         = useState<string>('')
 
-  const { data: kpis }        = useSWR<KpisGerente>('/api/reportes/kpis', { refreshInterval: 60_000 })
+  const { data: kpis }        = useSWR<KpisGerente>('/api/reportes/kpis', { refreshInterval: 300_000 })
   const { data: tendenciaRaw }= useSWR<TendenciaDia[]>(`/api/reportes/tendencia?dias=${periodo}`)
-  const { data: horaRaw }     = useSWR<VentaHora[]>('/api/reportes/ventas-hora', { refreshInterval: 120_000 })
-  const { data: viajesRaw }   = useSWR<ViajesDia[]>('/api/reportes/viajes-dia', { refreshInterval: 60_000 })
+  const { data: horaRaw }     = useSWR<VentaHora[]>('/api/reportes/ventas-hora', { refreshInterval: 300_000 })
+  const { data: viajesRaw }   = useSWR<ViajesDia[]>('/api/reportes/viajes-dia', { refreshInterval: 300_000 })
   const { data: encPendRaw }  = useSWR<EncPendiente[]>('/api/reportes/encomiendas-pendientes')
   const { data: cajasRaw }    = useSWR<CajaItem[]>('/api/caja/historial')
 

@@ -474,6 +474,18 @@ CREATE INDEX idx_movimientos_caja_caja  ON movimientos_caja(caja_id);
 CREATE INDEX idx_auditoria_fecha        ON auditoria(agencia_id, fecha);
 CREATE INDEX idx_clientes_doc           ON clientes(tipo_doc, num_doc);
 
+-- Índices de rendimiento — batch queries y filtros frecuentes
+CREATE INDEX idx_viajes_agencia_estado  ON viajes(agencia_id, estado);
+CREATE INDEX idx_viajes_estado          ON viajes(estado);
+CREATE INDEX idx_viajes_fecha_sal       ON viajes(fecha_hora_sal);
+CREATE INDEX idx_asientos_viaje_estado  ON asientos(viaje_id, estado);
+CREATE INDEX idx_encomiendas_viaje      ON encomiendas(viaje_id);
+CREATE INDEX idx_pasajes_viaje          ON pasajes(viaje_id);
+CREATE INDEX idx_pasajes_agencia_fecha  ON pasajes(agencia_id, fecha_emision);
+CREATE INDEX idx_caja_usuario_estado    ON caja(usuario_id, estado);
+CREATE INDEX idx_caja_agencia           ON caja(agencia_id);
+CREATE INDEX idx_mov_caja_agencia_tipo  ON movimientos_caja(agencia_id, tipo, created_at);
+
 -- ============================================================
 -- ============================================================
 -- DATOS DE PRUEBA
