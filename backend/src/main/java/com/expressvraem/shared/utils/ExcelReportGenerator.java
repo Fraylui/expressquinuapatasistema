@@ -124,6 +124,34 @@ public class ExcelReportGenerator {
         }
     }
 
+    public byte[] generarReporteAuditoria(List<Map<String, Object>> datos) throws IOException {
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Auditoría");
+            CellStyle headerStyle = crearEstiloHeader(wb);
+
+            String[] headers = {"Fecha/Hora", "Usuario", "Módulo", "Acción", "Entidad", "Registro ID", "Detalle", "IP"};
+            crearFila(sheet, 0, headers, headerStyle);
+
+            int row = 1;
+            for (Map<String, Object> d : datos) {
+                Row fila = sheet.createRow(row++);
+                fila.createCell(0).setCellValue(String.valueOf(d.getOrDefault("fecha",      "")));
+                fila.createCell(1).setCellValue(String.valueOf(d.getOrDefault("usuario",    "")));
+                fila.createCell(2).setCellValue(String.valueOf(d.getOrDefault("modulo",     "")));
+                fila.createCell(3).setCellValue(String.valueOf(d.getOrDefault("accion",     "")));
+                fila.createCell(4).setCellValue(String.valueOf(d.getOrDefault("entidad",    "")));
+                fila.createCell(5).setCellValue(String.valueOf(d.getOrDefault("registroId", "")));
+                fila.createCell(6).setCellValue(String.valueOf(d.getOrDefault("detalle",    "")));
+                fila.createCell(7).setCellValue(String.valueOf(d.getOrDefault("ip",         "")));
+            }
+
+            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
     private CellStyle crearEstiloHeader(Workbook wb) {
         CellStyle style = wb.createCellStyle();
         Font font = wb.createFont();

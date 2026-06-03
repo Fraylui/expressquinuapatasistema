@@ -25,4 +25,8 @@ public class WebSocketEventPublisher {
     public void publicarNotificacion(Long usuarioId, Object dto) {
         messagingTemplate.convertAndSend("/queue/notificaciones/" + usuarioId, dto);
     }
+
+    public void publicarEncomiendaEnCamino(Long agenciaDestinoId, Object dto) {
+        messagingTemplate.convertAndSend("/topic/encomiendas/agencia/" + agenciaDestinoId, dto);
+    }
 }
