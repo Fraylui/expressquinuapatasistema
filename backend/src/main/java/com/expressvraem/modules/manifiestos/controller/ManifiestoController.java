@@ -1,4 +1,4 @@
-package com.expressvraem.modules.manifiestos.controller;
+﻿package com.expressvraem.modules.manifiestos.controller;
 
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,7 +47,6 @@ public class ManifiestoController {
     private final UsuarioRepository      usuarioRepository;
     private final EntityManager          entityManager;
 
-    // ─── Datos del viaje + manifiesto existente (endpoint principal del panel) ──
 
     @GetMapping("/viaje/{viajeId}")
     @RequiereModulo("MANIFIESTOS")
@@ -56,7 +56,7 @@ public class ManifiestoController {
             checkAgenciaAccess(viajeId);
             ManifiestoDTO datos = buildManifiesto(viajeId);
             Manifiesto m = manifiestoRepository.findByViajeId(viajeId).orElse(null);
-            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            Map<String, Object> result = new LinkedHashMap<>();
             result.put("datos", datos);
             result.put("manifiesto", m);
             return ResponseEntity.ok(ApiResponse.ok(result));
@@ -67,7 +67,6 @@ public class ManifiestoController {
         }
     }
 
-    // ─── Generar (crear + emitir) manifiesto ────────────────────────────────────
 
     @PostMapping("/generar/{viajeId}")
     @RequiereModulo("MANIFIESTOS")
@@ -104,7 +103,6 @@ public class ManifiestoController {
         return ResponseEntity.ok(ApiResponse.ok("Manifiesto generado", saved));
     }
 
-    // ─── Lista de manifiestos generados ────────────────────────────────────────
 
     @GetMapping
     @RequiereModulo("MANIFIESTOS")
@@ -116,7 +114,6 @@ public class ManifiestoController {
         return ResponseEntity.ok(ApiResponse.ok(lista));
     }
 
-    // ─── Datos del manifiesto (JSON) ────────────────────────────────────────────
 
     @GetMapping("/{viajeId}/datos")
     @RequiereModulo("MANIFIESTOS")
@@ -127,7 +124,6 @@ public class ManifiestoController {
         return ResponseEntity.ok(ApiResponse.ok(dto));
     }
 
-    // ─── PDF del manifiesto ─────────────────────────────────────────────────────
 
     @GetMapping("/{viajeId}/pdf")
     @RequiereModulo("MANIFIESTOS")
@@ -148,7 +144,6 @@ public class ManifiestoController {
         }
     }
 
-    // ─── PDF exclusivo de encomiendas ──────────────────────────────────────────
 
     @GetMapping("/{viajeId}/pdf/encomiendas")
     @RequiereModulo("MANIFIESTOS")
@@ -169,7 +164,6 @@ public class ManifiestoController {
         }
     }
 
-    // ─── PDF del ticket individual ──────────────────────────────────────────────
 
     @GetMapping("/ticket/{pasajeId}/pdf")
     @RequiereModulo("MANIFIESTOS")
@@ -190,7 +184,6 @@ public class ManifiestoController {
         }
     }
 
-    // ─── Guardar / actualizar manifiesto en BD ──────────────────────────────────
 
     @PostMapping("/{viajeId}/guardar")
     @RequiereModulo("MANIFIESTOS")
@@ -230,7 +223,6 @@ public class ManifiestoController {
         return ResponseEntity.ok(ApiResponse.ok("Manifiesto guardado", saved));
     }
 
-    // ─── Cambiar estado ─────────────────────────────────────────────────────────
 
     @PatchMapping("/{id}/estado")
     @RequiereModulo("MANIFIESTOS")
