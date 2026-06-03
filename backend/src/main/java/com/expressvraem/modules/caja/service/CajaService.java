@@ -297,7 +297,6 @@ public class CajaService {
         return buildMap(caja, stats, resolveNombreUsuario(caja.getUsuarioId()), resolveNombreAgencia(caja.getAgenciaId()));
     }
 
-    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> enrichCajaList(List<Caja> cajas) {
         if (cajas.isEmpty()) return List.of();
 
