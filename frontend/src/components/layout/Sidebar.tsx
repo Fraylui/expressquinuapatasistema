@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Ticket, Package, DollarSign,
   BarChart2, Users, Building2, ClipboardList,
   LogOut, Bus, UserCheck, TrendingUp, FileText,
-  Settings, Shield,
+  Settings, Shield, PackageSearch, Tag,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -27,12 +27,14 @@ const navItems: Section[] = [
     section: 'OPERACIÓN',
     items: [
       { href: '/',            icon: LayoutDashboard, label: 'Tablero',      modulo: null,           roles: null },
-      { href: '/viajes',      icon: Bus,             label: 'Viajes',       modulo: null,           roles: ['SUPER_ADMIN','GERENTE','OPERADOR','CONDUCTOR'] },
+      { href: '/viajes',      icon: Bus,             label: 'Viajes',       modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR'] },
       { href: '/pasajes',     icon: Ticket,          label: 'Pasajes',      modulo: 'VENTAS',       roles: null },
-      { href: '/encomiendas', icon: Package,         label: 'Encomiendas',  modulo: 'ENCOMIENDAS',  roles: null },
-      { href: '/caja',        icon: DollarSign,      label: 'Caja',         modulo: 'CAJA',         roles: null },
-      { href: '/manifiestos', icon: FileText,        label: 'Manifiestos',  modulo: 'MANIFIESTOS',  roles: null },
-      { href: '/clientes',    icon: UserCheck,       label: 'Clientes',     modulo: null,           roles: ['SUPER_ADMIN','GERENTE'] },
+      { href: '/encomiendas',          icon: Package,       label: 'Encomiendas',  modulo: 'ENCOMIENDAS',  roles: null },
+      { href: '/encomiendas-externas', icon: PackageSearch, label: 'Enc. Externas', modulo: 'ENCOMIENDAS',  roles: null },
+      { href: '/caja',                 icon: DollarSign,    label: 'Caja',         modulo: 'CAJA',         roles: null },
+      { href: '/manifiestos',  icon: FileText,  label: 'Manifiestos',  modulo: 'MANIFIESTOS',  roles: null },
+      { href: '/promociones',  icon: Tag,       label: 'Promociones',  modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
+      { href: '/clientes',     icon: UserCheck, label: 'Clientes',     modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
     ],
   },
   {
@@ -73,17 +75,19 @@ function initials(nombre: string | undefined): string {
 }
 
 const rolLabel: Record<string, string> = {
-  SUPER_ADMIN: 'Super Administrador',
-  GERENTE:     'Gerente General',
-  OPERADOR:    'Operador',
-  CONDUCTOR:   'Conductor',
+  SUPER_ADMIN:   'Super Administrador',
+  GERENTE:       'Gerente General',
+  ADMIN_AGENCIA: 'Jefe de Sucursal',
+  OPERADOR:      'Operador',
+  CONDUCTOR:     'Conductor',
 }
 
 const rolBadgeColor: Record<string, string> = {
-  SUPER_ADMIN: 'bg-red-500/20 text-red-300',
-  GERENTE:     'bg-indigo-500/20 text-indigo-300',
-  OPERADOR:    'bg-emerald-500/20 text-emerald-300',
-  CONDUCTOR:   'bg-amber-500/20 text-amber-300',
+  SUPER_ADMIN:   'bg-red-500/20 text-red-300',
+  GERENTE:       'bg-indigo-500/20 text-indigo-300',
+  ADMIN_AGENCIA: 'bg-violet-500/20 text-violet-300',
+  OPERADOR:      'bg-emerald-500/20 text-emerald-300',
+  CONDUCTOR:     'bg-amber-500/20 text-amber-300',
 }
 
 export const Sidebar: React.FC = () => {

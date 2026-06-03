@@ -58,6 +58,9 @@ public record RegistrarEncomiendaDTO(
 
         /* ── Extras ──────────────────────────────────── */
         @Size(max = 500)
-        String observaciones
+        String observaciones,
+
+        /** ID de la promoción seleccionada (opcional). */
+        Long promocionId
 
 ) {}

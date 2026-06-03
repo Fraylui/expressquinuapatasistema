@@ -33,7 +33,7 @@ export default function ConductorPage() {
     <div className="space-y-5 max-w-2xl">
       <div>
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Bus size={20} className="text-[#1F3864]" />
+          <Bus size={20} className="text-[#064e3b]" />
           Mis viajes
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -58,7 +58,7 @@ export default function ConductorPage() {
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-                  v.estado === 'EN_RUTA' ? 'bg-green-600' : 'bg-[#1F3864]'
+                  v.estado === 'EN_RUTA' ? 'bg-green-600' : 'bg-[#064e3b]'
                 }`}>
                   <Bus size={20} className="text-white" />
                 </div>
@@ -133,7 +133,7 @@ export default function ConductorPage() {
           ) : (
             (pasajeros as any[]).map((p, i) => (
               <div key={i} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-[#1F3864] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                <div className="w-8 h-8 rounded-full bg-[#064e3b] flex items-center justify-center text-white text-xs font-bold shrink-0">
                   {p.asientoId}
                 </div>
                 <div className="flex-1">

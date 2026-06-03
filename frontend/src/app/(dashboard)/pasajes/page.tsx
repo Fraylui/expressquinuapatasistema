@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
 import {
   Bus, CheckCircle, ChevronRight, Clock, Printer,
-  Search, Users, X, AlertTriangle, FileText
+  Search, Users, X, AlertTriangle, FileText, Ticket, Tag,
 } from 'lucide-react'
 import { SeatMap } from '@/components/modules/pasajes/SeatMap'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import api from '@/services/api'
 import { pasajesService, PasajeResponseDTO, VentaPasajeDTO } from '@/services/pasajes.service'
+import { promocionesService, PromocionDTO } from '@/services/promociones.service'
 import { useAuthStore } from '@/stores/authStore'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -240,7 +241,7 @@ function BuscadorDni({
         onKeyDown={e => e.key === 'Enter' && buscar()}
         placeholder="DNI (8 dígitos)"
         disabled={disabled || buscando}
-        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864] disabled:bg-gray-100"
+        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] disabled:bg-gray-100"
         maxLength={8}
       />
       <Button
@@ -266,24 +267,171 @@ const STEPS = [
 
 function Stepper({ step }: { step: Step }) {
   return (
-    <div className="flex items-center gap-1.5">
-      {STEPS.map(({ n, label }, i) => (
-        <React.Fragment key={n}>
-          <div className="flex items-center gap-1.5">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-              step > n  ? 'bg-green-500 text-white'
-              : step === n ? 'bg-[#1F3864] text-white'
-              : 'bg-gray-200 text-gray-500'
-            }`}>
-              {step > n ? <CheckCircle size={14} /> : n}
+    <div className="flex items-start w-full">
+      {STEPS.map(({ n, label }, i) => {
+        const done   = step > n
+        const active = step === n
+        return (
+          <React.Fragment key={n}>
+            <div className="flex flex-col items-center gap-1.5 shrink-0">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
+                done    ? 'bg-green-500 border-green-500 text-white shadow-sm'
+                : active ? 'bg-[#064e3b] border-[#064e3b] text-white ring-4 ring-[#064e3b]/20 shadow-md'
+                : 'bg-white border-gray-200 text-gray-400'
+              }`}>
+                {done ? <CheckCircle size={15} /> : <span>{n}</span>}
+              </div>
+              <span className={`text-[11px] font-semibold whitespace-nowrap transition-colors ${
+                done    ? 'text-green-600'
+                : active ? 'text-[#064e3b]'
+                : 'text-gray-400'
+              }`}>{label}</span>
             </div>
-            <span className={`text-sm hidden sm:inline ${step === n ? 'font-semibold text-gray-900' : 'text-gray-400'}`}>
-              {label}
-            </span>
+            {i < STEPS.length - 1 && (
+              <div className={`flex-1 h-0.5 mt-[18px] mx-1.5 rounded-full transition-all duration-300 ${
+                step > n ? 'bg-green-400' : 'bg-gray-200'
+              }`} />
+            )}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Resumen lateral ──────────────────────────────────────────────────────────
+function ResumenPanel({ step, viaje, asientoNum, precioBase, descuento, totalNum, tipoOp, pNombres, pApellidos, formaPago }: {
+  step: Step
+  viaje: ViajeDisponible | null
+  asientoNum: number | null
+  precioBase: string
+  descuento: string
+  totalNum: number
+  tipoOp: 'VENTA' | 'RESERVA'
+  pNombres: string
+  pApellidos: string
+  formaPago: string
+}) {
+  const baseNum = parseFloat(precioBase) || 0
+  const descNum = parseFloat(descuento) || 0
+
+  const subtitulo = step === 1 ? 'Elige un viaje para comenzar'
+    : step === 2 ? 'Selecciona tu asiento'
+    : step === 3 ? 'Confirma los datos del pasajero'
+    : 'Operación completada'
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden sticky top-4">
+      {/* Encabezado */}
+      <div className="bg-[#064e3b] px-5 py-4">
+        <p className="text-xs font-bold text-blue-300 uppercase tracking-widest mb-0.5">Reserva</p>
+        <h3 className="text-base font-bold text-white leading-tight">Resumen</h3>
+        <p className="text-xs text-blue-300/80 mt-1">{subtitulo}</p>
+      </div>
+
+      <div className="divide-y divide-gray-100">
+
+        {/* Viaje */}
+        {viaje ? (
+          <div className="px-5 py-4 space-y-1">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Viaje</p>
+            <p className="text-sm font-bold text-gray-900">
+              {viaje.ruta?.origen} <span className="text-gray-400 font-normal mx-1">→</span> {viaje.ruta?.destino}
+            </p>
+            <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
+              <Clock size={11} className="text-gray-400" />
+              {formatFecha(viaje.fechaHoraSal)}
+            </p>
+            {viaje.vehiculo && (
+              <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                <Bus size={11} className="text-gray-400" />
+                {viaje.vehiculo.tipo} · {viaje.vehiculo.placa}
+              </p>
+            )}
           </div>
-          {i < STEPS.length - 1 && <ChevronRight size={14} className="text-gray-300 mx-1 shrink-0" />}
-        </React.Fragment>
-      ))}
+        ) : (
+          <div className="px-5 py-8 text-center">
+            <Bus size={28} className="mx-auto mb-2 text-gray-200" />
+            <p className="text-xs text-gray-400">Sin viaje seleccionado</p>
+          </div>
+        )}
+
+        {/* Asiento */}
+        {asientoNum ? (
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Asiento</p>
+              <p className="text-3xl font-black text-[#064e3b] font-mono leading-none">
+                {String(asientoNum).padStart(2, '0')}
+              </p>
+            </div>
+            <div className="w-14 h-14 rounded-xl bg-[#064e3b]/8 border-2 border-[#064e3b]/20 flex items-center justify-center">
+              <span className="text-lg font-black text-[#064e3b]">
+                {String(asientoNum).padStart(2, '0')}
+              </span>
+            </div>
+          </div>
+        ) : step >= 2 ? (
+          <div className="px-5 py-4 text-center text-xs text-gray-400">
+            <Users size={20} className="mx-auto mb-1 text-gray-200" />
+            Selecciona un asiento en el mapa
+          </div>
+        ) : null}
+
+        {/* Pasajero */}
+        {(pNombres || pApellidos) && step >= 3 && (
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Pasajero</p>
+            <p className="text-sm font-semibold text-gray-800 leading-tight">
+              {pApellidos && pNombres ? `${pApellidos}, ${pNombres}` : pNombres || pApellidos}
+            </p>
+          </div>
+        )}
+
+        {/* Precio */}
+        {baseNum > 0 && (
+          <div className="px-5 py-4 space-y-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cobro</p>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Precio base</span>
+              <span className="font-medium">S/ {baseNum.toFixed(2)}</span>
+            </div>
+            {descNum > 0 && (
+              <div className="flex justify-between text-xs text-green-600">
+                <span>Descuento</span>
+                <span className="font-medium">− S/ {descNum.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+              <span className="text-sm font-bold text-gray-700">Total</span>
+              <span className="text-2xl font-black text-green-600">S/ {totalNum.toFixed(2)}</span>
+            </div>
+            <p className="text-[11px] text-center text-gray-400 pt-1">
+              {tipoOp === 'RESERVA' ? 'Pago diferido — confirmar en caja' : `Pago: ${formaPago}`}
+            </p>
+          </div>
+        )}
+
+        {/* Guía inicial */}
+        {!viaje && step === 1 && (
+          <div className="px-5 py-5">
+            <div className="space-y-3">
+              {[
+                { n: 1, text: 'Selecciona el viaje' },
+                { n: 2, text: 'Elige tu asiento' },
+                { n: 3, text: 'Ingresa los datos' },
+                { n: 4, text: 'Imprime el ticket' },
+              ].map(({ n, text }) => (
+                <div key={n} className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-[10px] font-bold shrink-0">{n}</div>
+                  <span className="text-xs text-gray-400">{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }
@@ -324,6 +472,16 @@ export default function PasajesPage() {
   const [formaPago, setFormaPago]     = useState('EFECTIVO')
   const [motivoDesc, setMotivoDesc]   = useState('')
 
+  // Promociones
+  const [promoSel, setPromoSel]       = useState<PromocionDTO | null>(null)
+  const [codigoPromo, setCodigoPromo] = useState('')
+  const [buscandoCodigo, setBuscandoCodigo] = useState(false)
+  const { data: promosVigentes = [] } = useSWR<PromocionDTO[]>(
+    'promos-pasajes',
+    () => promocionesService.getVigentes('PASAJES'),
+    { revalidateOnFocus: false }
+  )
+
   // Pasajero form (filled after DNI search)
   const [pNombres, setPNombres]       = useState('')
   const [pApellidos, setPApellidos]   = useState('')
@@ -349,21 +507,21 @@ export default function PasajesPage() {
   // Data
   const { data: viajesData, mutate: mutateViajes } =
     useSWR<any>('/api/viajes/disponibles', fetcher, { refreshInterval: 15000 })
-  const viajes: ViajeDisponible[] = viajesData?.data ?? []
+  const viajes: ViajeDisponible[] = viajesData ?? []
 
   const listParams = new URLSearchParams()
   if (listFiltroEstado) listParams.set('estado', listFiltroEstado)
   if (listFiltroCodigo) listParams.set('codigoBoleta', listFiltroCodigo)
   const { data: listData, mutate: mutateList } =
     useSWR<any>(`/api/pasajes?${listParams.toString()}`, fetcher, { refreshInterval: 10000 })
-  const pasajes: Pasaje[] = listData?.data ?? []
+  const pasajes: Pasaje[] = listData ?? []
 
   // Tarifa automática al elegir viaje
   const cargarTarifa = async (v: ViajeDisponible) => {
     if (!v.ruta?.id || !v.vehiculo?.tipo) return
     try {
       const res = await api.get(`/api/tarifas/buscar?rutaId=${v.ruta.id}&tipoVehiculo=${v.vehiculo.tipo}`)
-      const d = (res as any)?.data?.data
+      const d = (res as any)?.data
       if (d?.precio) setPrecioBase(String(Number(d.precio).toFixed(2)))
     } catch {
       /* sin tarifa registrada — usuario ingresa precio manualmente */
@@ -419,6 +577,7 @@ export default function PasajesPage() {
       descuento: desc,
       formaPago: tipoOp === 'RESERVA' ? 'EFECTIVO' : formaPago,
       motivoDescuento: desc > 0 ? motivoDesc.trim() || undefined : undefined,
+      promocionId: promoSel?.id ?? undefined,
       tipo: tipoOp,
     }
 
@@ -469,12 +628,40 @@ export default function PasajesPage() {
     }
   }
 
+  // Aplica o quita una promoción; recalcula descuento si hay precio base
+  const aplicarPromo = (p: PromocionDTO | null) => {
+    setPromoSel(p)
+    if (!p) { setDescuento('0'); setMotivoDesc(''); return }
+    const base = parseFloat(precioBase) || 0
+    if (base > 0) {
+      const desc = p.tipoDescuento === 'MONTO_FIJO'
+        ? Math.min(p.valor, base)
+        : parseFloat((base * p.valor / 100).toFixed(2))
+      setDescuento(String(desc))
+    }
+    setMotivoDesc(p.nombre)
+  }
+
+  const buscarCodigo = async () => {
+    if (!codigoPromo.trim()) return
+    setBuscandoCodigo(true)
+    try {
+      const p = await promocionesService.validarCodigo(codigoPromo.trim(), 'PASAJES')
+      aplicarPromo(p)
+      toast.success(`Promoción "${p.nombre}" aplicada`)
+      setCodigoPromo('')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Código inválido')
+    } finally { setBuscandoCodigo(false) }
+  }
+
   const resetWizard = () => {
     setStep(1); setViaje(null); setAsientoNum(null)
     setClienteFound(null); setResultado(null); setTicketOpen(false)
     setPNombres(''); setPApellidos(''); setPTelefono('')
     setPrecioBase(''); setDescuento('0'); setFormaPago('EFECTIVO'); setMotivoDesc('')
     setTipoOp('VENTA')
+    setPromoSel(null); setCodigoPromo('')
   }
 
   // ── Ticket info para preview ─────────────────────────────────────────────
@@ -499,422 +686,512 @@ export default function PasajesPage() {
   const totalNum = Math.max(0, baseNum - descNum)
 
   return (
-    <div className="space-y-8 max-w-2xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Venta de Pasajes</h1>
-        <p className="text-sm text-gray-500">Selecciona el viaje, asiento y datos del pasajero</p>
+    <div className="p-6 space-y-5">
+
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-[#064e3b] flex items-center justify-center shrink-0">
+          <Ticket size={20} className="text-white" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Venta de Pasajes</h1>
+          <p className="text-xs text-gray-500">Selecciona el viaje, asiento y datos del pasajero</p>
+        </div>
       </div>
 
-      {/* Stepper */}
-      <Stepper step={step} />
+      {/* ── Cuerpo: dos columnas ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[480px_1fr] gap-5 items-start">
 
-      {/* ── PASO 1: Viajes disponibles ── */}
-      {step === 1 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">Viajes disponibles hoy</h3>
-          {viajes.length === 0 ? (
-            <p className="text-sm text-gray-400 py-8 text-center">No hay viajes con asientos disponibles</p>
-          ) : (
-            viajes.map(v => (
-              <button key={v.id} onClick={() => seleccionarViaje(v)}
-                className="w-full flex items-start justify-between p-4 rounded-xl border border-gray-200 hover:border-[#0070C0] hover:bg-blue-50 transition-all text-left gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-[#1F3864] flex items-center justify-center shrink-0">
-                    <Bus size={16} className="text-white" />
+        {/* ═══ Columna izquierda: Wizard ═══ */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+
+          {/* Stepper en el encabezado del panel */}
+          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/60">
+            <Stepper step={step} />
+          </div>
+
+          <div className="p-5 space-y-4">
+
+            {/* ── PASO 1: Viajes disponibles ── */}
+            {step === 1 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Viajes disponibles hoy
+                </p>
+                {viajes.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <Bus size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No hay viajes con asientos disponibles</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {v.ruta?.origen ?? '—'} → {v.ruta?.destino ?? '—'}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-3 mt-1">
-                      <span className="flex items-center gap-1 text-xs text-gray-500">
-                        <Clock size={11} /> {formatFecha(v.fechaHoraSal)}
+                ) : (
+                  viajes.map(v => (
+                    <button key={v.id} onClick={() => seleccionarViaje(v)}
+                      className="w-full flex items-start justify-between p-3.5 rounded-xl border border-gray-200 hover:border-[#064e3b] hover:bg-blue-50/50 transition-all text-left gap-3 group">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-[#064e3b]/10 group-hover:bg-[#064e3b] flex items-center justify-center shrink-0 transition-colors">
+                          <Bus size={16} className="text-[#064e3b] group-hover:text-white transition-colors" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">
+                            {v.ruta?.origen ?? '—'} → {v.ruta?.destino ?? '—'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-3 mt-0.5">
+                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                              <Clock size={11} /> {formatFecha(v.fechaHoraSal)}
+                            </span>
+                            {v.vehiculo && (
+                              <span className="flex items-center gap-1 text-xs text-gray-500">
+                                <Users size={11} /> {v.vehiculo.tipo} · {v.vehiculo.placa}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <Badge estado={v.estado} />
+                        <span className="text-xs text-green-600 font-semibold">{v.asientosLibres} libres</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* ── PASO 2: Mapa de asientos ── */}
+            {step === 2 && viaje && (
+              <div className="space-y-4">
+                <div className="bg-[#064e3b] rounded-xl p-3.5 text-white">
+                  <p className="text-[10px] text-blue-300 uppercase tracking-widest font-semibold">Viaje seleccionado</p>
+                  <p className="text-base font-bold mt-0.5">
+                    {viaje.ruta?.origen ?? '—'} → {viaje.ruta?.destino ?? '—'}
+                  </p>
+                  <p className="text-xs text-blue-200 mt-0.5">
+                    {formatFecha(viaje.fechaHoraSal)}
+                    {viaje.vehiculo && ` · ${viaje.vehiculo.tipo} ${viaje.vehiculo.placa}`}
+                  </p>
+                </div>
+
+                <SeatMap
+                  viajeId={viaje.id}
+                  selectedNumero={asientoNum ?? undefined}
+                  onSelect={n => setAsientoNum(n)}
+                />
+
+                {asientoNum && (
+                  <div className="bg-gray-50 rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Asiento</p>
+                      <p className="text-2xl font-bold text-[#064e3b]">
+                        {String(asientoNum).padStart(2, '0')}
+                      </p>
+                    </div>
+                    {precioBase && (
+                      <div className="text-right">
+                        <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Precio base</p>
+                        <p className="text-lg font-bold text-green-600">S/ {parseFloat(precioBase).toFixed(2)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex justify-between gap-3 pt-1">
+                  <Button variant="secondary" onClick={() => { setStep(1); setAsientoNum(null) }}>Volver</Button>
+                  <Button variant="primary" disabled={!asientoNum} onClick={continuarAStep3}>
+                    {asientoNum ? `Continuar — Asiento ${String(asientoNum).padStart(2,'0')}` : 'Selecciona un asiento'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ── PASO 3: Datos del pasajero ── */}
+            {step === 3 && viaje && (
+              <div className="space-y-4">
+                {/* Chip resumen */}
+                <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[#064e3b]/5 border border-[#064e3b]/15 rounded-xl text-sm">
+                  <div className="w-7 h-7 rounded-lg bg-[#064e3b] flex items-center justify-center shrink-0">
+                    <Bus size={13} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-xs truncate">
+                      {viaje.ruta?.origen} → {viaje.ruta?.destino}
+                      <span className="font-normal text-gray-500 ml-2">
+                        · Asiento {String(asientoNum).padStart(2, '0')}
+                        {precioBase ? ` · S/ ${parseFloat(precioBase).toFixed(2)}` : ''}
                       </span>
-                      {v.vehiculo && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <Users size={11} /> {v.vehiculo.tipo} · {v.vehiculo.placa}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{formatFecha(viaje.fechaHoraSal)}</p>
+                  </div>
+                </div>
+
+                {/* DNI */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    Buscar pasajero por DNI
+                  </label>
+                  <BuscadorDni onFound={handleClienteFound} disabled={loading} />
+                </div>
+
+                {/* Nombres y apellidos */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Nombres *</label>
+                    <input value={pNombres} onChange={e => setPNombres(e.target.value)}
+                      placeholder="Nombres completos"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Apellidos *</label>
+                    <input value={pApellidos} onChange={e => setPApellidos(e.target.value)}
+                      placeholder="Apellidos"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Teléfono *</label>
+                  <input value={pTelefono}
+                    onChange={e => setPTelefono(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    placeholder="9XXXXXXXX" maxLength={9}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                </div>
+
+                <hr className="border-gray-100" />
+
+                {/* Precio base */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Precio base S/ *</label>
+                  <input value={precioBase}
+                    onChange={e => {
+                      const v = e.target.value.replace(/[^0-9.]/g, '')
+                      setPrecioBase(v)
+                      // Recalcula descuento si hay promo activa
+                      if (promoSel) {
+                        const base = parseFloat(v) || 0
+                        const desc = promoSel.tipoDescuento === 'MONTO_FIJO'
+                          ? Math.min(promoSel.valor, base)
+                          : parseFloat((base * promoSel.valor / 100).toFixed(2))
+                        setDescuento(String(desc))
+                      }
+                    }}
+                    placeholder="0.00"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                </div>
+
+                {/* ── Selector de descuentos / promociones ── */}
+                <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Tag size={13} className="text-[#064e3b]" />
+                    <span className="text-xs font-bold text-[#064e3b] uppercase tracking-wider">Descuento / Promoción</span>
+                  </div>
+
+                  {/* Chips de promociones vigentes */}
+                  {promosVigentes.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {promosVigentes.map(p => {
+                        const sel = promoSel?.id === p.id
+                        const label = p.tipoDescuento === 'MONTO_FIJO'
+                          ? `S/ ${p.valor} off`
+                          : `${p.valor}% off`
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => aplicarPromo(sel ? null : p)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                              sel
+                                ? 'bg-[#064e3b] text-white border-[#064e3b]'
+                                : 'bg-white text-gray-700 border-[#E2E8F0] hover:border-[#064e3b]/50'
+                            }`}
+                          >
+                            <Tag size={10} />
+                            {p.nombre}
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              sel ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700'
+                            }`}>{label}</span>
+                            {sel && <X size={10} />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Código de campaña */}
+                  <div className="flex gap-2">
+                    <input
+                      value={codigoPromo}
+                      onChange={e => setCodigoPromo(e.target.value.toUpperCase())}
+                      onKeyDown={e => e.key === 'Enter' && buscarCodigo()}
+                      placeholder="Código de campaña (ej: JULIO25)"
+                      className="flex-1 border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-[#064e3b]/20 focus:border-[#064e3b]"
+                    />
+                    <button
+                      type="button"
+                      onClick={buscarCodigo}
+                      disabled={buscandoCodigo || !codigoPromo.trim()}
+                      className="px-3 py-1.5 bg-[#064e3b] text-white rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#065f46] transition-colors"
+                    >
+                      {buscandoCodigo ? '...' : 'Aplicar'}
+                    </button>
+                  </div>
+
+                  {/* Promo seleccionada */}
+                  {promoSel && (
+                    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle size={13} className="text-green-500" />
+                        <span className="text-xs font-semibold text-green-700">{promoSel.nombre}</span>
+                        <span className="text-xs text-green-600">
+                          — {promoSel.tipoDescuento === 'MONTO_FIJO' ? `S/ ${promoSel.valor}` : `${promoSel.valor}%`} de descuento
                         </span>
-                      )}
+                      </div>
+                      <button type="button" onClick={() => aplicarPromo(null)} className="text-green-400 hover:text-green-700">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Descuento manual si no hay promo */}
+                  {!promoSel && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1">
+                        Descuento manual S/ {maxDescuento < 9999 ? `(máx ${maxDescuento})` : ''}
+                      </label>
+                      <input value={descuento}
+                        onChange={e => {
+                          const v = e.target.value.replace(/[^0-9.]/g, '')
+                          const n = parseFloat(v) || 0
+                          if (n > maxDescuento) { toast.error(`Descuento máximo: S/ ${maxDescuento}`); setDescuento(String(maxDescuento)) }
+                          else setDescuento(v)
+                        }}
+                        placeholder="0.00"
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#064e3b]/20 focus:border-[#064e3b]" />
+                    </div>
+                  )}
+
+                  {descNum > 0 && !promoSel && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1">Motivo del descuento</label>
+                      <input value={motivoDesc} onChange={e => setMotivoDesc(e.target.value)}
+                        placeholder="Ej: adulto mayor, estudiante..."
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#064e3b]/20 focus:border-[#064e3b]" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Tipo operación */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Tipo de operación</label>
+                  <div className="flex gap-2">
+                    {(['VENTA', 'RESERVA'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setTipoOp(t)}
+                        className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
+                          tipoOp === t
+                            ? t === 'VENTA' ? 'bg-[#064e3b] text-white border-[#064e3b]' : 'bg-amber-500 text-white border-amber-500'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                        }`}>
+                        {t === 'VENTA' ? 'Venta (pago ahora)' : 'Reserva (pago luego)'}
+                      </button>
+                    ))}
+                  </div>
+                  {tipoOp === 'RESERVA' && (
+                    <p className="mt-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                      La reserva bloquea el asiento. El pasajero paga al confirmar en caja.
+                    </p>
+                  )}
+                </div>
+
+                {tipoOp === 'VENTA' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Forma de pago *</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['EFECTIVO','YAPE','PLIN','TRANSFERENCIA'].map(fp => (
+                        <button key={fp} type="button" onClick={() => setFormaPago(fp)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                            formaPago === fp
+                              ? 'bg-[#064e3b] text-white border-[#064e3b]'
+                              : 'bg-white text-gray-600 border-gray-300 hover:border-[#064e3b]'
+                          }`}>
+                          {fp}
+                        </button>
+                      ))}
                     </div>
                   </div>
+                )}
+
+                {/* Total */}
+                {baseNum > 0 && (
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+                    <span className="text-sm font-medium text-gray-600">Total a pagar</span>
+                    <span className="text-xl font-bold text-green-600">S/ {totalNum.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between gap-3 pt-1">
+                  <Button variant="secondary" onClick={() => setStep(2)}>Volver</Button>
+                  <Button variant="primary" loading={loading} disabled={loading} onClick={handleVender}>
+                    {tipoOp === 'RESERVA' ? 'Reservar asiento' : `Emitir pasaje · S/ ${totalNum.toFixed(2)}`}
+                  </Button>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <Badge estado={v.estado} />
-                  <span className="text-xs text-green-600 font-medium">{v.asientosLibres} libres</span>
+              </div>
+            )}
+
+            {/* ── PASO 4: Éxito ── */}
+            {step === 4 && resultado && viaje && (
+              <div className="text-center space-y-4 py-2">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle size={32} className="text-green-500" />
                 </div>
-              </button>
-            ))
-          )}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {resultado.estado === 'RESERVADO' ? 'Reserva registrada' : 'Pasaje emitido'}
+                  </h3>
+                  <p className="text-sm font-semibold text-gray-800 mt-1">
+                    {resultado.clienteApellidos}, {resultado.clienteNombres}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Asiento <span className="font-semibold text-gray-700">{String(resultado.asientoNumero).padStart(2, '0')}</span>
+                    {' · '}{viaje.ruta?.origen} → {viaje.ruta?.destino}
+                  </p>
+                  <p className="text-xs text-gray-400">{formatFecha(viaje.fechaHoraSal)}</p>
+                </div>
+
+                <div className="inline-block bg-blue-50 border border-blue-200 rounded-xl px-5 py-3">
+                  <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider">N° Boleta</p>
+                  <p className="text-xl font-bold text-[#064e3b] font-mono">{resultado.codigoBoleta}</p>
+                  <p className="text-base font-bold text-green-600 mt-1">S/ {resultado.precioFinal.toFixed(2)}</p>
+                </div>
+
+                <div className="flex gap-3 justify-center pt-1">
+                  <Button variant="secondary" onClick={resetWizard}>Nueva venta</Button>
+                  {resultado.estado !== 'RESERVADO' && (
+                    <Button variant="primary" icon={Printer} onClick={() => setTicketOpen(true)}>
+                      Imprimir ticket
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
-      )}
 
-      {/* ── PASO 2: Mapa de asientos ── */}
-      {step === 2 && viaje && (
-        <div className="space-y-4">
-          <div className="bg-[#1F3864] rounded-xl p-4 text-white">
-            <p className="text-xs text-blue-300 uppercase tracking-wide">Viaje seleccionado</p>
-            <p className="text-base font-bold mt-0.5">
-              {viaje.ruta?.origen ?? '—'} → {viaje.ruta?.destino ?? '—'}
-            </p>
-            <p className="text-sm text-blue-200 mt-0.5">
-              {formatFecha(viaje.fechaHoraSal)}
-              {viaje.vehiculo && ` · ${viaje.vehiculo.tipo} ${viaje.vehiculo.placa}`}
-            </p>
-          </div>
+        {/* ═══ Columna derecha: Resumen de Reserva ═══ */}
+        <ResumenPanel
+          step={step}
+          viaje={viaje}
+          asientoNum={asientoNum}
+          precioBase={precioBase}
+          descuento={descuento}
+          totalNum={totalNum}
+          tipoOp={tipoOp}
+          pNombres={pNombres}
+          pApellidos={pApellidos}
+          formaPago={formaPago}
+        />
 
-          <SeatMap
-            viajeId={viaje.id}
-            selectedNumero={asientoNum ?? undefined}
-            onSelect={n => setAsientoNum(n)}
-          />
+      </div>{/* fin grid wizard+resumen */}
 
-          {asientoNum && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-400">Asiento seleccionado</p>
-                <p className="text-2xl font-bold text-[#1F3864]">
-                  {String(asientoNum).padStart(2, '0')}
-                </p>
-              </div>
-              {precioBase && (
-                <div className="text-right">
-                  <p className="text-xs text-gray-400">Precio base</p>
-                  <p className="text-lg font-bold text-green-600">S/ {parseFloat(precioBase).toFixed(2)}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-between gap-3">
-            <Button variant="secondary" onClick={() => { setStep(1); setAsientoNum(null) }}>Volver</Button>
-            <Button variant="primary" disabled={!asientoNum} onClick={continuarAStep3}>
-              {asientoNum ? `Continuar — Asiento ${String(asientoNum).padStart(2,'0')}` : 'Selecciona un asiento'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── PASO 3: Datos del pasajero ── */}
-      {step === 3 && viaje && (
-        <div className="space-y-4">
-          {/* Resumen */}
-          <div className="flex items-center gap-3 p-3 bg-[#1F3864]/5 border border-[#1F3864]/20 rounded-xl text-sm">
-            <div className="w-8 h-8 rounded-lg bg-[#1F3864] flex items-center justify-center shrink-0">
-              <Bus size={14} className="text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900">
-                {viaje.ruta?.origen} → {viaje.ruta?.destino}
-              </p>
-              <p className="text-xs text-gray-500">
-                {formatFecha(viaje.fechaHoraSal)} · Asiento {String(asientoNum).padStart(2, '0')}
-                {precioBase ? ` · S/ ${parseFloat(precioBase).toFixed(2)}` : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-            {/* DNI Búsqueda */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Buscar pasajero por DNI
-              </label>
-              <BuscadorDni onFound={handleClienteFound} disabled={loading} />
-            </div>
-
-            {/* Datos pasajero */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Nombres *</label>
-                <input
-                  value={pNombres}
-                  onChange={e => setPNombres(e.target.value)}
-                  placeholder="Nombres completos"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Apellidos *</label>
-                <input
-                  value={pApellidos}
-                  onChange={e => setPApellidos(e.target.value)}
-                  placeholder="Apellidos"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Teléfono *</label>
+      {/* ═══ Lista de boletas (ancho completo) ═══ */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/60 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <FileText size={15} className="text-gray-400" />
+              Registro de boletas
+            </h3>
+            <div className="flex flex-wrap gap-2">
               <input
-                value={pTelefono}
-                onChange={e => setPTelefono(e.target.value.replace(/\D/g, '').slice(0, 9))}
-                placeholder="9XXXXXXXX"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-                maxLength={9}
+                value={listFiltroCodigo}
+                onChange={e => setListFiltroCodigo(e.target.value.toUpperCase())}
+                placeholder="Buscar N° boleta..."
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]"
               />
+              <select value={listFiltroEstado} onChange={e => setListFiltroEstado(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]">
+                <option value="">Todos</option>
+                <option value="VENDIDO">VENDIDO</option>
+                <option value="RESERVADO">RESERVADO</option>
+                <option value="ANULADO">ANULADO</option>
+              </select>
             </div>
-
-            <hr className="border-gray-100" />
-
-            {/* Precio y descuento */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Precio base S/ *</label>
-                <input
-                  value={precioBase}
-                  onChange={e => setPrecioBase(e.target.value.replace(/[^0-9.]/g, ''))}
-                  placeholder="0.00"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
-                  Descuento S/ {maxDescuento < 9999 ? `(máx ${maxDescuento})` : ''}
-                </label>
-                <input
-                  value={descuento}
-                  onChange={e => {
-                    const v = e.target.value.replace(/[^0-9.]/g, '')
-                    const n = parseFloat(v) || 0
-                    if (n > maxDescuento) {
-                      toast.error(`Descuento máximo: S/ ${maxDescuento}`)
-                      setDescuento(String(maxDescuento))
-                    } else {
-                      setDescuento(v)
-                    }
-                  }}
-                  placeholder="0.00"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-                />
-              </div>
-            </div>
-
-            {descNum > 0 && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Motivo del descuento</label>
-                <input
-                  value={motivoDesc}
-                  onChange={e => setMotivoDesc(e.target.value)}
-                  placeholder="Ej: adulto mayor, estudiante..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-                />
-              </div>
-            )}
-
-            {/* Tipo operación: VENTA o RESERVA */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Tipo de operación</label>
-              <div className="flex gap-2">
-                {(['VENTA', 'RESERVA'] as const).map(t => (
-                  <button key={t} type="button" onClick={() => setTipoOp(t)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
-                      tipoOp === t
-                        ? t === 'VENTA' ? 'bg-[#1F3864] text-white border-[#1F3864]' : 'bg-amber-500 text-white border-amber-500'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                    }`}>
-                    {t === 'VENTA' ? 'Venta (pago ahora)' : 'Reserva (pago luego)'}
-                  </button>
-                ))}
-              </div>
-              {tipoOp === 'RESERVA' && (
-                <p className="mt-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                  La reserva bloquea el asiento. El pasajero paga al confirmar en caja.
-                </p>
-              )}
-            </div>
-
-            {tipoOp === 'VENTA' && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Forma de pago *</label>
-              <div className="flex flex-wrap gap-2">
-                {['EFECTIVO','YAPE','PLIN','TRANSFERENCIA'].map(fp => (
-                  <button key={fp} type="button"
-                    onClick={() => setFormaPago(fp)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                      formaPago === fp
-                        ? 'bg-[#1F3864] text-white border-[#1F3864]'
-                        : 'bg-white text-gray-600 border-gray-300 hover:border-[#1F3864]'
-                    }`}>
-                    {fp}
-                  </button>
-                ))}
-              </div>
-            </div>
-            )}
-
-            {/* Total */}
-            {baseNum > 0 && (
-              <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
-                <span className="text-sm font-medium text-gray-600">Total a pagar</span>
-                <span className="text-xl font-bold text-green-600">S/ {totalNum.toFixed(2)}</span>
-              </div>
-            )}
           </div>
 
-          <div className="flex justify-between gap-3">
-            <Button variant="secondary" onClick={() => setStep(2)}>Volver</Button>
-            <Button
-              variant="primary"
-              loading={loading}
-              disabled={loading}
-              onClick={handleVender}
-            >
-              {tipoOp === 'RESERVA' ? 'Reservar asiento' : `Emitir pasaje · S/ ${totalNum.toFixed(2)}`}
-            </Button>
-          </div>
+          {pasajes.length === 0 ? (
+            <div className="py-16 text-center text-sm text-gray-400">
+              <FileText size={32} className="mx-auto mb-2 opacity-25" />
+              No se encontraron boletas
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['N° Boleta','Pasajero','Asiento','Total','Estado','Fecha',''].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pasajes.map(p => (
+                    <tr key={p.id} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#064e3b]">
+                        {p.codigoBoleta}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-900 whitespace-nowrap text-xs">
+                          {p.clienteApellidos}, {p.clienteNombres}
+                        </p>
+                        <p className="text-[11px] text-gray-400">DNI: {p.clienteDni}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs font-medium whitespace-nowrap">
+                        {String(p.asientoNumero).padStart(2, '0')}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap text-xs">
+                        S/ {Number(p.precioFinal).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border ${estadoPasajeBadge(p.estado)}`}>
+                          {p.estado}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
+                        {formatFecha(p.fechaVenta)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          {p.estado === 'RESERVADO' && (
+                            <button
+                              onClick={() => { setConfirmarModal({ open: true, id: p.id, codigo: p.codigoBoleta }); setConfirmarFormaPago('EFECTIVO') }}
+                              className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1 whitespace-nowrap"
+                            >
+                              <CheckCircle size={11} /> Confirmar
+                            </button>
+                          )}
+                          {(p.estado === 'VENDIDO' || p.estado === 'RESERVADO') && (
+                            <button
+                              onClick={() => setAnularModal({ open: true, id: p.id, codigo: p.codigoBoleta })}
+                              className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
+                            >
+                              <X size={11} /> Anular
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
-
-      {/* ── PASO 4: Éxito ── */}
-      {step === 4 && resultado && viaje && (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle size={32} className="text-green-500" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900">
-            {resultado.estado === 'RESERVADO' ? 'Reserva registrada' : 'Pasaje emitido'}
-          </h3>
-          <div className="space-y-1 text-sm text-gray-500">
-            <p className="font-semibold text-gray-800 text-base">
-              {resultado.clienteApellidos}, {resultado.clienteNombres}
-            </p>
-            <p>
-              Asiento <span className="font-semibold text-gray-800">
-                {String(resultado.asientoNumero).padStart(2, '0')}
-              </span>
-              {' · '}
-              {viaje.ruta?.origen} → {viaje.ruta?.destino}
-            </p>
-            <p>{formatFecha(viaje.fechaHoraSal)}</p>
-            <p className="font-bold text-green-600 text-lg">S/ {resultado.precioFinal.toFixed(2)}</p>
-          </div>
-
-          <div className="inline-block bg-blue-50 border border-blue-200 rounded-lg px-5 py-2.5">
-            <p className="text-xs text-blue-500 font-medium">N° Boleta</p>
-            <p className="text-xl font-bold text-[#1F3864] font-mono">{resultado.codigoBoleta}</p>
-          </div>
-
-          <div className="flex gap-3 justify-center pt-2">
-            <Button variant="secondary" onClick={resetWizard}>Nueva venta</Button>
-            {resultado.estado !== 'RESERVADO' && (
-              <Button variant="primary" icon={Printer} onClick={() => setTicketOpen(true)}>
-                Ver e imprimir ticket
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ── Modal ticket ── */}
       {ticketInfo && (
-        <Modal
-          open={ticketOpen}
-          onClose={() => setTicketOpen(false)}
-          title="Ticket de pasaje"
-          size="sm"
-        >
+        <Modal open={ticketOpen} onClose={() => setTicketOpen(false)} title="Ticket de pasaje" size="sm">
           <TicketPreview t={ticketInfo} onClose={() => setTicketOpen(false)} />
         </Modal>
       )}
-
-      {/* ── Lista de pasajes ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <FileText size={15} className="text-gray-400" />
-            Registro de boletas
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <input
-              value={listFiltroCodigo}
-              onChange={e => setListFiltroCodigo(e.target.value.toUpperCase())}
-              placeholder="Buscar N° boleta..."
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-            />
-            <select
-              value={listFiltroEstado}
-              onChange={e => setListFiltroEstado(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F3864]/30 focus:border-[#1F3864]"
-            >
-              <option value="">Todos los estados</option>
-              <option value="VENDIDO">VENDIDO</option>
-              <option value="RESERVADO">RESERVADO</option>
-              <option value="ANULADO">ANULADO</option>
-            </select>
-          </div>
-        </div>
-
-        {pasajes.length === 0 ? (
-          <div className="py-10 text-center text-sm text-gray-400">
-            No se encontraron boletas con los filtros actuales
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  {['N° Boleta','Pasajero','Ruta / Asiento','Total','Estado','Fecha',''].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {pasajes.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-[#1F3864]">
-                      {p.codigoBoleta}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900 whitespace-nowrap">
-                        {p.clienteApellidos}, {p.clienteNombres}
-                      </p>
-                      <p className="text-xs text-gray-400">DNI: {p.clienteDni}</p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      Asiento {String(p.asientoNumero).padStart(2, '0')}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
-                      S/ {Number(p.precioFinal).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${estadoPasajeBadge(p.estado)}`}>
-                        {p.estado}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                      {formatFecha(p.fechaVenta)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-col items-end gap-1">
-                        {p.estado === 'RESERVADO' && (
-                          <button
-                            onClick={() => { setConfirmarModal({ open: true, id: p.id, codigo: p.codigoBoleta }); setConfirmarFormaPago('EFECTIVO') }}
-                            className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1"
-                          >
-                            <CheckCircle size={12} /> Confirmar pago
-                          </button>
-                        )}
-                        {(p.estado === 'VENDIDO' || p.estado === 'RESERVADO') && (
-                          <button
-                            onClick={() => setAnularModal({ open: true, id: p.id, codigo: p.codigoBoleta })}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
-                          >
-                            <X size={12} /> Anular
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
       {/* ── Modal confirmar reserva ── */}
       <Modal
@@ -935,8 +1212,8 @@ export default function PasajesPage() {
                 <button key={fp} type="button" onClick={() => setConfirmarFormaPago(fp)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
                     confirmarFormaPago === fp
-                      ? 'bg-[#1F3864] text-white border-[#1F3864]'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-[#1F3864]'
+                      ? 'bg-[#064e3b] text-white border-[#064e3b]'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-[#064e3b]'
                   }`}>
                   {fp}
                 </button>
@@ -944,9 +1221,7 @@ export default function PasajesPage() {
             </div>
           </div>
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setConfirmarModal({ open: false, id: 0, codigo: '' })} className="flex-1">
-              Cancelar
-            </Button>
+            <Button variant="secondary" onClick={() => setConfirmarModal({ open: false, id: 0, codigo: '' })} className="flex-1">Cancelar</Button>
             <Button variant="primary" onClick={handleConfirmar} loading={confirmando} disabled={confirmando} className="flex-1">
               Confirmar y registrar pago
             </Button>
@@ -970,37 +1245,23 @@ export default function PasajesPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              Motivo de anulación *
-            </label>
-            <textarea
-              value={anularMotivo}
-              onChange={e => setAnularMotivo(e.target.value)}
-              rows={3}
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Motivo de anulación *</label>
+            <textarea value={anularMotivo} onChange={e => setAnularMotivo(e.target.value)} rows={3}
               placeholder="Describe el motivo de la anulación..."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-400 resize-none"
-            />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-400 resize-none" />
           </div>
           <div className="flex gap-3">
-            <Button
-              variant="secondary"
+            <Button variant="secondary"
               onClick={() => { setAnularModal({ open: false, id: 0, codigo: '' }); setAnularMotivo('') }}
-              className="flex-1"
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="danger"
-              onClick={handleAnular}
-              loading={anulando}
-              disabled={!anularMotivo.trim() || anulando}
-              className="flex-1"
-            >
+              className="flex-1">Cancelar</Button>
+            <Button variant="danger" onClick={handleAnular} loading={anulando}
+              disabled={!anularMotivo.trim() || anulando} className="flex-1">
               Anular boleta
             </Button>
           </div>
         </div>
       </Modal>
+
     </div>
   )
 }

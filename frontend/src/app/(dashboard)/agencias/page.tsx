@@ -2,7 +2,10 @@
 import React, { useState } from 'react'
 import useSWR from 'swr'
 import toast from 'react-hot-toast'
-import { Plus, Building2, MapPin, Phone, User, Mail, ChevronRight, Settings } from 'lucide-react'
+import {
+  Plus, Building2, MapPin, Phone, User, Mail,
+  ChevronRight, Settings, GitBranch,
+} from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
@@ -11,7 +14,8 @@ import { useRouter } from 'next/navigation'
 import { Agencia, AgenciaMetricas, UsuarioSimple } from '@/types'
 import api from '@/services/api'
 
-// ---- Metric skeleton / card ----
+// ── Metric card ───────────────────────────────────────────────────────────────
+
 function MetricasCard({ agenciaId }: { agenciaId: number }) {
   const { data: metricas } = useSWR<AgenciaMetricas>(`/api/agencias/${agenciaId}/metricas`)
 
@@ -43,36 +47,38 @@ function MetricasCard({ agenciaId }: { agenciaId: number }) {
   )
 }
 
-// ---- AgenciaCard ----
+// ── Tarjeta de agencia principal ──────────────────────────────────────────────
+
 interface AgenciaCardProps {
   agencia: Agencia
   isSuperAdmin: boolean
   onEdit: (a: Agencia) => void
   onToggleEstado: (a: Agencia) => void
+  onAgregarSucursal: (padreId: number, padreNombre: string) => void
 }
 
-function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado }: AgenciaCardProps) {
+function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado, onAgregarSucursal }: AgenciaCardProps) {
   const router = useRouter()
   const esActiva = agencia.estado === 'ACTIVA'
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden ${agencia.esSedePrincipal ? 'border-t-4 border-t-cyan-500' : ''}`}>
-      {agencia.esSedePrincipal && (
-        <div className="px-4 pt-2 pb-0">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-700">
-            SEDE PRINCIPAL
-          </span>
-        </div>
-      )}
+    <div className="border-l-4 border-l-[#064e3b] bg-white rounded-r-xl border border-l-0 border-gray-200 shadow-sm overflow-hidden">
       <div className="p-4">
         {/* Top */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#1F3864]/10 rounded-xl flex items-center justify-center shrink-0">
-              <Building2 size={20} className="text-[#1F3864]" />
+            <div className="w-10 h-10 bg-[#064e3b]/10 rounded-xl flex items-center justify-center shrink-0">
+              <Building2 size={20} className="text-[#064e3b]" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 leading-tight">{agencia.nombre}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-gray-900 leading-tight">{agencia.nombre}</p>
+                {agencia.esSedePrincipal && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-[#064e3b]/10 text-[#064e3b]">
+                    SEDE PRINCIPAL
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-400">{agencia.codigo}</p>
             </div>
           </div>
@@ -135,15 +141,99 @@ function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado }: AgenciaC
             Configurar
           </Button>
           {isSuperAdmin && (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={GitBranch}
+                onClick={() => onAgregarSucursal(agencia.id, agencia.nombre)}
+                className="justify-center text-cyan-600 border-cyan-300 hover:bg-cyan-50"
+              >
+                Agregar sucursal
+              </Button>
+              <button
+                onClick={() => onToggleEstado(agencia)}
+                className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
+                  esActiva
+                    ? 'text-red-600 hover:bg-red-50'
+                    : 'text-green-600 hover:bg-green-50'
+                }`}
+              >
+                {esActiva ? 'Desactivar' : 'Activar'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Sucursales */}
+      {(agencia.sucursales ?? []).length > 0 && (
+        <div className="border-t border-gray-100 bg-gray-50/50 px-4 pt-3 pb-4 space-y-2">
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">Sucursales</p>
+          {(agencia.sucursales ?? []).map(s => (
+            <SucursalCard
+              key={s.id}
+              sucursal={s}
+              isSuperAdmin={isSuperAdmin}
+              onEdit={onEdit}
+              onToggleEstado={onToggleEstado}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tarjeta de sucursal ───────────────────────────────────────────────────────
+
+interface SucursalCardProps {
+  sucursal: Agencia
+  isSuperAdmin: boolean
+  onEdit: (a: Agencia) => void
+  onToggleEstado: (a: Agencia) => void
+}
+
+function SucursalCard({ sucursal, isSuperAdmin, onEdit, onToggleEstado }: SucursalCardProps) {
+  const router = useRouter()
+  const esActiva = sucursal.estado === 'ACTIVA'
+
+  return (
+    <div className="ml-6 border-l-[3px] border-l-cyan-400 bg-white rounded-r-lg border border-l-0 border-gray-200 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 bg-cyan-50 rounded-lg flex items-center justify-center shrink-0">
+            <Building2 size={14} className="text-cyan-600" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-semibold text-gray-800 truncate">{sucursal.nombre}</p>
+              <span className="shrink-0 text-xs px-1.5 py-0.5 bg-cyan-100 text-cyan-700 rounded font-medium">
+                SUCURSAL
+              </span>
+            </div>
+            <p className="text-xs text-gray-400">{sucursal.codigo} · {sucursal.ciudad}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Badge
+            estado={esActiva ? 'DISPONIBLE' : 'CANCELADO'}
+            label={esActiva ? 'ACTIVA' : 'INACTIVA'}
+          />
+          <button
+            onClick={() => router.push(`/agencias/${sucursal.id}`)}
+            className="p-1 text-gray-400 hover:text-[#0070C0] hover:bg-blue-50 rounded"
+            title="Ver detalle"
+          >
+            <ChevronRight size={14} />
+          </button>
+          {isSuperAdmin && (
             <button
-              onClick={() => onToggleEstado(agencia)}
-              className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
-                esActiva
-                  ? 'text-red-600 hover:bg-red-50'
-                  : 'text-green-600 hover:bg-green-50'
-              }`}
+              onClick={() => onEdit(sucursal)}
+              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+              title="Configurar"
             >
-              {esActiva ? 'Desactivar' : 'Activar'}
+              <Settings size={14} />
             </button>
           )}
         </div>
@@ -152,7 +242,8 @@ function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado }: AgenciaC
   )
 }
 
-// ---- Form fields config ----
+// ── Form state ────────────────────────────────────────────────────────────────
+
 interface FormState {
   codigo: string
   nombre: string
@@ -163,21 +254,30 @@ interface FormState {
   ruc: string
   encargadoId: string
   esSedePrincipal: boolean
+  tipo: 'AGENCIA' | 'SUCURSAL'
+  agenciaPadreId: string
 }
 
 const EMPTY_FORM: FormState = {
   codigo: '', nombre: '', ciudad: '', direccion: '',
-  telefono: '', email: '', ruc: '', encargadoId: '', esSedePrincipal: false,
+  telefono: '', email: '', ruc: '', encargadoId: '',
+  esSedePrincipal: false, tipo: 'AGENCIA', agenciaPadreId: '',
 }
 
-// ---- Main Page ----
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function AgenciasPage() {
   const { hasRole } = useAuthStore()
   const isSuperAdmin = hasRole('SUPER_ADMIN')
 
+  // Hierarchical list (principals with nested sucursales)
   const { data: agencias, mutate } = useSWR<Agencia[]>('/api/agencias')
+  // Flat list for selectors (principals only)
+  const { data: principales } = useSWR<Agencia[]>('/api/agencias/principales')
   const { data: usuarios } = useSWR<UsuarioSimple[]>('/api/usuarios')
+
   const lista: Agencia[] = agencias || []
+  const principalesActivas: Agencia[] = principales || []
 
   const [modalNueva, setModalNueva] = useState(false)
   const [modalEditar, setModalEditar] = useState<Agencia | null>(null)
@@ -186,6 +286,11 @@ export default function AgenciasPage() {
 
   const openNueva = () => {
     setForm(EMPTY_FORM)
+    setModalNueva(true)
+  }
+
+  const openAgregarSucursal = (padreId: number, _padreNombre: string) => {
+    setForm({ ...EMPTY_FORM, tipo: 'SUCURSAL', agenciaPadreId: String(padreId) })
     setModalNueva(true)
   }
 
@@ -200,6 +305,8 @@ export default function AgenciasPage() {
       ruc: a.ruc ?? '',
       encargadoId: a.encargadoId ? String(a.encargadoId) : '',
       esSedePrincipal: a.esSedePrincipal,
+      tipo: a.tipo ?? 'AGENCIA',
+      agenciaPadreId: a.agenciaPadreId ? String(a.agenciaPadreId) : '',
     })
     setModalEditar(a)
   }
@@ -216,7 +323,9 @@ export default function AgenciasPage() {
     email: form.email || null,
     ruc: form.ruc || null,
     encargadoId: form.encargadoId ? Number(form.encargadoId) : null,
-    esSedePrincipal: form.esSedePrincipal,
+    esSedePrincipal: form.tipo === 'AGENCIA' ? form.esSedePrincipal : false,
+    tipo: form.tipo,
+    agenciaPadreId: form.tipo === 'SUCURSAL' && form.agenciaPadreId ? Number(form.agenciaPadreId) : null,
   })
 
   const crearAgencia = async () => {
@@ -228,14 +337,18 @@ export default function AgenciasPage() {
       toast.error('El RUC debe tener 11 dígitos')
       return
     }
+    if (form.tipo === 'SUCURSAL' && !form.agenciaPadreId) {
+      toast.error('Debe seleccionar una agencia principal para la sucursal')
+      return
+    }
     setSaving(true)
     try {
       await api.post('/api/agencias', buildPayload())
-      toast.success('Agencia creada correctamente')
+      toast.success(form.tipo === 'SUCURSAL' ? 'Sucursal creada correctamente' : 'Agencia creada correctamente')
       setModalNueva(false)
       mutate()
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Error al crear agencia')
+      toast.error(err?.response?.data?.message || 'Error al crear')
     } finally {
       setSaving(false)
     }
@@ -254,11 +367,11 @@ export default function AgenciasPage() {
     setSaving(true)
     try {
       await api.put(`/api/agencias/${modalEditar.id}`, buildPayload())
-      toast.success('Agencia actualizada')
+      toast.success('Actualizado correctamente')
       setModalEditar(null)
       mutate()
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Error al actualizar agencia')
+      toast.error(err?.response?.data?.message || 'Error al actualizar')
     } finally {
       setSaving(false)
     }
@@ -268,30 +381,73 @@ export default function AgenciasPage() {
     const nuevoEstado = a.estado === 'ACTIVA' ? 'INACTIVA' : 'ACTIVA'
     try {
       await api.patch(`/api/agencias/${a.id}/estado`, { estado: nuevoEstado })
-      toast.success(`Agencia ${nuevoEstado === 'ACTIVA' ? 'activada' : 'desactivada'}`)
+      toast.success(`${nuevoEstado === 'ACTIVA' ? 'Activada' : 'Desactivada'} correctamente`)
       mutate()
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Error al cambiar estado')
     }
   }
 
-  // ---- Modal form shared ----
+  // ── Modal form ────────────────────────────────────────────────────────────
+
   const AgenciaForm = ({ onSubmit, submitLabel }: { onSubmit: () => void; submitLabel: string }) => (
     <div className="space-y-4">
+      {/* Tipo */}
+      {isSuperAdmin && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
+          <div className="flex gap-2">
+            {(['AGENCIA', 'SUCURSAL'] as const).map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => handleField('tipo', t)}
+                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                  form.tipo === t
+                    ? t === 'AGENCIA'
+                      ? 'bg-[#064e3b] text-white border-[#064e3b]'
+                      : 'bg-cyan-500 text-white border-cyan-500'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                {t === 'AGENCIA' ? 'Agencia principal' : 'Sucursal'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Agencia padre (solo si es sucursal) */}
+      {form.tipo === 'SUCURSAL' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Agencia principal *</label>
+          <select
+            value={form.agenciaPadreId}
+            onChange={e => handleField('agenciaPadreId', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/30"
+          >
+            <option value="">— Selecciona la agencia principal —</option>
+            {principalesActivas.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
-        {/* Código */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
           <input
             value={form.codigo}
             onChange={e => handleField('codigo', e.target.value)}
-            placeholder="AYA-02"
+            placeholder={form.tipo === 'SUCURSAL' ? 'HUA-SUC-01' : 'AYA-02'}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
           />
         </div>
-        {/* Teléfono */}
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono *</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
           <input
             value={form.telefono}
             onChange={e => handleField('telefono', e.target.value)}
@@ -300,19 +456,19 @@ export default function AgenciasPage() {
           />
         </div>
       </div>
-      {/* Nombre */}
+
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
         <input
           value={form.nombre}
           onChange={e => handleField('nombre', e.target.value)}
-          placeholder="Sede Ayacucho"
+          placeholder={form.tipo === 'SUCURSAL' ? 'Sucursal Huamanga Terminal' : 'Sede Ayacucho'}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
         />
       </div>
-      {/* Ciudad */}
+
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad *</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
         <input
           value={form.ciudad}
           onChange={e => handleField('ciudad', e.target.value)}
@@ -320,9 +476,9 @@ export default function AgenciasPage() {
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
         />
       </div>
-      {/* Dirección */}
+
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Dirección *</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
         <input
           value={form.direccion}
           onChange={e => handleField('direccion', e.target.value)}
@@ -330,8 +486,8 @@ export default function AgenciasPage() {
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
         />
       </div>
+
       <div className="grid grid-cols-2 gap-3">
-        {/* Email */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
           <input
@@ -342,7 +498,6 @@ export default function AgenciasPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
           />
         </div>
-        {/* RUC */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">RUC</label>
           <input
@@ -354,7 +509,7 @@ export default function AgenciasPage() {
           />
         </div>
       </div>
-      {/* Encargado */}
+
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Encargado</label>
         <select
@@ -370,8 +525,9 @@ export default function AgenciasPage() {
           ))}
         </select>
       </div>
-      {/* Es sede principal (solo SUPER_ADMIN) */}
-      {isSuperAdmin && (
+
+      {/* Es sede principal — solo agencias principales */}
+      {isSuperAdmin && form.tipo === 'AGENCIA' && (
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -382,6 +538,7 @@ export default function AgenciasPage() {
           <span className="text-sm text-gray-700">Es sede principal</span>
         </label>
       )}
+
       <div className="flex justify-end gap-3 pt-2">
         <Button
           variant="secondary"
@@ -389,16 +546,18 @@ export default function AgenciasPage() {
         >
           Cancelar
         </Button>
-        <Button
-          variant="primary"
-          loading={saving}
-          onClick={onSubmit}
-        >
+        <Button variant="primary" loading={saving} onClick={onSubmit}>
           {submitLabel}
         </Button>
       </div>
     </div>
   )
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  const modalTitle = modalNueva
+    ? form.tipo === 'SUCURSAL' ? 'Nueva Sucursal' : 'Nueva Agencia'
+    : `Editar — ${modalEditar?.nombre ?? ''}`
 
   return (
     <div className="space-y-5">
@@ -406,21 +565,21 @@ export default function AgenciasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Agencias</h1>
-          <p className="text-sm text-gray-500">Sucursales del sistema</p>
+          <p className="text-sm text-gray-500">Estructura jerárquica de agencias y sucursales</p>
         </div>
         {isSuperAdmin && (
           <Button icon={Plus} onClick={openNueva}>Nueva agencia</Button>
         )}
       </div>
 
-      {/* Grid */}
+      {/* Hierarchy list */}
       {lista.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <Building2 size={40} className="text-gray-300 mb-3" />
           <p className="text-gray-500 text-sm">No hay agencias registradas</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="space-y-4">
           {lista.map(a => (
             <AgenciaCard
               key={a.id}
@@ -428,24 +587,23 @@ export default function AgenciasPage() {
               isSuperAdmin={isSuperAdmin}
               onEdit={openEditar}
               onToggleEstado={toggleEstado}
+              onAgregarSucursal={openAgregarSucursal}
             />
           ))}
         </div>
       )}
 
-      {/* Modal nueva */}
-      <Modal open={modalNueva} onClose={() => setModalNueva(false)} title="Nueva Agencia" size="lg">
-        <AgenciaForm onSubmit={crearAgencia} submitLabel="Crear" />
-      </Modal>
-
-      {/* Modal editar */}
+      {/* Modal */}
       <Modal
-        open={!!modalEditar}
-        onClose={() => setModalEditar(null)}
-        title={`Editar — ${modalEditar?.nombre ?? ''}`}
+        open={modalNueva || !!modalEditar}
+        onClose={() => { setModalNueva(false); setModalEditar(null) }}
+        title={modalTitle}
         size="lg"
       >
-        <AgenciaForm onSubmit={guardarAgencia} submitLabel="Guardar" />
+        <AgenciaForm
+          onSubmit={modalNueva ? crearAgencia : guardarAgencia}
+          submitLabel={modalNueva ? 'Crear' : 'Guardar'}
+        />
       </Modal>
     </div>
   )

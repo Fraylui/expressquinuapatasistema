@@ -92,7 +92,7 @@ function KPICard({ label, value, sub, icon: Icon, color, marco }: {
 function MarcoTag({ marco, descripcion }: { marco: string; descripcion: string }) {
   return (
     <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
-      <span className="text-[10px] font-bold bg-[#1F3864] text-white px-1.5 py-0.5 rounded uppercase shrink-0 mt-0.5">
+      <span className="text-[10px] font-bold bg-[#064e3b] text-white px-1.5 py-0.5 rounded uppercase shrink-0 mt-0.5">
         {marco}
       </span>
       <p className="text-xs text-gray-600">{descripcion}</p>
@@ -277,14 +277,14 @@ export default function GerentePage() {
                   {(['HOY', 'SEMANA', 'MES'] as Periodo[]).map(p => (
                     <button key={p} onClick={() => setPeriodo(p)}
                       className={`px-3 py-1.5 font-medium transition-colors ${
-                        periodo === p ? 'bg-[#1F3864] text-white' : 'text-gray-500 hover:bg-gray-50'
+                        periodo === p ? 'bg-[#064e3b] text-white' : 'text-gray-500 hover:bg-gray-50'
                       }`}
                     >
                       {p === 'HOY' ? 'Hoy' : p === 'SEMANA' ? 'Semana' : 'Mes'}
                     </button>
                   ))}
                 </div>
-                <span className="text-[10px] font-bold bg-[#1F3864] text-white px-1.5 py-0.5 rounded uppercase">
+                <span className="text-[10px] font-bold bg-[#064e3b] text-white px-1.5 py-0.5 rounded uppercase">
                   MEA01
                 </span>
               </div>
@@ -293,7 +293,7 @@ export default function GerentePage() {
             {/* Leyenda manual */}
             <div className="flex items-center gap-5 mb-3 text-xs text-gray-500">
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: '#1F3864' }} />
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: '#064e3b' }} />
                 Pasajes vendidos (eje izquierdo)
               </span>
               <span className="flex items-center gap-1.5">
@@ -317,7 +317,7 @@ export default function GerentePage() {
                   ]}
                   labelFormatter={l => `${chartXLabel === 'hora' ? 'Hora' : 'Fecha'}: ${l}`}
                 />
-                <Bar yAxisId="left"  dataKey="pasajes"  fill="#1F3864" radius={[3,3,0,0]} name="Pasajes" />
+                <Bar yAxisId="left"  dataKey="pasajes"  fill="#064e3b" radius={[3,3,0,0]} name="Pasajes" />
                 <Bar yAxisId="right" dataKey="ingresos" fill="#0070C0" radius={[3,3,0,0]} name="Ingresos S/" />
               </BarChart>
             </ResponsiveContainer>
@@ -330,7 +330,7 @@ export default function GerentePage() {
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <Bus size={14} className="text-[#1F3864]" />
+                <Bus size={14} className="text-[#064e3b]" />
                 Viajes del día
               </h3>
               <span className="text-xs text-gray-400">{viajesDia.length} programados</span>
@@ -403,7 +403,7 @@ export default function GerentePage() {
         <div className="space-y-3">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <ShieldCheck size={14} className="text-[#1F3864]" />
+              <ShieldCheck size={14} className="text-[#064e3b]" />
               Estado de controles
             </h3>
             <div className="space-y-2">
@@ -499,7 +499,7 @@ export default function GerentePage() {
       {/* ── CAATs — Exportar para auditoría ── */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center gap-2 mb-4">
-          <FileText size={15} className="text-[#1F3864]" />
+          <FileText size={15} className="text-[#064e3b]" />
           <h3 className="text-sm font-semibold text-gray-800">Exportar para auditoría</h3>
           <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded uppercase ml-auto">
             CAATs
@@ -513,7 +513,7 @@ export default function GerentePage() {
           ] as const).map(({ label, tipo, icon: Icon }) => (
             <button key={tipo} onClick={() => descargarExcel(tipo)}
               className="flex flex-col items-center gap-2 p-4 border border-gray-200 rounded-xl hover:border-[#0070C0] hover:bg-blue-50 transition-all group">
-              <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-[#1F3864] flex items-center justify-center transition-colors">
+              <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-[#064e3b] flex items-center justify-center transition-colors">
                 <Icon size={16} className="text-gray-500 group-hover:text-white" />
               </div>
               <span className="text-xs font-medium text-gray-600 text-center">{label}</span>
@@ -524,7 +524,7 @@ export default function GerentePage() {
           {/* Manifiestos del día */}
           <button onClick={descargarManifiestosDia} disabled={descargandoManif}
             className="flex flex-col items-center gap-2 p-4 border border-gray-200 rounded-xl hover:border-[#0070C0] hover:bg-blue-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed">
-            <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-[#1F3864] flex items-center justify-center transition-colors">
+            <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-[#064e3b] flex items-center justify-center transition-colors">
               {descargandoManif
                 ? <RefreshCw size={16} className="text-gray-500 animate-spin" />
                 : <Bus size={16} className="text-gray-500 group-hover:text-white" />
@@ -536,7 +536,7 @@ export default function GerentePage() {
 
           <Link href="/auditoria"
             className="flex flex-col items-center gap-2 p-4 border border-gray-200 rounded-xl hover:border-[#0070C0] hover:bg-blue-50 transition-all group">
-            <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-[#1F3864] flex items-center justify-center transition-colors">
+            <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-[#064e3b] flex items-center justify-center transition-colors">
               <Activity size={16} className="text-gray-500 group-hover:text-white" />
             </div>
             <span className="text-xs font-medium text-gray-600 text-center">Log auditoría</span>

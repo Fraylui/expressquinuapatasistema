@@ -181,9 +181,21 @@ export default function ModulosUsuarioPage() {
 
       {/* Lista de módulos */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-1">
-          Módulos del sistema
-        </p>
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            Módulos del sistema
+          </p>
+          {usuario?.rol !== 'SUPER_ADMIN' && (
+            <span className="text-xs font-medium px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
+              {modulos.filter(m => m.activo && m.codigo !== 'AUDITORIA').length} de {modulos.filter(m => m.codigo !== 'AUDITORIA').length} módulos activos
+            </span>
+          )}
+          {usuario?.rol === 'SUPER_ADMIN' && (
+            <span className="text-xs font-medium px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded-full">
+              Acceso total — {modulos.length} módulos
+            </span>
+          )}
+        </div>
         {modulos.map(m => {
           const Icon = MODULO_ICONOS[m.codigo] ?? Shield
           const colorClass = MODULO_COLORES[m.codigo] ?? 'bg-gray-50 text-gray-600 border-gray-200'
