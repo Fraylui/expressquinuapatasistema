@@ -5,16 +5,16 @@ export type { Cliente }
 
 export interface ClienteDTO {
   tipo?: 'PERSONA' | 'EMPRESA'
+  razonSocial?: string
   nombres?: string
   apellidos?: string
-  razonSocial?: string
   tipoDoc: string
   numDoc: string
   /** DNI del representante/contacto — solo para tipo EMPRESA */
   dniContacto?: string
   telefono?: string
   email?: string
-  fechaNac?: string
+  fechaNac?: string | null
   direccion?: string
 }
 
@@ -30,6 +30,9 @@ export const clientesService = {
 
   actualizar: (id: number, dto: ClienteDTO) =>
     api.put<any, any>(`/api/clientes/${id}`, dto).then((r: any) => r.data as Cliente),
+
+  eliminar: (id: number) =>
+    api.delete<any, any>(`/api/clientes/${id}`),
 
   detalle: (id: number) =>
     api.get<any, any>(`/api/clientes/${id}`).then((r: any) => r.data as Cliente),

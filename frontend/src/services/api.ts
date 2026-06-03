@@ -24,6 +24,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    // Errores de red (backend reiniciando, sin conexión) — silencioso en dev
+    const isNetworkError = !error.response &&
+      (error.code === 'ERR_NETWORK' || error.code === 'ERR_EMPTY_RESPONSE' ||
+       error.code === 'ERR_SOCKET_NOT_CONNECTED' || error.message === 'Network Error')
+    if (isNetworkError) return Promise.reject(error)
+
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('auth-store')

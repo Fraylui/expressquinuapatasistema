@@ -18,13 +18,12 @@ export const useAgenciaStore = create<AgenciaState>((set) => ({
 
   cargarAgencias: async () => {
     try {
-      const response = await api.get<any, any>('/api/agencias')
-      // api interceptor already unwraps to ApiResponse; SWR fetcher calls .then(r => r.data)
-      // Here we call api directly, so response IS the ApiResponse object
-      const list: Agencia[] = Array.isArray(response)
+      // /api/agencias/todas returns flat list (principals + sucursales)
+      const response = await api.get<any, any>('/api/agencias/todas')
+      const raw: Agencia[] = Array.isArray(response)
         ? response
         : (response?.data ?? response ?? [])
-      set({ agencias: list })
+      set({ agencias: raw })
     } catch (error) {
       console.error('Error al cargar agencias:', error)
     }

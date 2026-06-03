@@ -1,8 +1,11 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import useSWR, { mutate } from 'swr'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, ToggleLeft, ToggleRight, MapPin, Tag, Check, X, Truck, UserCircle } from 'lucide-react'
+import {
+  Plus, Pencil, ToggleLeft, ToggleRight, MapPin, Tag,
+  Check, X, Truck, UserCircle, Search, AlertTriangle, Mail,
+} from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import api from '@/services/api'
@@ -31,36 +34,88 @@ interface Tarifa {
   vigente: boolean
 }
 
+interface Vehiculo {
+  id: number
+  placa: string
+  tipo: string
+  marca: string | null
+  modelo: string | null
+  anio: number | null
+  capacidad: number
+  color: string | null
+  numAsientos: number
+  estado: string
+}
+
+interface Conductor {
+  id: number
+  nombres: string
+  apellidos: string
+  dni: string
+  licencia: string
+  categoriaLic: string | null
+  telefono: string | null
+  email: string | null
+  fechaVencLic: string | null
+  activo: boolean
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <div className="relative">
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-52"
+      />
+    </div>
+  )
+}
+
+function inputCls(extra = '') {
+  return `w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${extra}`
+}
+
 // ─── RutaForm ─────────────────────────────────────────────────────────────────
 
 interface RutaFormState {
-  codigo: string
-  origen: string
-  destino: string
-  distanciaKm: string
-  duracionMin: string
+  codigo: string; origen: string; destino: string
+  distanciaKm: string; duracionMin: string
 }
-
 const emptyRuta: RutaFormState = { codigo: '', origen: '', destino: '', distanciaKm: '', duracionMin: '' }
 
 function RutasTab() {
   const { data: rutasData, isLoading } = useSWR<Ruta[]>('/api/configuracion/rutas')
   const rutas = rutasData ?? []
 
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Ruta | null>(null)
-  const [form, setForm] = useState<RutaFormState>(emptyRuta)
-  const [saving, setSaving] = useState(false)
+  const [form, setForm]         = useState<RutaFormState>(emptyRuta)
+  const [saving, setSaving]     = useState(false)
+  const [q, setQ]               = useState('')
+
+  const filtered = useMemo(() => {
+    const low = q.toLowerCase()
+    return rutas.filter(r =>
+      r.codigo.toLowerCase().includes(low) ||
+      r.origen.toLowerCase().includes(low) ||
+      r.destino.toLowerCase().includes(low)
+    )
+  }, [rutas, q])
+
+  const activas = rutas.filter(r => r.activo).length
 
   const abrirCrear = () => { setEditando(null); setForm(emptyRuta); setOpen(true) }
   const abrirEditar = (r: Ruta) => {
     setEditando(r)
     setForm({
-      codigo: r.codigo,
-      origen: r.origen,
-      destino: r.destino,
+      codigo: r.codigo, origen: r.origen, destino: r.destino,
       distanciaKm: r.distanciaKm != null ? String(r.distanciaKm) : '',
-      duracionMin: r.duracionMin != null ? String(r.duracionMin) : '',
+      duracionMin:  r.duracionMin != null ? String(r.duracionMin) : '',
     })
     setOpen(true)
   }
@@ -77,7 +132,7 @@ function RutasTab() {
         origen: form.origen,
         destino: form.destino,
         distanciaKm: form.distanciaKm ? parseFloat(form.distanciaKm) : null,
-        duracionMin: form.duracionMin ? parseInt(form.duracionMin) : null,
+        duracionMin:  form.duracionMin ? parseInt(form.duracionMin)   : null,
       }
       if (editando) {
         await api.put(`/api/configuracion/rutas/${editando.id}`, body)
@@ -107,18 +162,26 @@ function RutasTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{rutas.length} ruta(s) registradas</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-900">{activas}</span> activas
+            {rutas.length !== activas && (
+              <span className="text-gray-400"> · {rutas.length - activas} inactivas</span>
+            )}
+          </p>
+          <SearchBar value={q} onChange={setQ} placeholder="Buscar ruta..." />
+        </div>
         <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nueva ruta</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
-        ) : rutas.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="py-12 text-center">
             <MapPin size={32} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No hay rutas registradas</p>
+            <p className="text-sm text-gray-400">{q ? 'Sin resultados' : 'No hay rutas registradas'}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -133,8 +196,8 @@ function RutasTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rutas.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+              {filtered.map(r => (
+                <tr key={r.id} className={`hover:bg-gray-50 transition-colors ${!r.activo ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3 font-mono font-semibold text-[#064e3b] text-xs">{r.codigo}</td>
                   <td className="px-4 py-3">
                     <span className="font-medium text-gray-900">{r.origen}</span>
@@ -145,7 +208,7 @@ function RutasTab() {
                     {r.distanciaKm != null ? `${r.distanciaKm} km` : '—'}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600">
-                    {r.duracionMin != null ? `${r.duracionMin} min` : '—'}
+                    {r.duracionMin != null ? `${Math.floor(r.duracionMin / 60)}h ${r.duracionMin % 60}m` : '—'}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -158,13 +221,13 @@ function RutasTab() {
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => abrirEditar(r)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
-                        title="Editar">
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50 transition-colors"
+                        aria-label="Editar ruta">
                         <Pencil size={14} />
                       </button>
                       <button onClick={() => toggleActivo(r)}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                        title={r.activo ? 'Desactivar' : 'Activar'}>
+                        aria-label={r.activo ? 'Desactivar ruta' : 'Activar ruta'}>
                         {r.activo ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
                       </button>
                     </div>
@@ -176,46 +239,36 @@ function RutasTab() {
         )}
       </div>
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editando ? 'Editar ruta' : 'Nueva ruta'}
-        size="md"
-      >
+      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar ruta' : 'Nueva ruta'} size="md">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
               <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
-                placeholder="HUA-KIM"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="HUA-KIM" className={inputCls('font-mono uppercase')} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Distancia (km)</label>
               <input type="number" min="0" step="0.01" value={form.distanciaKm}
                 onChange={e => setForm(f => ({ ...f, distanciaKm: e.target.value }))}
-                placeholder="125.5"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="125.5" className={inputCls()} />
             </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad origen *</label>
             <input value={form.origen} onChange={e => setForm(f => ({ ...f, origen: e.target.value }))}
-              placeholder="Huamanga"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              placeholder="Huamanga" className={inputCls()} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad destino *</label>
             <input value={form.destino} onChange={e => setForm(f => ({ ...f, destino: e.target.value }))}
-              placeholder="Kimbiri"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              placeholder="Kimbiri" className={inputCls()} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Duración estimada (min)</label>
             <input type="number" min="1" value={form.duracionMin}
               onChange={e => setForm(f => ({ ...f, duracionMin: e.target.value }))}
-              placeholder="180"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              placeholder="180" className={inputCls()} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -231,26 +284,33 @@ function RutasTab() {
 
 // ─── TarifasTab ───────────────────────────────────────────────────────────────
 
-interface TarifaFormState {
-  rutaId: string
-  tipoVehiculo: string
-  precio: string
-}
-
+interface TarifaFormState { rutaId: string; tipoVehiculo: string; precio: string }
 const emptyTarifa: TarifaFormState = { rutaId: '', tipoVehiculo: '', precio: '' }
 const TIPOS_VEHICULO = ['COMBI', 'CAMIONETA', 'BUS', 'MINIVAN']
 
 function TarifasTab() {
   const { data: tarifasData, isLoading } = useSWR<Tarifa[]>('/api/configuracion/tarifas')
-  const { data: rutasData } = useSWR<Ruta[]>('/api/configuracion/rutas')
+  const { data: rutasData }              = useSWR<Ruta[]>('/api/configuracion/rutas')
 
   const tarifas = tarifasData ?? []
-  const rutas = rutasData ?? []
+  const rutas   = (rutasData ?? []).filter(r => r.activo)
 
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Tarifa | null>(null)
-  const [form, setForm] = useState<TarifaFormState>(emptyTarifa)
-  const [saving, setSaving] = useState(false)
+  const [form, setForm]         = useState<TarifaFormState>(emptyTarifa)
+  const [saving, setSaving]     = useState(false)
+  const [q, setQ]               = useState('')
+
+  const filtered = useMemo(() => {
+    const low = q.toLowerCase()
+    return tarifas.filter(t =>
+      (t.rutaOrigen ?? '').toLowerCase().includes(low) ||
+      (t.rutaDestino ?? '').toLowerCase().includes(low) ||
+      t.tipoVehiculo.toLowerCase().includes(low)
+    )
+  }, [tarifas, q])
+
+  const vigentes = tarifas.filter(t => t.vigente).length
 
   const abrirCrear = () => { setEditando(null); setForm(emptyTarifa); setOpen(true) }
   const abrirEditar = (t: Tarifa) => {
@@ -299,18 +359,26 @@ function TarifasTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{tarifas.length} tarifa(s) registradas</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-900">{vigentes}</span> vigentes
+            {tarifas.length !== vigentes && (
+              <span className="text-gray-400"> · {tarifas.length - vigentes} inactivas</span>
+            )}
+          </p>
+          <SearchBar value={q} onChange={setQ} placeholder="Buscar tarifa..." />
+        </div>
         <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nueva tarifa</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
-        ) : tarifas.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="py-12 text-center">
             <Tag size={32} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No hay tarifas registradas</p>
+            <p className="text-sm text-gray-400">{q ? 'Sin resultados' : 'No hay tarifas registradas'}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -324,8 +392,8 @@ function TarifasTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {tarifas.map(t => (
-                <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+              {filtered.map(t => (
+                <tr key={t.id} className={`hover:bg-gray-50 transition-colors ${!t.vigente ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <span className="font-medium text-gray-900">{t.rutaOrigen ?? '—'}</span>
                     <span className="text-gray-400 mx-1.5">→</span>
@@ -350,13 +418,13 @@ function TarifasTab() {
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => abrirEditar(t)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
-                        title="Editar">
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50 transition-colors"
+                        aria-label="Editar tarifa">
                         <Pencil size={14} />
                       </button>
                       <button onClick={() => toggleVigente(t)}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                        title={t.vigente ? 'Desactivar' : 'Activar'}>
+                        aria-label={t.vigente ? 'Desactivar tarifa' : 'Activar tarifa'}>
                         {t.vigente ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
                       </button>
                     </div>
@@ -368,41 +436,31 @@ function TarifasTab() {
         )}
       </div>
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editando ? 'Editar tarifa' : 'Nueva tarifa'}
-        size="md"
-      >
+      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar tarifa' : 'Nueva tarifa'} size="md">
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Ruta *</label>
             <select value={form.rutaId} onChange={e => setForm(f => ({ ...f, rutaId: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              className={inputCls()}>
               <option value="">Selecciona una ruta</option>
               {rutas.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.origen} → {r.destino}
-                </option>
+                <option key={r.id} value={r.id}>{r.origen} → {r.destino}</option>
               ))}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de vehículo *</label>
             <select value={form.tipoVehiculo} onChange={e => setForm(f => ({ ...f, tipoVehiculo: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              className={inputCls()}>
               <option value="">Selecciona tipo</option>
-              {TIPOS_VEHICULO.map(tipo => (
-                <option key={tipo} value={tipo}>{tipo}</option>
-              ))}
+              {TIPOS_VEHICULO.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Precio (S/) *</label>
             <input type="number" min="0.10" step="0.50" value={form.precio}
               onChange={e => setForm(f => ({ ...f, precio: e.target.value }))}
-              placeholder="25.00"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              placeholder="25.00" className={inputCls()} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -418,28 +476,13 @@ function TarifasTab() {
 
 // ─── VehiculosTab ─────────────────────────────────────────────────────────────
 
-interface Vehiculo {
-  id: number
-  placa: string
-  tipo: string
-  marca: string | null
-  modelo: string | null
-  anio: number | null
-  capacidad: number
-  color: string | null
-  numAsientos: number
-  estado: string
-}
-
 interface VehiculoFormState {
   placa: string; tipo: string; marca: string; modelo: string
   anio: string; capacidad: string; color: string; numAsientos: string
 }
-
 const emptyVehiculo: VehiculoFormState = {
   placa: '', tipo: '', marca: '', modelo: '', anio: '', capacidad: '', color: '', numAsientos: ''
 }
-
 const ESTADOS_VEHICULO = ['OPERATIVO', 'MANTENIMIENTO', 'BAJA']
 const estadoColor: Record<string, string> = {
   OPERATIVO:    'bg-green-100 text-green-700',
@@ -451,10 +494,23 @@ function VehiculosTab() {
   const { data: vehData, isLoading } = useSWR<Vehiculo[]>('/api/configuracion/vehiculos')
   const vehiculos = vehData ?? []
 
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Vehiculo | null>(null)
-  const [form, setForm] = useState<VehiculoFormState>(emptyVehiculo)
-  const [saving, setSaving] = useState(false)
+  const [form, setForm]         = useState<VehiculoFormState>(emptyVehiculo)
+  const [saving, setSaving]     = useState(false)
+  const [q, setQ]               = useState('')
+
+  const filtered = useMemo(() => {
+    const low = q.toLowerCase()
+    return vehiculos.filter(v =>
+      v.placa.toLowerCase().includes(low) ||
+      v.tipo.toLowerCase().includes(low) ||
+      (v.marca ?? '').toLowerCase().includes(low) ||
+      (v.modelo ?? '').toLowerCase().includes(low)
+    )
+  }, [vehiculos, q])
+
+  const operativos = vehiculos.filter(v => v.estado === 'OPERATIVO').length
 
   const abrirCrear = () => { setEditando(null); setForm(emptyVehiculo); setOpen(true) }
   const abrirEditar = (v: Vehiculo) => {
@@ -512,18 +568,26 @@ function VehiculosTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{vehiculos.length} vehículo(s) registrados</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-900">{operativos}</span> operativos
+            {vehiculos.length !== operativos && (
+              <span className="text-gray-400"> · {vehiculos.length - operativos} fuera de servicio</span>
+            )}
+          </p>
+          <SearchBar value={q} onChange={setQ} placeholder="Buscar vehículo..." />
+        </div>
         <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nuevo vehículo</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
-        ) : vehiculos.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="py-12 text-center">
             <Truck size={32} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No hay vehículos registrados</p>
+            <p className="text-sm text-gray-400">{q ? 'Sin resultados' : 'No hay vehículos registrados'}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -538,7 +602,7 @@ function VehiculosTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vehiculos.map(v => (
+              {filtered.map(v => (
                 <tr key={v.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#064e3b] text-sm">{v.placa}</td>
                   <td className="px-4 py-3">
@@ -554,17 +618,15 @@ function VehiculosTab() {
                     <select
                       value={v.estado}
                       onChange={e => cambiarEstado(v, e.target.value)}
-                      className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:ring-2 focus:ring-blue-500 ${estadoColor[v.estado] ?? 'bg-gray-100 text-gray-600'}`}
+                      className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:ring-2 focus:ring-emerald-500 ${estadoColor[v.estado] ?? 'bg-gray-100 text-gray-600'}`}
                     >
-                      {ESTADOS_VEHICULO.map(e => (
-                        <option key={e} value={e}>{e}</option>
-                      ))}
+                      {ESTADOS_VEHICULO.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => abrirEditar(v)}
-                      className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
-                      title="Editar">
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50 transition-colors"
+                      aria-label="Editar vehículo">
                       <Pencil size={14} />
                     </button>
                   </td>
@@ -575,24 +637,18 @@ function VehiculosTab() {
         )}
       </div>
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editando ? 'Editar vehículo' : 'Nuevo vehículo'}
-        size="md"
-      >
+      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar vehículo' : 'Nuevo vehículo'} size="md">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Placa *</label>
               <input value={form.placa} onChange={e => setForm(f => ({ ...f, placa: e.target.value }))}
-                placeholder="ABC-123"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="ABC-123" className={inputCls('font-mono uppercase')} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
               <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                className={inputCls()}>
                 <option value="">Seleccionar</option>
                 {TIPOS_VEHICULO.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -602,14 +658,12 @@ function VehiculosTab() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Marca</label>
               <input value={form.marca} onChange={e => setForm(f => ({ ...f, marca: e.target.value }))}
-                placeholder="Toyota"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="Toyota" className={inputCls()} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Modelo</label>
               <input value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))}
-                placeholder="Hiace"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="Hiace" className={inputCls()} />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
@@ -617,29 +671,25 @@ function VehiculosTab() {
               <label className="block text-xs font-medium text-gray-700 mb-1">Año</label>
               <input type="number" min="2000" max="2030" value={form.anio}
                 onChange={e => setForm(f => ({ ...f, anio: e.target.value }))}
-                placeholder="2020"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="2020" className={inputCls()} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Capacidad *</label>
               <input type="number" min="1" value={form.capacidad}
                 onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))}
-                placeholder="15"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="15" className={inputCls()} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">N° asientos *</label>
               <input type="number" min="1" value={form.numAsientos}
                 onChange={e => setForm(f => ({ ...f, numAsientos: e.target.value }))}
-                placeholder="15"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="15" className={inputCls()} />
             </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
             <input value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-              placeholder="Blanco"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              placeholder="Blanco" className={inputCls()} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -655,37 +705,46 @@ function VehiculosTab() {
 
 // ─── ConductoresTab ───────────────────────────────────────────────────────────
 
-interface Conductor {
-  id: number
-  nombres: string
-  apellidos: string
-  dni: string
-  licencia: string
-  categoriaLic: string | null
-  telefono: string | null
-  email: string | null
-  fechaVencLic: string | null
-  activo: boolean
-}
-
 interface ConductorFormState {
   nombres: string; apellidos: string; dni: string; licencia: string
   categoriaLic: string; telefono: string; email: string; fechaVencLic: string
 }
-
 const emptyConductor: ConductorFormState = {
   nombres: '', apellidos: '', dni: '', licencia: '',
   categoriaLic: '', telefono: '', email: '', fechaVencLic: '',
+}
+
+function licenciaStatus(fechaVenc: string | null): 'ok' | 'pronto' | 'vencida' | null {
+  if (!fechaVenc) return null
+  const dias = Math.ceil((new Date(fechaVenc).getTime() - Date.now()) / 86_400_000)
+  if (dias < 0)  return 'vencida'
+  if (dias <= 30) return 'pronto'
+  return 'ok'
 }
 
 function ConductoresTab() {
   const { data: condData, isLoading } = useSWR<Conductor[]>('/api/configuracion/conductores')
   const conductores = condData ?? []
 
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Conductor | null>(null)
-  const [form, setForm] = useState<ConductorFormState>(emptyConductor)
-  const [saving, setSaving] = useState(false)
+  const [form, setForm]         = useState<ConductorFormState>(emptyConductor)
+  const [saving, setSaving]     = useState(false)
+  const [q, setQ]               = useState('')
+
+  const filtered = useMemo(() => {
+    const low = q.toLowerCase()
+    return conductores.filter(c =>
+      c.nombres.toLowerCase().includes(low) ||
+      c.apellidos.toLowerCase().includes(low) ||
+      c.dni.includes(low) ||
+      c.licencia.toLowerCase().includes(low)
+    )
+  }, [conductores, q])
+
+  const activos   = conductores.filter(c => c.activo).length
+  const vencidos  = conductores.filter(c => licenciaStatus(c.fechaVencLic) === 'vencida').length
+  const proximos  = conductores.filter(c => licenciaStatus(c.fechaVencLic) === 'pronto').length
 
   const abrirCrear = () => { setEditando(null); setForm(emptyConductor); setOpen(true) }
   const abrirEditar = (c: Conductor) => {
@@ -746,18 +805,36 @@ function ConductoresTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{conductores.length} conductor(es) registrados</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-900">{activos}</span> activos
+            {conductores.length !== activos && (
+              <span className="text-gray-400"> · {conductores.length - activos} inactivos</span>
+            )}
+          </p>
+          {vencidos > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+              <AlertTriangle size={11} /> {vencidos} lic. vencida{vencidos > 1 ? 's' : ''}
+            </span>
+          )}
+          {proximos > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+              <AlertTriangle size={11} /> {proximos} vence pronto
+            </span>
+          )}
+          <SearchBar value={q} onChange={setQ} placeholder="Buscar conductor..." />
+        </div>
         <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nuevo conductor</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
-        ) : conductores.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="py-12 text-center">
             <UserCircle size={32} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No hay conductores registrados</p>
+            <p className="text-sm text-gray-400">{q ? 'Sin resultados' : 'No hay conductores registrados'}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -766,55 +843,74 @@ function ConductoresTab() {
                 <th className="px-4 py-3 text-left font-medium">Conductor</th>
                 <th className="px-4 py-3 text-left font-medium">DNI</th>
                 <th className="px-4 py-3 text-left font-medium">Licencia</th>
-                <th className="px-4 py-3 text-left font-medium">Teléfono</th>
+                <th className="px-4 py-3 text-left font-medium">Contacto</th>
                 <th className="px-4 py-3 text-left font-medium">Venc. lic.</th>
                 <th className="px-4 py-3 text-center font-medium">Estado</th>
                 <th className="px-4 py-3 text-center font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {conductores.map(c => (
-                <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{c.nombres} {c.apellidos}</p>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{c.dni}</td>
-                  <td className="px-4 py-3 text-xs">
-                    <span className="inline-block bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
-                      {c.licencia}
-                    </span>
-                    {c.categoriaLic && (
-                      <span className="ml-1 text-gray-400">({c.categoriaLic})</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{c.telefono ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600">
-                    {c.fechaVencLic ? new Date(c.fechaVencLic).toLocaleDateString('es-PE') : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      c.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {c.activo ? <Check size={10} /> : <X size={10} />}
-                      {c.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => abrirEditar(c)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
-                        title="Editar">
-                        <Pencil size={14} />
-                      </button>
-                      <button onClick={() => toggleActivo(c)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                        title={c.activo ? 'Desactivar' : 'Activar'}>
-                        {c.activo ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(c => {
+                const licStatus = licenciaStatus(c.fechaVencLic)
+                return (
+                  <tr key={c.id} className={`hover:bg-gray-50 transition-colors ${!c.activo ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-900">{c.nombres} {c.apellidos}</p>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{c.dni}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <span className="inline-block bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
+                        {c.licencia}
+                      </span>
+                      {c.categoriaLic && (
+                        <span className="ml-1 text-gray-400">({c.categoriaLic})</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      <div>{c.telefono ?? '—'}</div>
+                      {c.email && (
+                        <div className="flex items-center gap-1 text-gray-400 mt-0.5">
+                          <Mail size={10} />{c.email}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {c.fechaVencLic ? (
+                        <span className={`inline-flex items-center gap-1 ${
+                          licStatus === 'vencida' ? 'text-red-600 font-semibold' :
+                          licStatus === 'pronto'  ? 'text-amber-600 font-medium' :
+                          'text-gray-600'
+                        }`}>
+                          {licStatus !== 'ok' && <AlertTriangle size={11} />}
+                          {new Date(c.fechaVencLic).toLocaleDateString('es-PE')}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                        c.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {c.activo ? <Check size={10} /> : <X size={10} />}
+                        {c.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => abrirEditar(c)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50 transition-colors"
+                          aria-label="Editar conductor">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => toggleActivo(c)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          aria-label={c.activo ? 'Desactivar conductor' : 'Activar conductor'}>
+                          {c.activo ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -826,35 +922,33 @@ function ConductoresTab() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Nombres *</label>
               <input value={form.nombres} onChange={e => setForm(f => ({ ...f, nombres: e.target.value }))}
-                placeholder="Carlos"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="Carlos" className={inputCls()} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Apellidos *</label>
               <input value={form.apellidos} onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))}
-                placeholder="García López"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="García López" className={inputCls()} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">DNI * (8 dígitos)</label>
-              <input value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value.replace(/\D/g, '').slice(0, 8) }))}
-                placeholder="12345678" maxLength={8}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input value={form.dni}
+                onChange={e => setForm(f => ({ ...f, dni: e.target.value.replace(/\D/g, '').slice(0, 8) }))}
+                placeholder="12345678" maxLength={8} className={inputCls('font-mono')} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">N° Licencia *</label>
-              <input value={form.licencia} onChange={e => setForm(f => ({ ...f, licencia: e.target.value.toUpperCase() }))}
-                placeholder="Q12345678"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input value={form.licencia}
+                onChange={e => setForm(f => ({ ...f, licencia: e.target.value.toUpperCase() }))}
+                placeholder="Q12345678" className={inputCls('font-mono uppercase')} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Categoría licencia</label>
               <select value={form.categoriaLic} onChange={e => setForm(f => ({ ...f, categoriaLic: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                className={inputCls()}>
                 <option value="">Sin categoría</option>
                 {['A-I','A-IIa','A-IIb','A-IIIa','A-IIIb','A-IIIc','B-I','B-IIa','B-IIb','B-IIc'].map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
@@ -863,22 +957,22 @@ function ConductoresTab() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
-              <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
-                placeholder="987654321" maxLength={9}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input value={form.telefono}
+                onChange={e => setForm(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
+                placeholder="987654321" maxLength={9} className={inputCls('font-mono')} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                placeholder="conductor@ejemplo.com"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                placeholder="conductor@ejemplo.com" className={inputCls()} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Vencimiento licencia</label>
-              <input type="date" value={form.fechaVencLic} onChange={e => setForm(f => ({ ...f, fechaVencLic: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input type="date" value={form.fechaVencLic}
+                onChange={e => setForm(f => ({ ...f, fechaVencLic: e.target.value }))}
+                className={inputCls()} />
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
@@ -912,7 +1006,6 @@ export default function ConfiguracionPage() {
         <p className="text-sm text-gray-500">Gestión de rutas, tarifas, flota y conductores</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button

@@ -223,7 +223,7 @@ function BuscadorDni({
     try {
       const res = await api.get(`/api/clientes/buscar?dni=${d}`)
       const c = (res as any)?.data?.data ?? (res as any)?.data
-      onFound({ id: c.id, nombres: c.nombres, apellidos: c.apellidos, numDoc: c.numDoc, telefono: c.telefono })
+      onFound({ id: c.id, nombres: c.nombres, apellidos: c.apellidos, numDoc: d, telefono: c.telefono })
     } catch {
       toast('DNI no encontrado — puede registrar los datos manualmente', { icon: 'ℹ️' })
       onFound({ id: 0, nombres: '', apellidos: '', numDoc: d, telefono: '' })
@@ -324,51 +324,53 @@ function ResumenPanel({ step, viaje, asientoNum, precioBase, descuento, totalNum
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden sticky top-4">
       {/* Encabezado */}
       <div className="bg-[#064e3b] px-5 py-4">
-        <p className="text-xs font-bold text-blue-300 uppercase tracking-widest mb-0.5">Reserva</p>
+        <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest mb-0.5">Operación</p>
         <h3 className="text-base font-bold text-white leading-tight">Resumen</h3>
-        <p className="text-xs text-blue-300/80 mt-1">{subtitulo}</p>
+        <p className="text-xs text-emerald-200/70 mt-1">{subtitulo}</p>
       </div>
 
       <div className="divide-y divide-gray-100">
 
         {/* Viaje */}
         {viaje ? (
-          <div className="px-5 py-4 space-y-1">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Viaje</p>
-            <p className="text-sm font-bold text-gray-900">
-              {viaje.ruta?.origen} <span className="text-gray-400 font-normal mx-1">→</span> {viaje.ruta?.destino}
-            </p>
-            <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
-              <Clock size={11} className="text-gray-400" />
-              {formatFecha(viaje.fechaHoraSal)}
-            </p>
-            {viaje.vehiculo && (
-              <p className="text-xs text-gray-400 flex items-center gap-1.5">
-                <Bus size={11} className="text-gray-400" />
-                {viaje.vehiculo.tipo} · {viaje.vehiculo.placa}
+          <div className="px-5 py-4 space-y-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Viaje</p>
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-sm font-bold text-gray-900">{viaje.ruta?.origen}</span>
+              <ChevronRight size={13} className="text-gray-300" />
+              <span className="text-sm font-bold text-gray-900">{viaje.ruta?.destino}</span>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                <Clock size={10} className="text-gray-400" />
+                {formatFecha(viaje.fechaHoraSal)}
               </p>
-            )}
+              {viaje.vehiculo && (
+                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <Bus size={10} className="text-gray-300" />
+                  {viaje.vehiculo.tipo} · <span className="font-mono">{viaje.vehiculo.placa}</span>
+                </p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="px-5 py-8 text-center">
-            <Bus size={28} className="mx-auto mb-2 text-gray-200" />
+            <Bus size={24} className="mx-auto mb-2 text-gray-200" />
             <p className="text-xs text-gray-400">Sin viaje seleccionado</p>
           </div>
         )}
 
         {/* Asiento */}
         {asientoNum ? (
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Asiento</p>
-              <p className="text-3xl font-black text-[#064e3b] font-mono leading-none">
-                {String(asientoNum).padStart(2, '0')}
-              </p>
-            </div>
-            <div className="w-14 h-14 rounded-xl bg-[#064e3b]/8 border-2 border-[#064e3b]/20 flex items-center justify-center">
-              <span className="text-lg font-black text-[#064e3b]">
+          <div className="px-5 py-4 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-xl bg-[#064e3b] flex items-center justify-center shrink-0">
+              <span className="text-2xl font-black text-white font-mono leading-none">
                 {String(asientoNum).padStart(2, '0')}
               </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Asiento seleccionado</p>
+              <p className="text-sm font-semibold text-gray-700 mt-0.5">N° {String(asientoNum).padStart(2, '0')}</p>
             </div>
           </div>
         ) : step >= 2 ? (
@@ -554,6 +556,7 @@ export default function PasajesPage() {
   const handleVender = async () => {
     if (!viaje || !asientoNum) return
     const dniVal = clienteFound?.numDoc ?? ''
+    if (!dniVal) { toast.error('Busca al pasajero por DNI antes de emitir el pasaje'); return }
     if (!/^\d{8}$/.test(dniVal)) { toast.error('El DNI debe tener exactamente 8 dígitos'); return }
     if (!pNombres.trim()) { toast.error('Ingresa el nombre del pasajero'); return }
     if (!pApellidos.trim()) { toast.error('Ingresa los apellidos del pasajero'); return }
@@ -686,17 +689,25 @@ export default function PasajesPage() {
   const totalNum = Math.max(0, baseNum - descNum)
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-5">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[#064e3b] flex items-center justify-center shrink-0">
-          <Ticket size={20} className="text-white" />
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#064e3b] flex items-center justify-center shrink-0">
+            <Ticket size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Venta de Pasajes</h1>
+            <p className="text-xs text-gray-500">Selecciona viaje, asiento y pasajero en 3 pasos</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Venta de Pasajes</h1>
-          <p className="text-xs text-gray-500">Selecciona el viaje, asiento y datos del pasajero</p>
-        </div>
+        {step > 1 && step < 4 && (
+          <button onClick={resetWizard}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-xl px-3 py-2 hover:bg-gray-50 transition-colors">
+            <X size={12} /> Cancelar venta
+          </button>
+        )}
       </div>
 
       {/* ── Cuerpo: dos columnas ── */}
@@ -715,44 +726,79 @@ export default function PasajesPage() {
             {/* ── PASO 1: Viajes disponibles ── */}
             {step === 1 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Viajes disponibles hoy
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Viajes disponibles
+                  </p>
+                  {viajes.length > 0 && (
+                    <span className="text-[11px] text-gray-400">
+                      {viajes.length} viaje{viajes.length !== 1 ? 's' : ''} activo{viajes.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
                 {viajes.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
-                    <Bus size={32} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No hay viajes con asientos disponibles</p>
+                  <div className="text-center py-14 text-gray-400">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                      <Bus size={24} className="text-gray-300" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-500">Sin viajes disponibles</p>
+                    <p className="text-xs mt-1 text-gray-400">Programa un viaje primero desde el módulo de Viajes</p>
                   </div>
                 ) : (
-                  viajes.map(v => (
-                    <button key={v.id} onClick={() => seleccionarViaje(v)}
-                      className="w-full flex items-start justify-between p-3.5 rounded-xl border border-gray-200 hover:border-[#064e3b] hover:bg-blue-50/50 transition-all text-left gap-3 group">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-[#064e3b]/10 group-hover:bg-[#064e3b] flex items-center justify-center shrink-0 transition-colors">
-                          <Bus size={16} className="text-[#064e3b] group-hover:text-white transition-colors" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">
-                            {v.ruta?.origen ?? '—'} → {v.ruta?.destino ?? '—'}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-3 mt-0.5">
-                            <span className="flex items-center gap-1 text-xs text-gray-500">
-                              <Clock size={11} /> {formatFecha(v.fechaHoraSal)}
+                  viajes.map(v => {
+                    const totalAsientos = (v.vehiculo?.numAsientos ?? 1) - 1
+                    const ocupados = totalAsientos - (v.asientosLibres ?? 0)
+                    const pct = totalAsientos > 0 ? Math.round((ocupados / totalAsientos) * 100) : 0
+                    const pctBar = pct >= 90 ? 'bg-red-400' : pct >= 60 ? 'bg-amber-400' : 'bg-emerald-400'
+                    return (
+                      <button key={v.id} onClick={() => seleccionarViaje(v)}
+                        className="w-full p-3.5 rounded-2xl border border-gray-200 hover:border-[#064e3b] hover:shadow-sm transition-all text-left group">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-[#064e3b]/8 group-hover:bg-[#064e3b] flex items-center justify-center shrink-0 transition-colors">
+                              <Bus size={16} className="text-[#064e3b] group-hover:text-white transition-colors" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-gray-900 truncate">
+                                {v.ruta?.origen ?? '—'}
+                                <span className="text-gray-300 mx-1.5 font-normal">→</span>
+                                {v.ruta?.destino ?? '—'}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-1">
+                                <span className="flex items-center gap-1 text-xs text-gray-500">
+                                  <Clock size={10} /> {formatFecha(v.fechaHoraSal)}
+                                </span>
+                                {v.vehiculo && (
+                                  <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded font-medium">
+                                    {v.vehiculo.placa}
+                                  </span>
+                                )}
+                                {v.ruta?.distanciaKm && (
+                                  <span className="text-xs text-gray-400">{v.ruta.distanciaKm} km</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <Badge estado={v.estado} />
+                            <span className={`text-xs font-bold ${(v.asientosLibres ?? 0) <= 3 ? 'text-red-500' : 'text-emerald-600'}`}>
+                              {v.asientosLibres} libre{(v.asientosLibres ?? 0) !== 1 ? 's' : ''}
                             </span>
-                            {v.vehiculo && (
-                              <span className="flex items-center gap-1 text-xs text-gray-500">
-                                <Users size={11} /> {v.vehiculo.tipo} · {v.vehiculo.placa}
-                              </span>
-                            )}
                           </div>
                         </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <Badge estado={v.estado} />
-                        <span className="text-xs text-green-600 font-semibold">{v.asientosLibres} libres</span>
-                      </div>
-                    </button>
-                  ))
+                        {/* Barra de ocupación */}
+                        <div className="mt-3 space-y-1">
+                          <div className="flex justify-between text-[10px] text-gray-400">
+                            <span>{ocupados}/{totalAsientos} asientos ocupados</span>
+                            <span className={pct >= 90 ? 'text-red-500 font-semibold' : pct >= 60 ? 'text-amber-500' : 'text-emerald-600'}>{pct}%</span>
+                          </div>
+                          <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${pctBar}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })
                 )}
               </div>
             )}
@@ -826,9 +872,18 @@ export default function PasajesPage() {
                 {/* DNI */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                    Buscar pasajero por DNI
+                    Buscar pasajero por DNI <span className="text-red-500">*</span>
                   </label>
                   <BuscadorDni onFound={handleClienteFound} disabled={loading} />
+                  {clienteFound?.numDoc ? (
+                    <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1">
+                      <CheckCircle size={11} /> DNI {clienteFound.numDoc} — {clienteFound.nombres} {clienteFound.apellidos}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                      <AlertTriangle size={11} /> Obligatorio para emitir el pasaje
+                    </p>
+                  )}
                 </div>
 
                 {/* Nombres y apellidos */}
@@ -837,13 +892,13 @@ export default function PasajesPage() {
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Nombres *</label>
                     <input value={pNombres} onChange={e => setPNombres(e.target.value)}
                       placeholder="Nombres completos"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Apellidos *</label>
                     <input value={pApellidos} onChange={e => setPApellidos(e.target.value)}
                       placeholder="Apellidos"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
                   </div>
                 </div>
 
@@ -852,7 +907,7 @@ export default function PasajesPage() {
                   <input value={pTelefono}
                     onChange={e => setPTelefono(e.target.value.replace(/\D/g, '').slice(0, 9))}
                     placeholder="9XXXXXXXX" maxLength={9}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
                 </div>
 
                 <hr className="border-gray-100" />
@@ -874,7 +929,7 @@ export default function PasajesPage() {
                       }
                     }}
                     placeholder="0.00"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]" />
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
                 </div>
 
                 {/* ── Selector de descuentos / promociones ── */}
@@ -1037,36 +1092,58 @@ export default function PasajesPage() {
 
             {/* ── PASO 4: Éxito ── */}
             {step === 4 && resultado && viaje && (
-              <div className="text-center space-y-4 py-2">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle size={32} className="text-green-500" />
+              <div className="text-center space-y-5 py-2">
+                <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto">
+                  <CheckCircle size={32} className="text-emerald-500" />
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">
-                    {resultado.estado === 'RESERVADO' ? 'Reserva registrada' : 'Pasaje emitido'}
+                    {resultado.estado === 'RESERVADO' ? '¡Reserva registrada!' : '¡Pasaje emitido!'}
                   </h3>
-                  <p className="text-sm font-semibold text-gray-800 mt-1">
+                  <p className="text-sm font-semibold text-gray-700 mt-1">
                     {resultado.clienteApellidos}, {resultado.clienteNombres}
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Asiento <span className="font-semibold text-gray-700">{String(resultado.asientoNumero).padStart(2, '0')}</span>
-                    {' · '}{viaje.ruta?.origen} → {viaje.ruta?.destino}
+                    {viaje.ruta?.origen} → {viaje.ruta?.destino}
+                    {' · '}{formatFecha(viaje.fechaHoraSal)}
                   </p>
-                  <p className="text-xs text-gray-400">{formatFecha(viaje.fechaHoraSal)}</p>
                 </div>
 
-                <div className="inline-block bg-blue-50 border border-blue-200 rounded-xl px-5 py-3">
-                  <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider">N° Boleta</p>
-                  <p className="text-xl font-bold text-[#064e3b] font-mono">{resultado.codigoBoleta}</p>
-                  <p className="text-base font-bold text-green-600 mt-1">S/ {resultado.precioFinal.toFixed(2)}</p>
+                {/* Boleta highlight */}
+                <div className="bg-gradient-to-br from-[#064e3b] to-[#065f46] rounded-2xl px-6 py-5 text-white mx-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-left">
+                      <p className="text-[10px] text-emerald-300 font-semibold uppercase tracking-widest">N° Boleta</p>
+                      <p className="text-xl font-black font-mono mt-0.5">{resultado.codigoBoleta}</p>
+                    </div>
+                    <div className="text-center bg-white/10 rounded-xl px-4 py-2">
+                      <p className="text-[10px] text-emerald-300 font-semibold">Asiento</p>
+                      <p className="text-3xl font-black font-mono leading-none mt-0.5">
+                        {String(resultado.asientoNumero).padStart(2, '0')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-emerald-300 font-semibold uppercase tracking-widest">Total</p>
+                      <p className="text-xl font-black mt-0.5">S/ {resultado.precioFinal.toFixed(2)}</p>
+                    </div>
+                  </div>
+                  {resultado.estado === 'RESERVADO' && (
+                    <p className="mt-3 text-xs text-amber-300 bg-white/10 rounded-lg px-3 py-1.5 text-center">
+                      Asiento reservado · Pago pendiente en caja
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex gap-3 justify-center pt-1">
-                  <Button variant="secondary" onClick={resetWizard}>Nueva venta</Button>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={resetWizard}
+                    className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors font-medium">
+                    Nueva venta
+                  </button>
                   {resultado.estado !== 'RESERVADO' && (
-                    <Button variant="primary" icon={Printer} onClick={() => setTicketOpen(true)}>
-                      Imprimir ticket
-                    </Button>
+                    <button onClick={() => setTicketOpen(true)}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold">
+                      <Printer size={14} /> Imprimir ticket
+                    </button>
                   )}
                 </div>
               </div>
@@ -1091,100 +1168,126 @@ export default function PasajesPage() {
 
       </div>{/* fin grid wizard+resumen */}
 
-      {/* ═══ Lista de boletas (ancho completo) ═══ */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/60 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <FileText size={15} className="text-gray-400" />
-              Registro de boletas
-            </h3>
+      {/* ═══ Lista de boletas ═══ */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* Header con stats */}
+        <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/60">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <FileText size={14} className="text-gray-400" /> Boletas del día
+              </h3>
+              {pasajes.length > 0 && (
+                <div className="flex gap-2">
+                  {[
+                    { label: 'Vendidas', count: pasajes.filter(p => p.estado === 'VENDIDO').length, cls: 'bg-green-100 text-green-700' },
+                    { label: 'Reservas', count: pasajes.filter(p => p.estado === 'RESERVADO').length, cls: 'bg-amber-100 text-amber-700' },
+                    { label: 'Anuladas', count: pasajes.filter(p => p.estado === 'ANULADO').length, cls: 'bg-red-100 text-red-600' },
+                  ].filter(s => s.count > 0).map(s => (
+                    <span key={s.label} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${s.cls}`}>
+                      {s.count} {s.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
-              <input
-                value={listFiltroCodigo}
-                onChange={e => setListFiltroCodigo(e.target.value.toUpperCase())}
-                placeholder="Buscar N° boleta..."
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]"
-              />
-              <select value={listFiltroEstado} onChange={e => setListFiltroEstado(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b]">
-                <option value="">Todos</option>
-                <option value="VENDIDO">VENDIDO</option>
-                <option value="RESERVADO">RESERVADO</option>
-                <option value="ANULADO">ANULADO</option>
-              </select>
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  value={listFiltroCodigo}
+                  onChange={e => setListFiltroCodigo(e.target.value.toUpperCase())}
+                  placeholder="N° boleta…"
+                  className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs w-36 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors"
+                />
+              </div>
+              <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-xl">
+                {[{ v: '', l: 'Todos' }, { v: 'VENDIDO', l: 'Vendidos' }, { v: 'RESERVADO', l: 'Reservas' }, { v: 'ANULADO', l: 'Anulados' }].map(({ v, l }) => (
+                  <button key={v} onClick={() => setListFiltroEstado(v)}
+                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+                      listFiltroEstado === v
+                        ? 'bg-white text-gray-800 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}>{l}</button>
+                ))}
+              </div>
             </div>
           </div>
-
-          {pasajes.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-400">
-              <FileText size={32} className="mx-auto mb-2 opacity-25" />
-              No se encontraron boletas
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    {['N° Boleta','Pasajero','Asiento','Total','Estado','Fecha',''].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {pasajes.map(p => (
-                    <tr key={p.id} className="hover:bg-gray-50/70 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#064e3b]">
-                        {p.codigoBoleta}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 whitespace-nowrap text-xs">
-                          {p.clienteApellidos}, {p.clienteNombres}
-                        </p>
-                        <p className="text-[11px] text-gray-400">DNI: {p.clienteDni}</p>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 text-xs font-medium whitespace-nowrap">
-                        {String(p.asientoNumero).padStart(2, '0')}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap text-xs">
-                        S/ {Number(p.precioFinal).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border ${estadoPasajeBadge(p.estado)}`}>
-                          {p.estado}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
-                        {formatFecha(p.fechaVenta)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex flex-col items-end gap-1">
-                          {p.estado === 'RESERVADO' && (
-                            <button
-                              onClick={() => { setConfirmarModal({ open: true, id: p.id, codigo: p.codigoBoleta }); setConfirmarFormaPago('EFECTIVO') }}
-                              className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1 whitespace-nowrap"
-                            >
-                              <CheckCircle size={11} /> Confirmar
-                            </button>
-                          )}
-                          {(p.estado === 'VENDIDO' || p.estado === 'RESERVADO') && (
-                            <button
-                              onClick={() => setAnularModal({ open: true, id: p.id, codigo: p.codigoBoleta })}
-                              className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
-                            >
-                              <X size={11} /> Anular
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
+
+        {pasajes.length === 0 ? (
+          <div className="py-16 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+              <FileText size={20} className="text-gray-300" />
+            </div>
+            <p className="text-sm text-gray-500 font-medium">Sin boletas registradas</p>
+            <p className="text-xs text-gray-400 mt-1">Las boletas emitidas aparecerán aquí</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {['N° Boleta', 'Pasajero', 'Asiento', 'Total', 'Estado', 'Fecha', ''].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {pasajes.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50/60 transition-colors group">
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs font-bold text-[#064e3b]">{p.codigoBoleta}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-900 text-xs whitespace-nowrap">
+                        {p.clienteApellidos}, {p.clienteNombres}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 font-mono">DNI {p.clienteDni}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="w-8 h-8 rounded-lg bg-[#064e3b]/8 text-[#064e3b] text-xs font-black font-mono flex items-center justify-center">
+                        {String(p.asientoNumero).padStart(2, '0')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-gray-900 text-xs whitespace-nowrap tabular-nums">
+                      S/ {Number(p.precioFinal).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${estadoPasajeBadge(p.estado)}`}>
+                        {p.estado}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
+                      {formatFecha(p.fechaVenta)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        {p.estado === 'RESERVADO' && (
+                          <button
+                            onClick={() => { setConfirmarModal({ open: true, id: p.id, codigo: p.codigoBoleta }); setConfirmarFormaPago('EFECTIVO') }}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-semibold rounded-lg hover:bg-amber-200 transition-colors whitespace-nowrap">
+                            <CheckCircle size={11} /> Confirmar
+                          </button>
+                        )}
+                        {(p.estado === 'VENDIDO' || p.estado === 'RESERVADO') && (
+                          <button
+                            onClick={() => setAnularModal({ open: true, id: p.id, codigo: p.codigoBoleta })}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-600 text-[11px] font-semibold rounded-lg hover:bg-red-200 transition-colors">
+                            <X size={11} /> Anular
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* ── Modal ticket ── */}
       {ticketInfo && (
