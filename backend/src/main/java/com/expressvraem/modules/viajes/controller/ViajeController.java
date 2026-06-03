@@ -3,6 +3,7 @@ package com.expressvraem.modules.viajes.controller;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.repository.EncomiendaRepository;
 import com.expressvraem.shared.websocket.WebSocketEventPublisher;
+import com.expressvraem.modules.viajes.dto.EditarViajeDTO;
 import com.expressvraem.modules.viajes.dto.ProgramarViajeDTO;
 import com.expressvraem.modules.viajes.dto.ViajeResponseDTO;
 import com.expressvraem.modules.viajes.entity.Asiento;
@@ -24,7 +25,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +50,7 @@ public class ViajeController {
      * Programa un nuevo viaje y genera los asientos según la capacidad del vehículo.
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','OPERADOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> programar(
             @Valid @RequestBody ProgramarViajeDTO dto, Authentication auth) {
 
@@ -59,6 +63,9 @@ public class ViajeController {
                 .getSingleResult();
 
         int numAsientos = ((Number) vehRow[3]).intValue();
+
+        // Validar conflictos de horario antes de programar
+        validarConflictos(dto.vehiculoId(), dto.conductorId(), dto.fechaHoraSal(), -1L);
 
         Viaje viaje = Viaje.builder()
                 .agenciaId(agenciaId)
@@ -170,6 +177,8 @@ public class ViajeController {
                     : viajeRepository.findAll();
 
         List<ViajeResponseDTO> dtos = viajes.stream()
+                .sorted(Comparator.comparing(Viaje::getFechaHoraSal,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(this::enrich)
                 .toList();
 
@@ -189,7 +198,7 @@ public class ViajeController {
      * Solo SUPERVISOR, GERENTE o ADMIN pueden confirmar.
      */
     @PostMapping("/{id}/confirmar-salida")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN','OPERADOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> confirmarSalida(
             @PathVariable Long id, Authentication auth) {
         Viaje viaje = viajeRepository.findById(id)
@@ -230,10 +239,31 @@ public class ViajeController {
     }
 
     /**
+     * Cancela un viaje PROGRAMADO.
+     */
+    @PostMapping("/{id}/cancelar")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    public ResponseEntity<ApiResponse<ViajeResponseDTO>> cancelar(
+            @PathVariable Long id, Authentication auth) {
+        Viaje viaje = viajeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Viaje", id));
+        if (!"PROGRAMADO".equals(viaje.getEstado())) {
+            throw new BusinessException(
+                    "Solo se puede cancelar un viaje PROGRAMADO. Estado actual: " + viaje.getEstado(),
+                    "ESTADO_INVALIDO");
+        }
+        viaje.setEstado("CANCELADO");
+        viajeRepository.save(viaje);
+        logService.logOperacion(auth.getName(), "VIAJES", "CANCELAR",
+                Map.of("viajeId", id, "operador", auth.getName()));
+        return ResponseEntity.ok(ApiResponse.ok("Viaje cancelado", enrich(viaje)));
+    }
+
+    /**
      * Confirmar llegada: cambia viaje a COMPLETADO y encomiendas EN_TRANSITO a LLEGADO_AGENCIA.
      */
     @PostMapping("/{id}/confirmar-llegada")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN','OPERADOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> confirmarLlegada(
             @PathVariable Long id, Authentication auth) {
         Viaje viaje = viajeRepository.findById(id)
@@ -290,6 +320,76 @@ public class ViajeController {
         )));
     }
 
+    /**
+     * Editar un viaje PROGRAMADO: conductor, fecha/hora, observaciones.
+     * El vehículo solo se puede cambiar si no hay asientos vendidos.
+     */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    public ResponseEntity<ApiResponse<ViajeResponseDTO>> editar(
+            @PathVariable Long id,
+            @Valid @RequestBody EditarViajeDTO dto,
+            Authentication auth) {
+        Viaje viaje = viajeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Viaje", id));
+
+        if (!"PROGRAMADO".equals(viaje.getEstado())) {
+            throw new BusinessException(
+                    "Solo se puede editar un viaje PROGRAMADO. Estado actual: " + viaje.getEstado(),
+                    "ESTADO_INVALIDO");
+        }
+
+        // Validar cambio de vehículo solo si no hay ventas
+        if (dto.vehiculoId() != null && !dto.vehiculoId().equals(viaje.getVehiculoId())) {
+            long vendidos = asientoRepository.countByViajeIdAndEstado(viaje.getId(), "OCUPADO")
+                          + asientoRepository.countByViajeIdAndEstado(viaje.getId(), "RESERVADO");
+            if (vendidos > 0) {
+                throw new BusinessException(
+                        "No se puede cambiar el vehículo porque ya hay " + vendidos + " pasajes vendidos.",
+                        "VEHICULO_CON_VENTAS");
+            }
+        }
+
+        // Validar conflictos de horario con el nuevo conductor/vehículo
+        Long vehId = dto.vehiculoId() != null ? dto.vehiculoId() : viaje.getVehiculoId();
+        validarConflictos(vehId, dto.conductorId(), dto.fechaHoraSal(), id);
+
+        viaje.setConductorId(dto.conductorId());
+        viaje.setFechaHoraSal(dto.fechaHoraSal());
+        viaje.setObservaciones(dto.observaciones());
+        if (dto.vehiculoId() != null && !dto.vehiculoId().equals(viaje.getVehiculoId())) {
+            viaje.setVehiculoId(dto.vehiculoId());
+        }
+        viaje.setUpdatedAt(OffsetDateTime.now());
+        viajeRepository.save(viaje);
+
+        logService.logOperacion(auth.getName(), "VIAJES", "EDITAR",
+                Map.of("viajeId", id, "conductorId", dto.conductorId()));
+
+        return ResponseEntity.ok(ApiResponse.ok("Viaje actualizado", enrich(viaje)));
+    }
+
+    /** Verifica que el vehículo y el conductor no tengan otro viaje a ±4 horas. */
+    private void validarConflictos(Long vehiculoId, Long conductorId,
+                                   OffsetDateTime fechaHoraSal, Long excludeId) {
+        List<String> activos = List.of("PROGRAMADO", "EN_RUTA");
+        List<Viaje> candidatos = viajeRepository.findByEstadoIn(activos).stream()
+                .filter(v -> !v.getId().equals(excludeId))
+                .filter(v -> v.getVehiculoId().equals(vehiculoId) || v.getConductorId().equals(conductorId))
+                .filter(v -> v.getFechaHoraSal() != null
+                        && Math.abs(ChronoUnit.HOURS.between(v.getFechaHoraSal(), fechaHoraSal)) < 4)
+                .toList();
+
+        if (!candidatos.isEmpty()) {
+            Viaje c = candidatos.get(0);
+            boolean esVeh = c.getVehiculoId().equals(vehiculoId);
+            throw new BusinessException(
+                    (esVeh ? "El vehículo" : "El conductor")
+                    + " ya tiene un viaje programado cerca de ese horario (±4h). Viaje #" + c.getId(),
+                    "CONFLICTO_HORARIO");
+        }
+    }
+
     private ViajeResponseDTO enrich(Viaje v) {
         Object[] rutaRow = (Object[]) entityManager
                 .createNativeQuery("SELECT id, origen, destino, distancia_km FROM rutas WHERE id = :rid")
@@ -302,16 +402,41 @@ public class ViajeController {
                 .getSingleResult();
 
         Double distKm = rutaRow[3] != null ? ((Number) rutaRow[3]).doubleValue() : null;
+        int numAsientos = ((Number) vehRow[3]).intValue();
 
-        return ViajeResponseDTO.from(v,
+        ViajeResponseDTO dto = ViajeResponseDTO.from(v,
                 String.valueOf(rutaRow[1]),
                 String.valueOf(rutaRow[2]),
                 distKm,
                 ((Number) rutaRow[0]).longValue(),
                 String.valueOf(vehRow[1]),
                 String.valueOf(vehRow[2]),
-                ((Number) vehRow[3]).intValue(),
+                numAsientos,
                 ((Number) vehRow[0]).longValue()
         );
+
+        // Conductor name + id
+        dto.setConductorId(v.getConductorId());
+        try {
+            Object[] condRow = (Object[]) entityManager
+                    .createNativeQuery("SELECT nombres, apellidos FROM usuarios WHERE id = :cid")
+                    .setParameter("cid", v.getConductorId())
+                    .getSingleResult();
+            dto.setConductorNombre(condRow[0] + " " + condRow[1]);
+        } catch (Exception e) {
+            dto.setConductorNombre("—");
+        }
+
+        // Seat occupancy (excluding driver seat 1)
+        long libres   = asientoRepository.countByViajeIdAndEstado(v.getId(), "LIBRE");
+        long ocupados = asientoRepository.countByViajeIdAndEstado(v.getId(), "OCUPADO")
+                      + asientoRepository.countByViajeIdAndEstado(v.getId(), "RESERVADO");
+        dto.setAsientosLibres(libres);
+        dto.setAsientosOcupados(ocupados);
+
+        // Encomiendas count
+        dto.setCantEncomiendas(encomiendaRepository.countByViajeId(v.getId()));
+
+        return dto;
     }
 }
