@@ -239,9 +239,6 @@ public class ManifiestoController {
         return ResponseEntity.ok(ApiResponse.ok("Estado actualizado", manifiestoRepository.save(m)));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @SuppressWarnings("unchecked")
     private ManifiestoDTO buildManifiesto(Long viajeId) {
         Viaje viaje = viajeRepository.findById(viajeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Viaje", viajeId));
@@ -252,7 +249,6 @@ public class ManifiestoController {
         dto.setFechaHoraSal(viaje.getFechaHoraSal());
         dto.setFechaHoraArr(viaje.getFechaHoraArr());
 
-        // Ruta
         try {
             Object[] ruta = (Object[]) entityManager
                     .createNativeQuery("SELECT origen, destino, distancia_km FROM rutas WHERE id = :id")
@@ -265,7 +261,6 @@ public class ManifiestoController {
             log.warn("No se pudo resolver ruta {} para manifiesto viaje {}: {}", viaje.getRutaId(), viajeId, e.getMessage());
         }
 
-        // Vehículo
         try {
             Object[] veh = (Object[]) entityManager
                     .createNativeQuery("SELECT placa, tipo, num_asientos FROM vehiculos WHERE id = :id")
@@ -278,7 +273,6 @@ public class ManifiestoController {
             log.warn("No se pudo resolver vehiculo {} para manifiesto viaje {}: {}", viaje.getVehiculoId(), viajeId, e.getMessage());
         }
 
-        // Conductor
         if (viaje.getConductorId() != null) {
             try {
                 Object[] cond = (Object[]) entityManager
@@ -292,7 +286,6 @@ public class ManifiestoController {
             }
         }
 
-        // Agencia
         try {
             Object[] ag = (Object[]) entityManager
                     .createNativeQuery("SELECT nombre, direccion, ruc FROM agencias WHERE id = :id")
@@ -305,7 +298,6 @@ public class ManifiestoController {
             log.warn("No se pudo resolver agencia {} para manifiesto viaje {}: {}", viaje.getAgenciaId(), viajeId, e.getMessage());
         }
 
-        // Pasajeros
         List<Pasaje> pasajes = pasajeRepository.findActivosByViajeId(viajeId);
         List<ManifiestoDTO.PasajeroItem> pasajeroItems = new ArrayList<>();
         BigDecimal totalRec = BigDecimal.ZERO;
@@ -321,7 +313,6 @@ public class ManifiestoController {
             item.setEstadoPasaje(p.getEstado());
             if (p.getPrecioFinal() != null) totalRec = totalRec.add(p.getPrecioFinal());
 
-            // asientoNumero is stored directly on the Pasaje entity
             item.setNumAsiento(p.getAsientoNumero() != null ? p.getAsientoNumero() : 0);
 
             try {
@@ -346,7 +337,6 @@ public class ManifiestoController {
         dto.setTotalPasajeros(pasajeroItems.size());
         dto.setTotalRecaudado(totalRec);
 
-        // Encomiendas del viaje
         List<Encomienda> encomiendas = encomiendaRepository.findByViajeId(viajeId);
         List<ManifiestoDTO.EncomiendaItem> encItems = new ArrayList<>();
         BigDecimal totalEnc = BigDecimal.ZERO;
@@ -391,7 +381,6 @@ public class ManifiestoController {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private ManifiestoPdfService.TicketData buildTicketData(Pasaje p) {
         String origen = "—", destino = "—", fecha = "—", hora = "—";
         String placa = "—", tipo = "—", ruc = "—", agenciaNombre = "—";
