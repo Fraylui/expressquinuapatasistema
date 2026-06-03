@@ -41,6 +41,8 @@ public record RegistrarEncomiendaDTO(
 
         Integer numBultos,
 
+        Boolean esFragil,
+
         Long viajeId,
 
         @NotNull(message = "La agencia destino es obligatoria")

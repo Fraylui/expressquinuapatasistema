@@ -1,6 +1,7 @@
 package com.expressvraem.modules.encomiendas.controller;
 
 import com.expressvraem.modules.agencias.repository.AgenciaRepository;
+import com.expressvraem.modules.auth.entity.Usuario;
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
@@ -10,10 +11,12 @@ import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.entity.HistorialEncomienda;
 import com.expressvraem.modules.encomiendas.service.ComprobantePdfService;
 import com.expressvraem.modules.encomiendas.service.ComprobanteEntregaPdfService;
+import com.expressvraem.modules.encomiendas.service.EtiquetaPdfService;
 import com.expressvraem.modules.encomiendas.service.EncomiendaService;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.middleware.AgenciaContext;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -38,6 +41,7 @@ public class EncomiendaController {
     private final EncomiendaService encomiendaService;
     private final ComprobantePdfService pdfService;
     private final ComprobanteEntregaPdfService pdfEntregaService;
+    private final EtiquetaPdfService etiquetaService;
     private final UsuarioRepository usuarioRepository;
     private final ClienteRepository clienteRepository;
     private final AgenciaRepository agenciaRepository;
@@ -48,6 +52,15 @@ public class EncomiendaController {
                 .getId();
     }
 
+    /** Resolves agenciaId: from context (OPERADOR/CONDUCTOR) or from user record (SUPER_ADMIN/GERENTE). */
+    private Long resolveAgenciaId(Authentication auth) {
+        Long fromContext = AgenciaContext.getAgenciaId();
+        if (fromContext != null) return fromContext;
+        return usuarioRepository.findByEmail(auth.getName())
+                .map(Usuario::getAgenciaId)
+                .orElse(1L);
+    }
+
     private String resolveNombreOperador(Authentication auth) {
         String email = auth != null ? auth.getName() : "—";
         try {
@@ -55,6 +68,11 @@ public class EncomiendaController {
             if (u != null) return u.getNombres() + " " + u.getApellidos();
         } catch (Exception ignored) {}
         return email;
+    }
+
+    private String extraerIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        return (xff != null && !xff.isBlank()) ? xff.split(",")[0].trim() : request.getRemoteAddr();
     }
 
     private Map<Long, String> buildAgenciasMap() {
@@ -68,8 +86,11 @@ public class EncomiendaController {
     @PostMapping("/api/encomiendas")
     public ResponseEntity<ApiResponse<Encomienda>> registrar(
             @Valid @RequestBody RegistrarEncomiendaDTO dto,
-            Authentication auth) {
-        Encomienda enc = encomiendaService.registrar(dto, resolveUserId(auth));
+            Authentication auth,
+            HttpServletRequest request) {
+        Encomienda enc = encomiendaService.registrar(
+                dto, resolveUserId(auth), resolveAgenciaId(auth),
+                extraerIp(request), resolveNombreOperador(auth));
         return ResponseEntity.ok(ApiResponse.ok("Encomienda registrada", enc));
     }
 
@@ -168,10 +189,33 @@ public class EncomiendaController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> entregar(
             @PathVariable Long id,
             @Valid @RequestBody EntregarEncomiendaDTO dto,
-            Authentication auth) {
+            Authentication auth,
+            HttpServletRequest request) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        Map<String, Object> result = encomiendaService.entregar(id, dto, resolveUserId(auth), agenciaId);
+        Map<String, Object> result = encomiendaService.entregar(
+                id, dto, resolveUserId(auth), agenciaId,
+                extraerIp(request), resolveNombreOperador(auth));
         return ResponseEntity.ok(ApiResponse.ok("Entregado", result));
+    }
+
+    // ─── Asignar / cambiar viaje ────────────────────────────────────────────────
+
+    @PatchMapping("/api/encomiendas/{id}/asignar-viaje")
+    public ResponseEntity<ApiResponse<Encomienda>> asignarViaje(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            Authentication auth) {
+        Long viajeId = body.get("viajeId") != null ? Long.valueOf(body.get("viajeId").toString()) : null;
+        return ResponseEntity.ok(ApiResponse.ok("Viaje asignado",
+                encomiendaService.asignarViaje(id, viajeId, resolveUserId(auth))));
+    }
+
+    // ─── Estadísticas rápidas ───────────────────────────────────────────────────
+
+    @GetMapping("/api/encomiendas/stats")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> stats(Authentication auth) {
+        Long agenciaId = resolveAgenciaId(auth);
+        return ResponseEntity.ok(ApiResponse.ok(encomiendaService.getStats(agenciaId)));
     }
 
     // ─── Historial ──────────────────────────────────────────────────────────────
@@ -206,6 +250,19 @@ public class EncomiendaController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename=\"entrega-" + enc.getCodigoTracking() + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
+    // ─── Etiqueta de envío (PDF) ────────────────────────────────────────────────
+
+    @GetMapping(value = "/api/encomiendas/{id}/etiqueta", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> etiqueta(@PathVariable Long id, Authentication auth) {
+        Encomienda enc = encomiendaService.getById(id);
+        byte[] pdf = etiquetaService.generarEtiqueta(enc, resolveNombreOperador(auth));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"etiqueta-" + enc.getCodigoTracking() + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
     }
@@ -273,6 +330,9 @@ public class EncomiendaController {
         m.put("recibidoPorDni",   enc.getRecibidoPorDni());
         m.put("recibidoPorNombre",enc.getRecibidoPorNombre());
         m.put("observaciones",    enc.getObservaciones());
+        m.put("montoDescuento",   enc.getMontoDescuento());
+        m.put("promocionId",      enc.getPromocionId());
+        m.put("esFragil",         enc.isEsFragil());
 
         // Agencia names
         m.put("agenciaOrigenNombre",  agenciasMap.getOrDefault(enc.getAgenciaOrigenId(),

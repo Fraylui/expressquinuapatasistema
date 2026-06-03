@@ -9,4 +9,7 @@ import java.util.List;
 @Repository
 public interface HistorialEncomiendaRepository extends JpaRepository<HistorialEncomienda, Long> {
     List<HistorialEncomienda> findByEncomiendaIdOrderByCreatedAtAsc(Long encomiendaId);
+
+    java.util.Optional<HistorialEncomienda> findFirstByEncomiendaIdAndEstadoNuevoOrderByCreatedAtDesc(
+            Long encomiendaId, String estadoNuevo);
 }

@@ -2,16 +2,16 @@ package com.expressvraem.modules.encomiendas.repository;
 
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface EncomiendaRepository extends JpaRepository<Encomienda, Long> {
+public interface EncomiendaRepository extends JpaRepository<Encomienda, Long>, JpaSpecificationExecutor<Encomienda> {
 
     Optional<Encomienda> findByCodigoTracking(String codigoTracking);
 
@@ -30,23 +30,27 @@ public interface EncomiendaRepository extends JpaRepository<Encomienda, Long> {
     List<Encomienda> findByDestinatarioId(Long destinatarioId);
 
     List<Encomienda> findByViajeId(Long viajeId);
+    long countByViajeId(Long viajeId);
 
     @Query("""
         SELECT e FROM Encomienda e
-        WHERE (:agenciaId IS NULL OR e.agenciaId = :agenciaId)
-          AND (:estado    IS NULL OR e.estado = :estado)
-          AND (:destino   IS NULL OR e.agenciaDestinoId = :destino)
-          AND (:desde     IS NULL OR e.fechaRegistro >= :desde)
-          AND (:hasta     IS NULL OR e.fechaRegistro <= :hasta)
-          AND (:q         IS NULL OR LOWER(e.codigoTracking) LIKE LOWER(CONCAT('%', :q, '%')))
-        ORDER BY e.fechaRegistro DESC
+        WHERE e.agenciaDestinoId = :agenciaDestinoId
+          AND e.estado IN :estados
+        ORDER BY e.fechaRegistro ASC
         """)
-    List<Encomienda> buscarConFiltros(
-            @Param("agenciaId") Long agenciaId,
-            @Param("estado")    String estado,
-            @Param("destino")   Long destino,
-            @Param("desde")     LocalDateTime desde,
-            @Param("hasta")     LocalDateTime hasta,
-            @Param("q")         String q
-    );
+    List<Encomienda> findParaEntrega(
+            @Param("agenciaDestinoId") Long agenciaDestinoId,
+            @Param("estados") java.util.Collection<String> estados);
+
+    @Query("""
+        SELECT e FROM Encomienda e
+        WHERE e.agenciaDestinoId = :agenciaDestinoId
+          AND e.estado = 'ENTREGADO'
+          AND e.fechaEntregaReal >= :inicio
+        ORDER BY e.fechaEntregaReal DESC
+        """)
+    List<Encomienda> findEntregadasHoy(
+            @Param("agenciaDestinoId") Long agenciaDestinoId,
+            @Param("inicio") java.time.LocalDateTime inicio);
+
 }

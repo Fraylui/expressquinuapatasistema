@@ -49,6 +49,10 @@ public class Encomienda {
     @Column(name = "num_bultos")
     private Integer numBultos;
 
+    @Builder.Default
+    @Column(name = "es_fragil", nullable = false)
+    private boolean esFragil = false;
+
     @Column(precision = 8, scale = 2)
     private BigDecimal monto;
 
