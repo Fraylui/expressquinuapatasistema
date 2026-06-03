@@ -1,40 +1,50 @@
 # Sistema Express Quinuapata VRAEM — Estado del Proyecto v2.0
-> Fecha: 2026-05-14 | Sprint actual: 4 — COMPLETADO ✅
+> Última actualización: 2026-06-03 | Estado: **LISTO PARA PRODUCCIÓN** ✅
 
 ---
 
-## Arquitectura de Roles y Permisos (DEFINITIVA)
+## Resumen del estado actual
 
-### 4 Roles del sistema
+| Área | Estado |
+|------|--------|
+| Backend (Spring Boot 3.5.14) | Completo ✅ |
+| Frontend (Next.js 14) | Completo ✅ |
+| Base de datos (PostgreSQL 15) | Completo ✅ |
+| Infraestructura (Docker + SSL) | Completo ✅ |
+| CI/CD (GitHub Actions) | Configurado ✅ |
+| Backups automáticos | Configurado ✅ |
+| Optimización de rendimiento | Aplicada ✅ |
+
+---
+
+## Roles del sistema
+
 | Rol | Descripción | Agencia | Módulos |
 |-----|-------------|---------|---------|
-| SUPER_ADMIN | Control total absoluto. Único. Nunca se desactiva. | Todas | Todos (incluye AUDITORIA) |
-| GERENTE | Acceso completo operativo + gestión. | Todas | Todos excepto AUDITORIA |
-| OPERADOR | Trabajador de agencia. | Solo su agencia | Configurable por SUPER_ADMIN |
-| CONDUCTOR | Solo lectura: sus viajes y pasajeros. | Solo su agencia | Ninguno (acceso directo a /conductor) |
+| SUPER_ADMIN | Control total absoluto. Único. | Todas | Todos + AUDITORIA |
+| GERENTE | Acceso completo operativo + gestión | Todas | Todos excepto AUDITORIA |
+| ADMIN_AGENCIA | Gestión de su agencia | Su agencia | Configurable |
+| OPERADOR | Operación del día a día | Su agencia | Configurable |
+| CONDUCTOR | Solo lectura de sus viajes | Su agencia | Ninguno (ruta /conductor) |
 
-### 9 Módulos granulares
-| Código | Módulo | Descripción |
-|--------|--------|-------------|
-| VENTAS | Ventas | Vender y anular pasajes |
-| ENCOMIENDAS | Encomiendas | Registrar, cambiar estado, entregar |
-| CAJA | Caja | Abrir turno, movimientos, cierre |
-| MANIFIESTOS | Manifiestos | Generar e imprimir manifiestos |
-| REPORTES | Reportes | Ver y exportar reportes |
-| USUARIOS | Usuarios | Crear y gestionar usuarios |
-| AGENCIAS | Agencias | Ver y configurar agencias |
-| CONFIGURACION | Configuración | Rutas, tarifas, vehículos, temporadas |
-| AUDITORIA | Auditoría | Solo SUPER_ADMIN, no asignable a otros |
+## Módulos granulares
 
-### Portal público (sin login)
-- `/tracking` — Rastrear encomienda por código EXP-2026-NNNNN
-- `/horarios` — Consultar horarios por ruta y fecha
-- `/tarifas` — Ver precios por ruta y tipo de vehículo
-- `/sucursales` — Ver agencias con contacto y horarios
+| Código | Módulo | Roles que lo usan |
+|--------|--------|------------------|
+| VENTAS | Pasajes | OPERADOR+ |
+| ENCOMIENDAS | Encomiendas | OPERADOR+ |
+| CAJA | Caja | OPERADOR+ |
+| MANIFIESTOS | Manifiestos | OPERADOR+ |
+| REPORTES | Reportes | GERENTE+ |
+| USUARIOS | Usuarios | SUPER_ADMIN, GERENTE |
+| AGENCIAS | Agencias | SUPER_ADMIN, GERENTE |
+| CONFIGURACION | Configuración | SUPER_ADMIN, GERENTE |
+| AUDITORIA | Auditoría | Solo SUPER_ADMIN |
 
 ---
 
 ## Credenciales de prueba
+
 | Email | Contraseña | Rol | Módulos |
 |-------|-----------|-----|---------|
 | superadmin@expressvraem.com | SuperAdmin2026! | SUPER_ADMIN | Todos |
@@ -46,202 +56,166 @@
 
 ---
 
-## Backend — Spring Boot
+## Backend — Spring Boot 3.5.14
 
 ### Infraestructura y Seguridad
-- [x] JWT auth con Spring Security (HS256)
-- [x] Multi-agencia via AgenciaContext (SUPER_ADMIN y GERENTE sin filtro, OPERADOR/CONDUCTOR filtran)
-- [x] 4 roles globales: SUPER_ADMIN, GERENTE, OPERADOR, CONDUCTOR
-- [x] 9 módulos granulares en tabla `modulos`
-- [x] `usuario_modulos` — asignación individual de módulos por usuario
-- [x] `@RequiereModulo("VENTAS")` — anotación AOP para guardia de módulos
-- [x] `ModuloPermissionAspect` — intercepta y valida módulos (SUPER_ADMIN bypasea)
-- [x] JWT incluye `modulosActivos` como claim
-- [x] Rate limiting (RateLimitInterceptor)
-- [x] Auditoría automática (AuditoriaInterceptor)
-- [x] GlobalExceptionHandler con mensaje de módulo denegado
-- [x] WebSocket STOMP nativo `/ws-stomp` (SockJS eliminado — warnings Firefox corregidos)
-- [x] WebSocketEventPublisher
+- [x] JWT auth con Spring Security 6.4 (HS256, BCrypt cost=12)
+- [x] DaoAuthenticationProvider con constructor nuevo API (6.4)
+- [x] Multi-agencia via AgenciaContext (SUPER_ADMIN/GERENTE sin filtro)
+- [x] 5 roles: SUPER_ADMIN, GERENTE, ADMIN_AGENCIA, OPERADOR, CONDUCTOR
+- [x] 9 módulos granulares con `@RequiereModulo` AOP
+- [x] Rate limiting en login (5 intentos/minuto por IP → 429)
+- [x] Auditoría automática de todos los requests
+- [x] Headers de seguridad HTTP (CSP, HSTS, X-Frame-Options)
+- [x] CORS restringido por ALLOWED_ORIGINS
+- [x] WebSocket STOMP nativo `/ws-stomp`
+- [x] Spring Cache + Caffeine (TTL 5min, max 500 entradas)
+- [x] HikariCP: pool de 20 conexiones configurado
+- [x] JPA batch: batch_size=25, order_inserts/updates=true
+- [x] Compresión HTTP habilitada (JSON/HTML/CSS ≥ 1KB)
 
-### Módulos Backend implementados
-- [x] Auth: login, logout, JWT refresh — incluye modulosActivos en respuesta
-- [x] Agencias: CRUD + endpoint público GET
-- [x] Usuarios: listar, cambiar estado, GET/PUT módulos por usuario
-- [x] Módulos: GET lista, GET por usuario, PUT actualizar (solo SUPER_ADMIN)
-- [x] Rutas: CRUD
-- [x] Vehículos: tabla BD + native query
-- [x] Conductores: tabla BD
-- [x] Viajes: listar, detalle, confirmar-salida, asientos, endpoint público
-- [x] Asientos: JPA + repository + endpoint
-- [x] Clientes: CRUD completo + búsqueda por DNI
-- [x] Pasajes: vender (@RequiereModulo VENTAS), anular, detalle
-- [x] Encomiendas: registrar, actualizar estado, tracking público
-- [x] Caja: abrir, cerrar, movimientos, turno actual
-- [x] Tarifas: listar, endpoint público
-- [x] Reportes: KPIs (COBIT MEA01)
-- [x] Auditoría: listar (solo SUPER_ADMIN)
-- [x] Conductor: mis-viajes, pasajeros por viaje
+### Módulos Backend
+- [x] **Auth** — login, logout, refresh, audit de LOGIN/LOGOUT/LOGIN_FALLIDO
+- [x] **Agencias** — CRUD + jerarquía principal/sucursal, métricas
+- [x] **Usuarios** — CRUD con CrearUsuarioDTO/ActualizarUsuarioDTO, email de bienvenida
+- [x] **Módulos** — gestión granular por usuario
+- [x] **Rutas** — CRUD
+- [x] **Vehículos** — CRUD
+- [x] **Conductores** — CRUD (módulo nuevo)
+- [x] **Configuración** — tabs Rutas/Vehículos/Conductores
+- [x] **Viajes** — programar, confirmar salida/llegada, cancelar, editar, validar conflictos ±4h
+- [x] **Asientos** — JPA + mapa en tiempo real
+- [x] **Clientes** — CRUD + búsqueda DNI/RUC, soporte empresa con representante
+- [x] **Pasajes** — vender, reservar, confirmar, anular, ticket PDF con QR
+- [x] **Encomiendas** — 10 estados, tracking público, esFragil, etiqueta PDF, entrega
+- [x] **Encomiendas Externas** — conductores externos con flujo recepción/entrega (módulo nuevo)
+- [x] **Manifiestos** — generar, persistir, PDF pasajeros y carga por viaje
+- [x] **Caja** — abrir/cerrar turno, egreso/ingreso, historial batch, PDF de cierre
+- [x] **Promociones** — descuentos y campañas
+- [x] **Reportes** — KPIs, comparativa hoy/ayer, ventas por hora, viajes del día, Excel
+- [x] **Auditoría** — filtros full-text+fecha+ip, actividad por hora/día, PDF+Excel export
+- [x] **Email** — credenciales iniciales a usuarios nuevos (EmailService)
 
-### Marcos de cumplimiento implementados
-- [x] **OWASP A03**: Validación DNI/RUC en ClienteDTO + BCrypt 12 rounds
-- [x] **OWASP A01**: Roles + módulos verificados por aspecto AOP
-- [x] **COSO Actividades de control**: Venta pasaje → ingreso en caja automático
-- [x] **COSO Principio de menor privilegio**: Módulos individuales por usuario
-- [x] **COBIT APO01**: 4 roles globales definidos + gestión de identidad
-- [x] **COBIT MEA01**: KPIs en /api/reportes/kpis
-- [x] **COBIT MEA02**: Auditoría inmutable solo SUPER_ADMIN
-- [x] **ISO 27001 A.9.2**: Gestión de acceso granular por módulos
-- [x] **ISO 27001 A.12.4**: Log de auditoría con IP, timestamp, antes/después
-- [x] **ITIL 4 SVC**: POST /api/viajes/{id}/confirmar-salida control de cambio de estado
-- [x] **CAATs**: Dashboard gerente + descarga Excel
-- [x] **Ley 29733 (Perú)**: Protección datos personales en clientes (tipo_doc, num_doc)
+### Optimizaciones de rendimiento
+- [x] `batchEnrich()` en ViajeController — 5 queries fijas vs 6×N (elimina N+1 crítico)
+- [x] `disponibles()` — 1 query GROUP BY vs N conteos individuales
+- [x] Índices DB: `idx_viajes_agencia_estado`, `idx_asientos_viaje_estado`, `idx_encomiendas_viaje`, etc.
+- [x] `AgenciaService` — batch loading de encargados y padres (2 queries vs N)
+- [x] `CajaService.enrichCajaList()` — 3 queries batch vs N+1
+
+### Correcciones VS Code warnings (Java Language Server)
+- [x] Todos los `@SuppressWarnings("unchecked")` innecesarios eliminados
+- [x] Imports no usados eliminados (Promocion en PasajeService, etc.)
+- [x] `@RequiredArgsConstructor` redundante eliminado (EmailService)
+- [x] Métodos privados no usados eliminados (resolveNombre en CajaController)
+- [x] Campos `static final` no usados eliminados (CONTENT_W en CajaReportePdfService)
+- [x] `mapstruct` eliminado del pom.xml (sin @Mapper en el proyecto)
+- [x] Raw type warnings corregidos con casteos tipados
 
 ---
 
 ## Frontend — Next.js 14
 
 ### Layout y Navegación
-- [x] Sidebar dinámico basado en `modulosActivos` del usuario
-- [x] Badge de rol con color en footer del Sidebar
-- [x] DashboardLayout con guardia de módulos (redirige con mensaje de acceso denegado)
-- [x] Conductor redirige a /conductor automáticamente
-- [x] Header con info de usuario
-- [x] SWR fetcher global con JWT interceptor
-- [x] WebSocket hook con guard `connected`
+- [x] Sidebar dinámico basado en `modulosActivos` del JWT
+- [x] DashboardLayout con guardia de módulos
+- [x] Dark mode completo con tema verde
+- [x] WebSocket hook con reconexión automática
 
 ### Páginas del dashboard
-- [x] `/` — Dashboard con KPIs filtrados por módulos
-- [x] `/viajes` — Lista de viajes + confirmar salida
-- [x] `/pasajes` — Flujo 4 pasos: viaje → asiento → pasajero (DNI) → confirmación
-- [x] `/encomiendas` — Registrar y listar
-- [x] `/caja` — Apertura, movimientos, cierre con arqueo
-- [x] `/clientes` — CRUD completo con búsqueda por DNI
-- [x] `/reportes` — BarChart + LineChart Recharts, selector período 7/14/30 días, KPIs resumen
-- [x] `/gerente` — KPIs COBIT/COSO, gráficos Recharts, CAATs
-- [x] `/conductor` — Mis viajes del día + lista de pasajeros
-- [x] `/usuarios` — Gestión de usuarios + botón "Módulos" (solo SUPER_ADMIN)
-- [x] `/usuarios/[id]/modulos` — Toggles individuales por módulo (solo SUPER_ADMIN)
-- [x] `/agencias` — Gestión de agencias
-- [x] `/auditoria` — Log de auditoría (solo SUPER_ADMIN en Sidebar)
+- [x] `/` — Dashboard con KPIs + comparativa hoy/ayer + accesos rápidos
+- [x] `/viajes` — Lista + programar + editar + cancelar + manifiestos
+- [x] `/pasajes` — Flujo 4 pasos + mapa de asientos en tiempo real
+- [x] `/encomiendas` — Registro + estados + etiqueta + entrega
+- [x] `/encomiendas-externas` — Recepción y entrega de terceros
+- [x] `/manifiestos` — Panel completo con PDF y persistencia
+- [x] `/caja` — Apertura/cierre de turno + egreso/ingreso + historial + PDF
+- [x] `/clientes` — CRUD con búsqueda por DNI/RUC
+- [x] `/promociones` — Gestión de descuentos
+- [x] `/reportes` — Gráficos Recharts + Excel export
+- [x] `/gerente` — KPIs COBIT/COSO + actividad + top rutas
+- [x] `/auditoria` — Bitácora + filtros + actividad + PDF/Excel
+- [x] `/usuarios` — CRUD con formulario + asignación de módulos
+- [x] `/agencias` — Jerarquía principal/sucursal
+- [x] `/configuracion` — Tabs Rutas/Vehículos/Conductores
 
 ### Portal público (sin login)
 - [x] `/tracking` — Rastrear encomienda
-- [x] `/horarios` — Horarios públicos de viajes
+- [x] `/horarios` — Horarios públicos
 - [x] `/tarifas` — Precios por ruta
 - [x] `/sucursales` — Agencias con contacto
 
+### Optimizaciones de rendimiento
+- [x] Debounce 250ms en búsquedas (evita filtrado en cada keystroke)
+- [x] `viajes/page.tsx` — Sin polling (WebSocket cubre actualizaciones en tiempo real)
+- [x] `pasajes/page.tsx` — 15s→60s / 10s→30s
+- [x] `auditoria/page.tsx` — 60s→300s
+- [x] `reportes/page.tsx` — 60s→120s / 120s→300s
+- [x] SWR `revalidateOnFocus: false` donde no es necesario
+
 ---
 
-## Base de Datos
-- [x] 26 tablas: todas las operativas + modulos + usuario_modulos
-- [x] Índices en campos críticos (rol, tracking, doc_tipo/num_doc)
-- [x] Seeds completos con 6 usuarios, 9 módulos, asignaciones granulares
+## Base de datos
+
+- [x] 28+ tablas con agencia_id para multi-agencia
+- [x] Índices en campos críticos: estado, viaje_id, agencia_id, fecha_emision, usuario_id
+- [x] Seeds completos con 6 usuarios, 9 módulos, agencias, rutas, tarifas
 - [x] 10 estados de encomienda en CHECK constraint
-- [x] Auditoría incluye LOGIN, LOGOUT, ACCESS_DENIED
+- [x] Columnas esFragil y montoDescuento en encomiendas
+- [x] Jerarquía agencias: tipo (AGENCIA/SUCURSAL) + agencia_padre_id
+- [x] Tabla encomiendas_externas para conductores externos
+- [x] Tabla manifiestos para persistencia
+- [x] Tabla conductores independiente
 
 ---
 
-## Pendiente / Por hacer
+## Infraestructura de Producción
 
-### Alta prioridad — TODO COMPLETADO ✅
-- [x] Resolver tarifaId real en venta de pasajes — usa /api/tarifas/buscar
-- [x] Manifiestos: generar e imprimir PDF — ManifiestoPdfService + ManifiestoController
-- [x] Imprimir ticket de pasaje — GET /api/manifiestos/ticket/{pasajeId}/pdf
+### Docker
+- [x] `backend/Dockerfile` — multi-stage Maven → JRE slim, G1GC, 75% RAM container
+- [x] `frontend/Dockerfile` — multi-stage Node → standalone, ARG env vars
+- [x] `nginx/Dockerfile` — imagen con template DOMAIN sustitución en runtime
+- [x] `docker-compose.yml` — restart:always, health checks, mem 896M backend
+- [x] `.env.production` — plantilla completa con instrucciones
 
-### Media prioridad — TODO COMPLETADO ✅
-- [x] Encomiendas page: búsqueda de remitente/destinatario por DNI — componente BuscadorCliente
-- [x] Configuración: página /configuracion con tabs Rutas, Tarifas y Vehículos — CRUD completo
-- [x] Reportes: gráfico de tendencias — BarChart + LineChart últimos 7/14/30 días
-- [x] Vehículos: UI de gestión en tab /configuracion — ConfiguracionVehiculoController + tab Vehículos
+### SSL/TLS
+- [x] `scripts/init-ssl.sh` — setup único: nginx temporal → certbot → stack
+- [x] Let's Encrypt con renovación automática certbot cada 12h
+- [x] TLS 1.2 + 1.3 en nginx, HSTS, OCSP stapling
 
-### Correcciones aplicadas en sesión anterior
-- [x] SockJS eliminado → WebSocket nativo /ws-stomp (warning Firefox corregido)
-- [x] Font preload: `preload: false` en Inter (warning WOFF2 corregido)
-- [x] Docker down -v + fresh restart → schema correcto con tabla modulos
-- [x] Roles y permisos auditados: sistema completo y funcional (ver sección abajo)
-
-### Baja prioridad — Sprint 5
-- [ ] QR code en tracking de encomiendas
-- [ ] Push notifications WebSocket en tiempo real
-- [ ] Tests automatizados: 403 módulos, BCrypt, rate limiter, JWT expiración
-
----
-
-## Verificación del Sistema de Roles y Permisos (2026-05-14)
-
-### Escenario 1: SUPER_ADMIN ve todos los módulos incluyendo Auditoría
-- Backend: `/api/auditoria/**` → `hasRole("SUPER_ADMIN")` ✅
-- Sidebar: `/auditoria` tiene `roles: ['SUPER_ADMIN']` ✅  
-- authStore: `hasModulo()` retorna `true` para SUPER_ADMIN sin verificar array ✅
-- DashboardLayout: RUTA_MODULO['/auditoria'] = 'AUDITORIA', SUPER_ADMIN bypasea ✅
-- **RESULTADO: PASA** ✅
-
-### Escenario 2: GERENTE ve todos los módulos excepto Auditoría, ve todas las agencias
-- Sidebar: `/auditoria` tiene `roles: ['SUPER_ADMIN']` → GERENTE no lo ve ✅
-- SecurityConfig: `/api/reportes/**`, `/api/configuracion/**` → `hasAnyRole("SUPER_ADMIN","GERENTE")` ✅
-- JWT: `agenciaId: null` para GERENTE → AgenciaFilterInterceptor no filtra → ve todas las agencias ✅
-- **RESULTADO: PASA** ✅
-
-### Escenario 3: OPERADOR (carlos.quispe) solo ve pasajes/encomiendas/caja/manifiestos, solo datos de su agencia
-- JWT: incluye `modulosActivos: ["VENTAS","ENCOMIENDAS","CAJA","MANIFIESTOS"]` desde `usuario_modulos` ✅
-- authStore: `hasModulo()` verifica `user.modulosActivos.includes(codigo)` ✅
-- DashboardLayout: módulos no asignados muestran "Acceso denegado" en español ✅
-- JWT: `agenciaId: {id_huamanga}` → AgenciaFilterInterceptor filtra todos los queries ✅
-- **RESULTADO: PASA** ✅
-
-### Escenario 4: CONDUCTOR (juan.ccoyllo) solo ve sus viajes, no puede acceder a otros módulos
-- DashboardLayout: `if (user.rol === 'CONDUCTOR' && pathname !== '/conductor' && pathname !== '/')` → `router.replace('/conductor')` ✅
-- SecurityConfig: `/api/conductor/**` → `hasRole("CONDUCTOR")`, el resto requiere otros roles ✅
-- Sidebar: solo muestra sección CONDUCTOR con "Mis viajes" ✅
-- **RESULTADO: PASA** ✅
-
-### Escenario 5: Cualquier persona puede rastrear en /tracking sin login
-- `/tracking/page.tsx`: no tiene `useRequireAuth()` ni está dentro de `(dashboard)` ✅
-- Backend: `/api/tracking/**` → `permitAll()` en SecurityConfig ✅
-- **RESULTADO: PASA** ✅
-
-### Escenario 6: OPERADOR que intenta acceder a /reportes → acceso denegado en español
-- DashboardLayout: `RUTA_MODULO['/reportes'] = 'REPORTES'` ✅
-- `hasModulo('REPORTES')` → false (OPERADOR sin módulo REPORTES) → `setAccesoDenegado(true)` ✅
-- Muestra: "Acceso denegado" + "No tienes acceso a este módulo. Contacta al administrador del sistema para solicitar el acceso correspondiente." ✅
-- Botón "Volver al tablero" → `router.push('/')` ✅
-- **RESULTADO: PASA** ✅
-
-### Puntuación final: 6/6 escenarios PASAN ✅
-
----
-
-## Infraestructura de Producción — Sprint 5 (2026-05-14)
-
-### Docker — Producción
-- [x] `backend/Dockerfile` — multi-stage Maven → JRE slim, `/app/logs` creado, flags G1GC
-- [x] `frontend/Dockerfile` — multi-stage Node, ARG NEXT_PUBLIC_API_URL/WS_URL, ENV HOSTNAME=0.0.0.0
-- [x] `nginx/Dockerfile` — imagen personalizada con template DOMAIN_PLACEHOLDER
-- [x] `nginx/entrypoint.sh` — sustitución de dominio en runtime vía `sed`
-- [x] `nginx/nginx.conf.template` — TLS 1.2+1.3, HSTS, OCSP, rate limiting, proxy_pass
-- [x] `nginx/nginx-init.conf` — HTTP-only para primer challenge Let's Encrypt
-- [x] `docker-compose.yml` — restart:always, health checks, mem limits, certbot 12h renewal
-- [x] `.env.production` — plantilla con instrucciones, sin valores reales en git
-
-### SSL/TLS con Let's Encrypt
-- [x] `scripts/init-ssl.sh` — setup único: nginx temporal → certbot → stack completo
+### Deploy y Backup
 - [x] `scripts/deploy.sh` — backup → build → restart → health check
-- [x] `scripts/backup.sh` — pg_dump + gzip + rotación 30 días
+- [x] `scripts/backup.sh` — pg_dump + verificación integridad + offsite (rclone/rsync)
+- [x] `scripts/restore.sh` — restauración interactiva con confirmación
+- [x] `.github/workflows/deploy.yml` — CI/CD automático al push a main
 
-### Seguridad OWASP Top 10 — Tests en vivo (2026-05-14)
-| Control | Test | Resultado |
-|---------|------|-----------|
-| A01 Broken Access Control | OPERADOR no ve encomiendas de otra agencia | **PASA** ✅ |
-| A01 Broken Access Control | ClienteService.findById() valida agenciaId | **PASA** ✅ |
-| A02 Cryptographic Failures | BCrypt(12) + JWT HS256 + HTTPS en producción | **PASA** ✅ |
-| A03 Injection | JPA queries parametrizadas, validación en DTOs | **PASA** ✅ |
-| A05 Security Misconfiguration | Solo /actuator/health expuesto | **PASA** ✅ |
-| A07 Auth Failures | Rate limiting 5/min en /api/auth/login | **PASA** ✅ |
-| A08 Data Integrity | JWT adulterado → 401, JWT falso → 401, sin token → 401, válido sin permiso → 403 | **PASA** ✅ |
+---
 
-### Correcciones aplicadas en Sprint 5
-- [x] `EncomiendaService.getLista()` — bug crítico: `findAll()` ignoraba agenciaId del OPERADOR → corregido
-- [x] `ClienteService.findById()` — sin validación de agencia → corregido con `AccessDeniedException`
-- [x] `SecurityConfig` — CONDUCTOR podía acceder a endpoints operativos → reglas explícitas añadidas
-- [x] `SecurityConfig.exceptionHandling()` — JWT inválido devolvía 403 (incorrecto) → ahora devuelve 401
-- [x] `backend/Dockerfile` — `/app/logs` no existía → añadido `mkdir -p /app/logs`
+## Marcos de cumplimiento implementados
+
+| Marco | Control | Estado |
+|-------|---------|--------|
+| OWASP A01 | Roles + módulos AOP, filtro agencia | ✅ |
+| OWASP A02 | BCrypt 12 + JWT HS256 + HTTPS | ✅ |
+| OWASP A03 | JPA parametrizado, validación DTO | ✅ |
+| OWASP A05 | Solo /actuator/health expuesto | ✅ |
+| OWASP A07 | Rate limit 5/min en login | ✅ |
+| OWASP A08 | JWT adulterado → 401 | ✅ |
+| COSO | Venta pasaje → ingreso caja automático | ✅ |
+| COBIT APO01 | 5 roles + gestión de identidad | ✅ |
+| COBIT MEA01 | KPIs en /api/reportes/kpis | ✅ |
+| COBIT MEA02 | Auditoría inmutable solo SUPER_ADMIN | ✅ |
+| ISO 27001 A.9.2 | Módulos granulares por usuario | ✅ |
+| ISO 27001 A.12.4 | Log con IP, timestamp, antes/después | ✅ |
+| Ley 29733 (Perú) | Datos censurados en tracking público | ✅ |
+
+---
+
+## Pendiente (bajo prioridad)
+
+- [ ] Tests automatizados end-to-end (Playwright)
+- [ ] Pruebas con usuarios reales de la empresa
+- [ ] Manual PDF para usuario final
+- [ ] Manual PDF para administrador del sistema
+- [ ] QR en tracking público de encomiendas (backend listo, falta UI)
+- [ ] Entrega formal con firma de Kevin Sandoval Torres
