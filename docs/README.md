@@ -59,7 +59,8 @@ PROYECTO_TRASPORTES/
 
 | Email                              | Contraseña         | Rol        | Agencia  |
 |------------------------------------|--------------------|------------|----------|
-| superadmin@expressvraem.com        | SuperAdmin2026!    | SUPER_ADMIN| Huamanga |
+| superadmin@expressvraem.com        | 
+    | SUPER_ADMIN| Huamanga |
 | kevin.sandoval@quinuapata.com      | Quinuapata2026!    | GERENTE    | Huamanga |
 | carlos.quispe@quinuapata.com       | Quinuapata2024!    | OPERADOR   | Huamanga |
 | maria.ccencho@quinuapata.com       | Quinuapata2024!    | OPERADOR   | Huamanga |

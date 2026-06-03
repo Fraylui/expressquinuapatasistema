@@ -120,10 +120,10 @@ docker compose -f docker-compose.dev.yml up --build
 - [ ] Reportes exportables a Excel (Apache POI) y PDF (PDFBox)
 - [ ] Dashboard gerencial con gráficos de ingresos por agencia
 
-### Sprint 4 — Auditoría + Usuarios + Configuración (PENDIENTE)
+### Sprint 4 — Auditoría + Usuarios + Configuración (EN PROGRESO)
 - [ ] Bitácora de auditoría completa e inmutable
 - [ ] Gestión de usuarios con checkboxes de módulos
-- [ ] Configuración de agencias, rutas, vehículos, temporadas
+- [x] Configuración de rutas, tarifas, vehículos y conductores (CRUD completo, búsqueda, validación duplicados, indicador licencia vencida)
 
 ### Sprint 5 — Producción (PENDIENTE)
 - [ ] Docker producción multi-stage
@@ -241,13 +241,7 @@ PROYECTO_TRASPORTES/
 
 ---
 
-## Crecimiento futuro planificado
+##
 
-- App móvil para conductores (API REST ya preparada)
-- Venta de pasajes por internet (mismo backend)
-- Integración SUNAT para facturación electrónica (campos preparados en DB)
-- Nuevas agencias: solo crear registro en panel de configuración, sin tocar código
-
----
 
 *Desarrollado con Claude Code · Metodología Scrum adaptado · Sprints de 2 semanas*
