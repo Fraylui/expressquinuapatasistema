@@ -307,28 +307,24 @@ public class CajaService {
 
         Map<Long, String> operadores = new HashMap<>();
         try {
-            entityManager.createNativeQuery(
+            @SuppressWarnings("unchecked")
+            List<Object[]> rowsUsr = (List<Object[]>) entityManager.createNativeQuery(
                     "SELECT id, nombres, apellidos FROM usuarios WHERE id IN :ids")
-                    .setParameter("ids", usuarioIds)
-                    .getResultList()
-                    .forEach(r -> {
-                        Object[] row = (Object[]) r;
-                        operadores.put(((Number) row[0]).longValue(), row[1] + " " + row[2]);
-                    });
+                    .setParameter("ids", usuarioIds).getResultList();
+            rowsUsr.forEach(row ->
+                    operadores.put(((Number) row[0]).longValue(), row[1] + " " + row[2]));
         } catch (Exception e) {
             log.warn("Batch usuarios fallido: {}", e.getMessage());
         }
 
         Map<Long, String> agencias = new HashMap<>();
         try {
-            entityManager.createNativeQuery(
+            @SuppressWarnings("unchecked")
+            List<Object[]> rowsAg = (List<Object[]>) entityManager.createNativeQuery(
                     "SELECT id, nombre, ciudad FROM agencias WHERE id IN :ids")
-                    .setParameter("ids", agenciaIds)
-                    .getResultList()
-                    .forEach(r -> {
-                        Object[] row = (Object[]) r;
-                        agencias.put(((Number) row[0]).longValue(), row[1] + " — " + row[2]);
-                    });
+                    .setParameter("ids", agenciaIds).getResultList();
+            rowsAg.forEach(row ->
+                    agencias.put(((Number) row[0]).longValue(), row[1] + " — " + row[2]));
         } catch (Exception e) {
             log.warn("Batch agencias fallido: {}", e.getMessage());
         }
@@ -377,6 +373,7 @@ public class CajaService {
         return m;
     }
 
+    @SuppressWarnings("unchecked")
     private String resolveNombreUsuario(Long id) {
         try {
             Object[] row = (Object[]) entityManager
@@ -389,6 +386,7 @@ public class CajaService {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private String resolveNombreAgencia(Long id) {
         try {
             Object[] row = (Object[]) entityManager

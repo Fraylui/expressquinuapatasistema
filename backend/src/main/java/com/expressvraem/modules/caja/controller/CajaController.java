@@ -39,11 +39,6 @@ public class CajaController {
         return resolveUsuario(auth).getId();
     }
 
-    private String resolveNombre(Authentication auth) {
-        Usuario u = resolveUsuario(auth);
-        return u.getNombres() + " " + u.getApellidos();
-    }
-
     private String resolveRol(Authentication auth) {
         return auth.getAuthorities().stream()
                 .map(a -> a.getAuthority().replace("ROLE_", ""))
