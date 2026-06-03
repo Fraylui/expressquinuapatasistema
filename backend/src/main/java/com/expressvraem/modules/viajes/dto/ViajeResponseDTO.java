@@ -15,12 +15,18 @@ public class ViajeResponseDTO {
     private OffsetDateTime fechaHoraArr;
     private String observaciones;
 
-    private RutaDTO ruta;
+    private RutaDTO     ruta;
     private VehiculoDTO vehiculo;
+
+    private Long    conductorId;
+    private String  conductorNombre;
+    private Long    asientosLibres;
+    private Long    asientosOcupados;
+    private Long    cantEncomiendas;
 
     @Data
     public static class RutaDTO {
-        private Long id;
+        private Long   id;
         private String origen;
         private String destino;
         private Double distanciaKm;
@@ -28,9 +34,9 @@ public class ViajeResponseDTO {
 
     @Data
     public static class VehiculoDTO {
-        private Long id;
-        private String placa;
-        private String tipo;
+        private Long    id;
+        private String  placa;
+        private String  tipo;
         private Integer numAsientos;
     }
 
