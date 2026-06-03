@@ -15,9 +15,20 @@ export const metadata: Metadata = {
   description: 'Sistema de Gestión de Transporte Express Quinuapata VRAEM SAC',
 }
 
+// Script inline que aplica el tema ANTES de que React hidrate — evita el flash
+const themeScript = `
+try {
+  const saved = JSON.parse(localStorage.getItem('theme-preference') || '{}');
+  if (saved?.state?.theme === 'dark') document.documentElement.classList.add('dark');
+} catch(e) {}
+`
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className={inter.className}>
         <Providers>
           {children}

@@ -2,12 +2,12 @@
 import React, { useState } from 'react'
 import useSWR, { mutate } from 'swr'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, ToggleLeft, ToggleRight, MapPin, Tag, Check, X, Truck } from 'lucide-react'
+import { Plus, Pencil, ToggleLeft, ToggleRight, MapPin, Tag, Check, X, Truck, UserCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import api from '@/services/api'
 
-type Tab = 'rutas' | 'tarifas' | 'vehiculos'
+type Tab = 'rutas' | 'tarifas' | 'vehiculos' | 'conductores'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ function RutasTab() {
             <tbody className="divide-y divide-gray-100">
               {rutas.map(r => (
                 <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-semibold text-[#1F3864] text-xs">{r.codigo}</td>
+                  <td className="px-4 py-3 font-mono font-semibold text-[#064e3b] text-xs">{r.codigo}</td>
                   <td className="px-4 py-3">
                     <span className="font-medium text-gray-900">{r.origen}</span>
                     <span className="text-gray-400 mx-1.5">→</span>
@@ -158,7 +158,7 @@ function RutasTab() {
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => abrirEditar(r)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 transition-colors"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
                         title="Editar">
                         <Pencil size={14} />
                       </button>
@@ -350,7 +350,7 @@ function TarifasTab() {
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => abrirEditar(t)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 transition-colors"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
                         title="Editar">
                         <Pencil size={14} />
                       </button>
@@ -540,7 +540,7 @@ function VehiculosTab() {
             <tbody className="divide-y divide-gray-100">
               {vehiculos.map(v => (
                 <tr key={v.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-bold text-[#1F3864] text-sm">{v.placa}</td>
+                  <td className="px-4 py-3 font-mono font-bold text-[#064e3b] text-sm">{v.placa}</td>
                   <td className="px-4 py-3">
                     <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
                       {v.tipo}
@@ -563,7 +563,7 @@ function VehiculosTab() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => abrirEditar(v)}
-                      className="p-1.5 rounded-lg text-gray-400 hover:text-[#1F3864] hover:bg-blue-50 transition-colors"
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
                       title="Editar">
                       <Pencil size={14} />
                     </button>
@@ -653,12 +653,253 @@ function VehiculosTab() {
   )
 }
 
+// ─── ConductoresTab ───────────────────────────────────────────────────────────
+
+interface Conductor {
+  id: number
+  nombres: string
+  apellidos: string
+  dni: string
+  licencia: string
+  categoriaLic: string | null
+  telefono: string | null
+  email: string | null
+  fechaVencLic: string | null
+  activo: boolean
+}
+
+interface ConductorFormState {
+  nombres: string; apellidos: string; dni: string; licencia: string
+  categoriaLic: string; telefono: string; email: string; fechaVencLic: string
+}
+
+const emptyConductor: ConductorFormState = {
+  nombres: '', apellidos: '', dni: '', licencia: '',
+  categoriaLic: '', telefono: '', email: '', fechaVencLic: '',
+}
+
+function ConductoresTab() {
+  const { data: condData, isLoading } = useSWR<Conductor[]>('/api/configuracion/conductores')
+  const conductores = condData ?? []
+
+  const [open, setOpen] = useState(false)
+  const [editando, setEditando] = useState<Conductor | null>(null)
+  const [form, setForm] = useState<ConductorFormState>(emptyConductor)
+  const [saving, setSaving] = useState(false)
+
+  const abrirCrear = () => { setEditando(null); setForm(emptyConductor); setOpen(true) }
+  const abrirEditar = (c: Conductor) => {
+    setEditando(c)
+    setForm({
+      nombres: c.nombres, apellidos: c.apellidos, dni: c.dni,
+      licencia: c.licencia, categoriaLic: c.categoriaLic ?? '',
+      telefono: c.telefono ?? '', email: c.email ?? '',
+      fechaVencLic: c.fechaVencLic ?? '',
+    })
+    setOpen(true)
+  }
+
+  const guardar = async () => {
+    if (!form.nombres || !form.apellidos || !form.dni || !form.licencia) {
+      toast.error('Nombres, apellidos, DNI y licencia son obligatorios')
+      return
+    }
+    if (!/^\d{8}$/.test(form.dni)) {
+      toast.error('DNI debe tener exactamente 8 dígitos')
+      return
+    }
+    setSaving(true)
+    try {
+      const body = {
+        nombres: form.nombres, apellidos: form.apellidos, dni: form.dni,
+        licencia: form.licencia,
+        categoriaLic: form.categoriaLic || null,
+        telefono: form.telefono || null,
+        email: form.email || null,
+        fechaVencLic: form.fechaVencLic || null,
+      }
+      if (editando) {
+        await api.put(`/api/configuracion/conductores/${editando.id}`, body)
+        toast.success('Conductor actualizado')
+      } else {
+        await api.post('/api/configuracion/conductores', body)
+        toast.success('Conductor registrado')
+      }
+      setOpen(false)
+      mutate('/api/configuracion/conductores')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleActivo = async (c: Conductor) => {
+    try {
+      await api.patch(`/api/configuracion/conductores/${c.id}/activo`)
+      mutate('/api/configuracion/conductores')
+      toast.success(c.activo ? 'Conductor desactivado' : 'Conductor activado')
+    } catch {
+      toast.error('Error al cambiar estado')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{conductores.length} conductor(es) registrados</p>
+        <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nuevo conductor</Button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
+        ) : conductores.length === 0 ? (
+          <div className="py-12 text-center">
+            <UserCircle size={32} className="text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">No hay conductores registrados</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide border-b border-gray-100">
+                <th className="px-4 py-3 text-left font-medium">Conductor</th>
+                <th className="px-4 py-3 text-left font-medium">DNI</th>
+                <th className="px-4 py-3 text-left font-medium">Licencia</th>
+                <th className="px-4 py-3 text-left font-medium">Teléfono</th>
+                <th className="px-4 py-3 text-left font-medium">Venc. lic.</th>
+                <th className="px-4 py-3 text-center font-medium">Estado</th>
+                <th className="px-4 py-3 text-center font-medium">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {conductores.map(c => (
+                <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-900">{c.nombres} {c.apellidos}</p>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{c.dni}</td>
+                  <td className="px-4 py-3 text-xs">
+                    <span className="inline-block bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
+                      {c.licencia}
+                    </span>
+                    {c.categoriaLic && (
+                      <span className="ml-1 text-gray-400">({c.categoriaLic})</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{c.telefono ?? '—'}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">
+                    {c.fechaVencLic ? new Date(c.fechaVencLic).toLocaleDateString('es-PE') : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                      c.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {c.activo ? <Check size={10} /> : <X size={10} />}
+                      {c.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => abrirEditar(c)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-blue-50 transition-colors"
+                        title="Editar">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => toggleActivo(c)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        title={c.activo ? 'Desactivar' : 'Activar'}>
+                        {c.activo ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar conductor' : 'Nuevo conductor'} size="md">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Nombres *</label>
+              <input value={form.nombres} onChange={e => setForm(f => ({ ...f, nombres: e.target.value }))}
+                placeholder="Carlos"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Apellidos *</label>
+              <input value={form.apellidos} onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))}
+                placeholder="García López"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">DNI * (8 dígitos)</label>
+              <input value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value.replace(/\D/g, '').slice(0, 8) }))}
+                placeholder="12345678" maxLength={8}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">N° Licencia *</label>
+              <input value={form.licencia} onChange={e => setForm(f => ({ ...f, licencia: e.target.value.toUpperCase() }))}
+                placeholder="Q12345678"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Categoría licencia</label>
+              <select value={form.categoriaLic} onChange={e => setForm(f => ({ ...f, categoriaLic: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">Sin categoría</option>
+                {['A-I','A-IIa','A-IIb','A-IIIa','A-IIIb','A-IIIc','B-I','B-IIa','B-IIb','B-IIc'].map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
+              <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
+                placeholder="987654321" maxLength={9}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="conductor@ejemplo.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Vencimiento licencia</label>
+              <input type="date" value={form.fechaVencLic} onChange={e => setForm(f => ({ ...f, fechaVencLic: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="primary" loading={saving} onClick={guardar}>
+              {editando ? 'Guardar cambios' : 'Registrar conductor'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
-  { key: 'rutas',     label: 'Rutas',     icon: MapPin },
-  { key: 'tarifas',   label: 'Tarifas',   icon: Tag },
-  { key: 'vehiculos', label: 'Vehículos', icon: Truck },
+  { key: 'rutas',       label: 'Rutas',       icon: MapPin },
+  { key: 'tarifas',     label: 'Tarifas',     icon: Tag },
+  { key: 'vehiculos',   label: 'Vehículos',   icon: Truck },
+  { key: 'conductores', label: 'Conductores', icon: UserCircle },
 ]
 
 export default function ConfiguracionPage() {
@@ -668,7 +909,7 @@ export default function ConfiguracionPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Configuración</h1>
-        <p className="text-sm text-gray-500">Gestión de rutas, tarifas y flota vehicular</p>
+        <p className="text-sm text-gray-500">Gestión de rutas, tarifas, flota y conductores</p>
       </div>
 
       {/* Tabs */}
@@ -689,9 +930,10 @@ export default function ConfiguracionPage() {
         ))}
       </div>
 
-      {tab === 'rutas'     && <RutasTab />}
-      {tab === 'tarifas'   && <TarifasTab />}
-      {tab === 'vehiculos' && <VehiculosTab />}
+      {tab === 'rutas'       && <RutasTab />}
+      {tab === 'tarifas'     && <TarifasTab />}
+      {tab === 'vehiculos'   && <VehiculosTab />}
+      {tab === 'conductores' && <ConductoresTab />}
     </div>
   )
 }

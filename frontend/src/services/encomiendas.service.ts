@@ -26,6 +26,14 @@ export interface RegistrarEncomiendaDTO {
   monto: number
   formaCobro: string
   observaciones?: string
+  promocionId?: number
+}
+
+export interface EntregarEncomiendaDTO {
+  dniReceptor: string
+  nombreReceptor: string
+  nota?: string
+  formaPago?: string
 }
 
 export const encomiendaService = {
@@ -40,6 +48,9 @@ export const encomiendaService = {
     q?: string
   }) => api.get<any, ApiResponse<Encomienda[]>>('/api/encomiendas/lista', { params: filtros }),
 
+  getParaEntrega: () =>
+    api.get<any, ApiResponse<any[]>>('/api/encomiendas/para-entrega'),
+
   getById: (id: number) =>
     api.get<any, ApiResponse<Encomienda>>(`/api/encomiendas/${id}`),
 
@@ -49,15 +60,27 @@ export const encomiendaService = {
   cambiarEstado: (id: number, estado: string, observacion: string) =>
     api.patch<any, ApiResponse<Encomienda>>(`/api/encomiendas/${id}/estado`, { estado, observacion }),
 
-  entregar: (id: number, recibidoPorDni: string, recibidoPorNombre: string) =>
-    api.post<any, ApiResponse<Encomienda>>(`/api/encomiendas/${id}/entregar`,
-      { recibidoPorDni, recibidoPorNombre }),
+  marcarLlegada: (id: number, observacion?: string) =>
+    api.post<any, ApiResponse<Encomienda>>(`/api/encomiendas/${id}/marcar-llegada`,
+      observacion ? { observacion } : {}),
+
+  marcarDisponible: (id: number, observacion?: string) =>
+    api.post<any, ApiResponse<Encomienda>>(`/api/encomiendas/${id}/disponible`,
+      observacion ? { observacion } : {}),
+
+  entregar: (id: number, dto: EntregarEncomiendaDTO) =>
+    api.post<any, ApiResponse<{ encomienda: Encomienda; cobrado: boolean }>>(`/api/encomiendas/${id}/entregar`, dto),
 
   getHistorial: (id: number) =>
     api.get<any, ApiResponse<HistorialEncomienda[]>>(`/api/encomiendas/${id}/historial`),
 
   getComprobantePDF: async (id: number): Promise<Blob> => {
     const response = await api.get(`/api/encomiendas/${id}/comprobante`, { responseType: 'blob' })
+    return response as unknown as Blob
+  },
+
+  getComprobanteEntregaPDF: async (id: number): Promise<Blob> => {
+    const response = await api.get(`/api/encomiendas/${id}/comprobante-entrega`, { responseType: 'blob' })
     return response as unknown as Blob
   },
 }

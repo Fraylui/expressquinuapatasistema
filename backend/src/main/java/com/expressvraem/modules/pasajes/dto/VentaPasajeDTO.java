@@ -47,6 +47,9 @@ public record VentaPasajeDTO(
 
         String motivoDescuento,
 
+        /** ID de la promoción seleccionada por el cajero (opcional). */
+        Long promocionId,
+
         /* ── VENTA | RESERVA ───────────────────── */
         @Pattern(regexp = "^(VENTA|RESERVA)$", message = "Tipo debe ser VENTA o RESERVA")
         String tipo

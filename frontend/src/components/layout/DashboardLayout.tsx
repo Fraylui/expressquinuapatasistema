@@ -17,6 +17,7 @@ const RUTA_MODULO: Record<string, string | null> = {
   '/encomiendas':  'ENCOMIENDAS',
   '/caja':         'CAJA',
   '/manifiestos':  'MANIFIESTOS',
+  '/promociones':  null,
   '/gerente':      'REPORTES',
   '/reportes':     'REPORTES',
   '/usuarios':     'USUARIOS',
@@ -57,7 +58,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   }, [pathname, user, hasModulo, router])
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-50 dark:bg-[#0f172a] overflow-hidden transition-colors duration-200">
 
       {/* Overlay móvil */}
       {sidebarOpen && (
@@ -77,7 +78,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Hamburguesa móvil */}
-        <div className="flex items-center gap-3 lg:hidden bg-[#1F3864] h-14 px-4 shrink-0">
+        <div className="flex items-center gap-3 lg:hidden bg-[#064e3b] h-14 px-4 shrink-0">
           <button onClick={() => setSidebarOpen(v => !v)} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
             {sidebarOpen ? <X size={20} className="text-white" /> : <Menu size={20} className="text-white" />}
           </button>
@@ -88,7 +89,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         <div className="hidden lg:block"><Header /></div>
 
         {/* Página */}
-        <main className="flex-1 overflow-y-auto p-5 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-5 lg:p-6 dark:bg-[#0f172a]">
           {accesoDenegado ? (
             <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center">
               <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-4">

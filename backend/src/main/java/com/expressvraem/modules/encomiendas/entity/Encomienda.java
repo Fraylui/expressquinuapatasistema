@@ -55,6 +55,13 @@ public class Encomienda {
     @Column(name = "precio_envio", nullable = false, precision = 8, scale = 2)
     private BigDecimal precioEnvio;
 
+    @Builder.Default
+    @Column(name = "monto_descuento", precision = 8, scale = 2)
+    private BigDecimal montoDescuento = BigDecimal.ZERO;
+
+    @Column(name = "promocion_id")
+    private Long promocionId;
+
     @Column(name = "forma_cobro", length = 20)
     private String formaCobro; // EFECTIVO, TRANSFERENCIA, YAPE, PLIN, POR_COBRAR
 

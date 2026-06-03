@@ -1,5 +1,6 @@
 package com.expressvraem.modules.pasajes.service;
 
+import com.expressvraem.modules.auditoria.service.AuditoriaService;
 import com.expressvraem.modules.caja.service.CajaService;
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
@@ -7,6 +8,8 @@ import com.expressvraem.modules.pasajes.dto.PasajeResponseDTO;
 import com.expressvraem.modules.pasajes.dto.VentaPasajeDTO;
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
+import com.expressvraem.modules.promociones.entity.Promocion;
+import com.expressvraem.modules.promociones.service.PromocionService;
 import com.expressvraem.modules.viajes.entity.Asiento;
 import com.expressvraem.modules.viajes.repository.AsientoRepository;
 import com.expressvraem.shared.exceptions.BusinessException;
@@ -38,12 +41,15 @@ public class PasajeService {
     private final ClienteRepository clienteRepository;
     private final WebSocketEventPublisher wsPublisher;
     private final CajaService cajaService;
+    private final AuditoriaService auditoriaService;
+    private final PromocionService promocionService;
 
     private static final AtomicLong SEQ = new AtomicLong(
             System.currentTimeMillis() % 100000);
 
     @Transactional
-    public PasajeResponseDTO venderPasaje(VentaPasajeDTO dto, Long operadorId) {
+    public PasajeResponseDTO venderPasaje(VentaPasajeDTO dto, Long operadorId,
+                                          String ip, String usuarioNombre) {
         Long agenciaId = AgenciaContext.getAgenciaId();
 
         // Lock asiento por viaje + numero (SELECT FOR UPDATE via JPQL pessimistic lock)
@@ -82,7 +88,26 @@ public class PasajeService {
                             return clienteRepository.save(c);
                         }));
 
-        BigDecimal descuento   = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
+        BigDecimal descuento      = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
+        String     motivoDescuento = dto.motivoDescuento();
+
+        // Si el cajero seleccionó una promoción, recalcular el descuento desde ella
+        if (dto.promocionId() != null) {
+            promocionService.findById(dto.promocionId()).ifPresent(promo -> {
+                // El descuento calculado queda capturado por la variable efectiva más abajo
+            });
+            // Usar variable final para lambda-capture
+            final BigDecimal[] ref = { descuento };
+            final String[] motivoRef = { motivoDescuento };
+            promocionService.findById(dto.promocionId()).ifPresent(promo -> {
+                ref[0]      = promocionService.calcularDescuento(promo, dto.precioBase());
+                motivoRef[0] = promo.getNombre();
+                promocionService.incrementarUso(promo.getId());
+            });
+            descuento      = ref[0];
+            motivoDescuento = motivoRef[0];
+        }
+
         BigDecimal precioFinal = dto.precioBase().subtract(descuento);
         if (precioFinal.compareTo(BigDecimal.ZERO) < 0) precioFinal = BigDecimal.ZERO;
 
@@ -101,7 +126,8 @@ public class PasajeService {
                 .precioBase(dto.precioBase())
                 .montoDescuento(descuento)
                 .precioFinal(precioFinal)
-                .motivoDescuento(dto.motivoDescuento())
+                .motivoDescuento(motivoDescuento)
+                .descuentoId(dto.promocionId())
                 .formaPago(dto.formaPago())
                 .estado(esReserva ? "RESERVADO" : "VENDIDO")
                 .codigoBoleta(codigoBoleta)
@@ -129,13 +155,21 @@ public class PasajeService {
         wsPublisher.publicarActualizacionAsientos(dto.viajeId(),
                 new AsientoUpdateDTO(dto.viajeId(), dto.asientoNumero(), esReserva ? "RESERVADO" : "OCUPADO", LocalDateTime.now()));
 
+        auditoriaService.registrar(operadorId, usuarioNombre, agenciaId != null ? agenciaId : 1L,
+                "INSERT", "PASAJES", "PASAJE", saved.getId(),
+                (esReserva ? "RESERVA" : "VENTA") + " boleta=" + codigoBoleta
+                        + " asiento=" + dto.asientoNumero() + " precio=" + precioFinal.toPlainString()
+                        + " formaPago=" + dto.formaPago(),
+                ip);
+
         log.info("Pasaje {}: {} asiento={} precio={}", esReserva ? "reservado" : "vendido", codigoBoleta, dto.asientoNumero(), precioFinal);
 
         return toDTO(saved, cliente);
     }
 
     @Transactional
-    public void anularPasaje(Long id, String motivo, Long operadorId) {
+    public void anularPasaje(Long id, String motivo, Long operadorId,
+                             String ip, String usuarioNombre) {
         Pasaje pasaje = pasajeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Pasaje", id));
         if ("ANULADO".equals(pasaje.getEstado()))
@@ -153,12 +187,18 @@ public class PasajeService {
         asientoRepository.findByViajeIdAndNumero(pasaje.getViajeId(), pasaje.getAsientoNumero())
                 .ifPresent(a -> { a.setEstado("LIBRE"); asientoRepository.save(a); });
 
+        auditoriaService.registrar(operadorId, usuarioNombre, pasaje.getAgenciaId(),
+                "DELETE", "PASAJES", "PASAJE", id,
+                "ANULACION boleta=" + pasaje.getCodigoBoleta() + " motivo=" + motivo,
+                ip);
+
         wsPublisher.publicarActualizacionAsientos(pasaje.getViajeId(),
                 new AsientoUpdateDTO(pasaje.getViajeId(), pasaje.getAsientoNumero(), "LIBRE", LocalDateTime.now()));
     }
 
     @Transactional
-    public PasajeResponseDTO confirmarReserva(Long id, String formaPago, Long operadorId) {
+    public PasajeResponseDTO confirmarReserva(Long id, String formaPago, Long operadorId,
+                                              String ip, String usuarioNombre) {
         Pasaje pasaje = pasajeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Pasaje", id));
         if (!"RESERVADO".equals(pasaje.getEstado()))
@@ -186,6 +226,13 @@ public class PasajeService {
 
         wsPublisher.publicarActualizacionAsientos(pasaje.getViajeId(),
                 new AsientoUpdateDTO(pasaje.getViajeId(), pasaje.getAsientoNumero(), "OCUPADO", LocalDateTime.now()));
+
+        auditoriaService.registrar(operadorId, usuarioNombre, pasaje.getAgenciaId(),
+                "UPDATE", "PASAJES", "PASAJE", id,
+                "CONFIRMACION boleta=" + pasaje.getCodigoBoleta()
+                        + " precio=" + pasaje.getPrecioFinal().toPlainString()
+                        + " formaPago=" + formaPago,
+                ip);
 
         log.info("Reserva confirmada: {}", pasaje.getCodigoBoleta());
 

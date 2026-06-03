@@ -13,6 +13,7 @@ export interface VentaPasajeDTO {
   descuento: number
   formaPago: string
   motivoDescuento?: string
+  promocionId?: number
   tipo?: 'VENTA' | 'RESERVA'
 }
 

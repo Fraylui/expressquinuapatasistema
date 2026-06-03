@@ -95,24 +95,26 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/agencias").hasAnyRole("SUPER_ADMIN","GERENTE")
                 .requestMatchers(HttpMethod.PUT, "/api/agencias/**").hasAnyRole("SUPER_ADMIN","GERENTE")
 
-                // ── SUPER_ADMIN + GERENTE + OPERADOR ─────────────────
-                .requestMatchers(HttpMethod.GET, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers(HttpMethod.POST, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE")
-                .requestMatchers(HttpMethod.PUT, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE")
-                .requestMatchers(HttpMethod.PATCH, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE")
+                // ── SUPER_ADMIN + GERENTE + ADMIN_AGENCIA ────────────
+                // ADMIN_AGENCIA puede gestionar usuarios de su propia agencia
+                .requestMatchers(HttpMethod.GET, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers(HttpMethod.POST, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
+                .requestMatchers(HttpMethod.PUT, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
+                .requestMatchers(HttpMethod.PATCH, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
 
                 // ── CONDUCTOR — solo sus endpoints ───────────────────
                 .requestMatchers("/api/conductor/**").hasRole("CONDUCTOR")
 
                 // ── OPERACIONES (encomiendas, caja, pasajes, etc.) — excluye CONDUCTOR ──
-                .requestMatchers("/api/encomiendas/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/caja/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/pasajes/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/clientes/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/manifiestos/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/viajes/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/agencias/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
-                .requestMatchers("/api/rutas/**").hasAnyRole("SUPER_ADMIN","GERENTE","OPERADOR")
+                .requestMatchers("/api/promociones/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/encomiendas/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/caja/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/pasajes/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/clientes/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/manifiestos/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/viajes/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/agencias/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
+                .requestMatchers("/api/rutas/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR")
 
                 // ── EL RESTO requiere autenticación ──────────────────
                 .anyRequest().authenticated()
