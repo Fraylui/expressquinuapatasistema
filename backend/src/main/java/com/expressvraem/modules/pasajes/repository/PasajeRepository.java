@@ -18,6 +18,8 @@ public interface PasajeRepository extends JpaRepository<Pasaje, Long> {
 
     List<Pasaje> findByAgenciaIdAndFechaEmisionBetween(Long agenciaId, LocalDateTime desde, LocalDateTime hasta);
 
+    List<Pasaje> findByFechaEmisionBetween(LocalDateTime desde, LocalDateTime hasta);
+
     List<Pasaje> findByAgenciaIdOrderByFechaVentaDesc(Long agenciaId);
 
     List<Pasaje> findByAgenciaIdAndEstado(Long agenciaId, String estado);
