@@ -60,4 +60,10 @@ public class ClienteController {
             @PathVariable Long id, @Valid @RequestBody ClienteDTO dto) {
         return ResponseEntity.ok(ApiResponse.ok("Cliente actualizado", clienteService.actualizar(id, dto)));
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+        clienteService.eliminar(id);
+        return ResponseEntity.ok(ApiResponse.ok("Cliente eliminado", null));
+    }
 }
