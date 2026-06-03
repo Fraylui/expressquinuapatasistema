@@ -268,7 +268,6 @@ public class AgenciaService {
               "{\"estado\":\"" + estado + "\"}");
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getMetricas(Long agenciaId) {
         long totalViajesMes = 0, totalPasajesMes = 0, totalEncomiendaMes = 0, usuariosActivos = 0;
         BigDecimal totalIngresosMes = BigDecimal.ZERO;
