@@ -274,7 +274,6 @@ public class CajaService {
                 cajas = cajaRepository.findAllByOrderByFechaAperturaDesc(pr);
             }
         } else if ("ADMIN_AGENCIA".equals(rol)) {
-            // filtroAgencia siempre viene forzado desde el controller para este rol
             cajas = cajaRepository.findByAgenciaIdOrderByFechaAperturaDesc(filtroAgencia, pr);
         } else {
             cajas = cajaRepository.findByUsuarioIdOrderByFechaAperturaDesc(

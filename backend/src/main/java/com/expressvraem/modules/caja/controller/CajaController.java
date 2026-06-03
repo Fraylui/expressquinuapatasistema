@@ -61,20 +61,15 @@ public class CajaController {
         return (xff != null && !xff.isBlank()) ? xff.split(",")[0].trim() : request.getRemoteAddr();
     }
 
-    // ── GET /api/caja/turno-actual ────────────────────────────────────────────────
-
     @GetMapping("/turno-actual")
     public ResponseEntity<ApiResponse<Map<String, Object>>> turnoActual(Authentication auth) {
         try {
             Map<String, Object> data = cajaService.getTurnoActualEnriquecido(resolveUserId(auth));
             return ResponseEntity.ok(ApiResponse.ok(data));
         } catch (BusinessException e) {
-            // No open turno — return 200 with null so frontend shows "abrir turno" screen
             return ResponseEntity.ok(ApiResponse.ok(null));
         }
     }
-
-    // ── POST /api/caja/abrir ──────────────────────────────────────────────────────
 
     @PostMapping("/abrir")
     public ResponseEntity<ApiResponse<Caja>> abrir(
@@ -91,8 +86,6 @@ public class CajaController {
         return ResponseEntity.ok(ApiResponse.ok("Turno abierto", caja));
     }
 
-    // ── POST /api/caja/egreso ─────────────────────────────────────────────────────
-
     @PostMapping("/egreso")
     public ResponseEntity<ApiResponse<MovimientoCaja>> egreso(
             @RequestBody Map<String, Object> body,
@@ -107,8 +100,6 @@ public class CajaController {
                 getClientIp(request), usr.getNombres() + " " + usr.getApellidos());
         return ResponseEntity.ok(ApiResponse.ok("Egreso registrado", mov));
     }
-
-    // ── POST /api/caja/ingreso ────────────────────────────────────────────────────
 
     @PostMapping("/ingreso")
     public ResponseEntity<ApiResponse<MovimientoCaja>> ingreso(
@@ -125,8 +116,6 @@ public class CajaController {
         return ResponseEntity.ok(ApiResponse.ok("Ingreso registrado", mov));
     }
 
-    // ── POST /api/caja/movimiento (llamado desde frontend al registrar pasajes/encomiendas) ──
-
     @PostMapping("/movimiento")
     public ResponseEntity<ApiResponse<MovimientoCaja>> movimiento(
             @RequestBody Map<String, Object> body,
@@ -135,7 +124,6 @@ public class CajaController {
         Long authUserId = resolveUserId(auth);
         String rol = resolveRol(auth);
 
-        // Verificar ownership: solo admins pueden registrar en caja ajena
         if (!"SUPER_ADMIN".equals(rol) && !"ADMIN_AGENCIA".equals(rol)) {
             cajaService.verificarOwnership(cajaId, authUserId);
         }
@@ -151,8 +139,6 @@ public class CajaController {
         return ResponseEntity.ok(ApiResponse.ok("Movimiento registrado", mov));
     }
 
-    // ── GET /api/caja/movimientos ────────────────────────────────────────────────
-
     @GetMapping("/movimientos")
     public ResponseEntity<ApiResponse<List<MovimientoCaja>>> movimientosActual(Authentication auth) {
         try {
@@ -163,14 +149,10 @@ public class CajaController {
         }
     }
 
-    // ── GET /api/caja/movimientos/{cajaId} (legacy) ──────────────────────────────
-
     @GetMapping("/movimientos/{cajaId}")
     public ResponseEntity<ApiResponse<List<MovimientoCaja>>> movimientosByCaja(@PathVariable Long cajaId) {
         return ResponseEntity.ok(ApiResponse.ok(cajaService.getMovimientos(cajaId)));
     }
-
-    // ── POST /api/caja/cerrar ─────────────────────────────────────────────────────
 
     @PostMapping("/cerrar")
     public ResponseEntity<ApiResponse<Map<String, Object>>> cerrar(
@@ -189,8 +171,6 @@ public class CajaController {
         return ResponseEntity.ok(ApiResponse.ok("Turno cerrado", data));
     }
 
-    // ── GET /api/caja/historial ──────────────────────────────────────────────────
-
     @GetMapping("/historial")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> historial(
             @RequestParam(required = false) Long agencia,
@@ -199,13 +179,10 @@ public class CajaController {
             Authentication auth) {
         Long userId = resolveUserId(auth);
         String rol = resolveRol(auth);
-        // ADMIN_AGENCIA siempre queda restringido a su propia agencia, sin importar el param
         Long agenciaEfectiva = "ADMIN_AGENCIA".equals(rol) ? resolveAgenciaId(auth) : agencia;
         List<Map<String, Object>> data = cajaService.getHistorial(userId, rol, agenciaEfectiva, usuario, page);
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
-
-    // ── GET /api/caja/{id}/reporte (PDF) ─────────────────────────────────────────
 
     @GetMapping(value = "/{id}/reporte", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> reporte(@PathVariable Long id, Authentication auth) {
