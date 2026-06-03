@@ -110,6 +110,7 @@ public class EncomiendaService {
                 .descripcion(dto.descripcion())
                 .pesoKg(dto.pesoKg())
                 .numBultos(dto.numBultos() != null ? dto.numBultos() : 1)
+                .esFragil(Boolean.TRUE.equals(dto.esFragil()))
                 .monto(precio)
                 .precioEnvio(precioEnvioFinal)
                 .montoDescuento(descuento)
@@ -329,12 +330,51 @@ public class EncomiendaService {
             if (destino != null) predicates.add(cb.equal(root.get("agenciaDestinoId"), destino));
             if (desde != null) predicates.add(cb.greaterThanOrEqualTo(root.get("fechaRegistro"), desde));
             if (hasta != null) predicates.add(cb.lessThanOrEqualTo(root.get("fechaRegistro"), hasta));
-            if (q != null && !q.isBlank())
-                predicates.add(cb.like(cb.lower(root.get("codigoTracking")), "%" + q.toLowerCase() + "%"));
+            if (q != null && !q.isBlank()) {
+                String pat = "%" + q.toLowerCase() + "%";
+                predicates.add(cb.or(
+                    cb.like(cb.lower(root.get("codigoTracking")), pat),
+                    cb.like(cb.lower(root.get("descripcion")),    pat)
+                ));
+            }
             query.orderBy(cb.desc(root.get("fechaRegistro")));
             return cb.and(predicates.toArray(new Predicate[0]));
         };
         return encomiendaRepository.findAll(spec);
+    }
+
+    @Transactional
+    public Encomienda asignarViaje(Long id, Long viajeId, Long usuarioId) {
+        Encomienda enc = encomiendaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Encomienda", id));
+        enc.setViajeId(viajeId);
+        Encomienda saved = encomiendaRepository.save(enc);
+        String obs = viajeId != null ? "Viaje asignado: #" + viajeId : "Viaje desasignado";
+        guardarHistorial(id, enc.getAgenciaId(), usuarioId, enc.getEstado(), enc.getEstado(), obs);
+        return saved;
+    }
+
+    public Map<String, Object> getStats(Long agenciaId) {
+        List<Encomienda> todas = agenciaId != null
+                ? encomiendaRepository.findByAgenciaIdOrderByFechaRegistroDesc(agenciaId)
+                : encomiendaRepository.findAllByOrderByFechaRegistroDesc();
+
+        LocalDateTime inicioDia = LocalDateTime.now().toLocalDate().atStartOfDay();
+        long hoy        = todas.stream().filter(e -> e.getFechaRegistro() != null && e.getFechaRegistro().isAfter(inicioDia)).count();
+        long pendientes = todas.stream().filter(e -> !Set.of("ENTREGADO","DEVUELTO").contains(e.getEstado())).count();
+        long enTransito = todas.stream().filter(e -> "EN_TRANSITO".equals(e.getEstado())).count();
+        long disponibles = todas.stream().filter(e -> "DISPONIBLE".equals(e.getEstado())).count();
+        long entregadasHoy = todas.stream().filter(e -> "ENTREGADO".equals(e.getEstado())
+                && e.getFechaEntregaReal() != null && e.getFechaEntregaReal().isAfter(inicioDia)).count();
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("registradasHoy",  hoy);
+        stats.put("pendientes",       pendientes);
+        stats.put("enTransito",       enTransito);
+        stats.put("disponibles",      disponibles);
+        stats.put("entregadasHoy",    entregadasHoy);
+        stats.put("total",            todas.size());
+        return stats;
     }
 
     private void guardarHistorial(Long encId, Long agenciaId, Long usuarioId,
