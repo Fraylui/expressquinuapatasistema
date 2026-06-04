@@ -471,3 +471,90 @@ git pull origin main && bash scripts/deploy.sh --http
 df -h
 du -sh /app/expressvraem/backups/
 ```
+
+---
+
+---
+
+# Equipos físicos en la empresa
+
+El sistema vive en la nube — no necesitas servidor físico en ningún local. Solo necesitas computadoras con internet y un navegador.
+
+---
+
+## Por cada puesto de trabajo (operador de ventanilla)
+
+| Equipo | Especificación mínima | Para qué sirve |
+|--------|----------------------|----------------|
+| **Computadora** | Intel Core i3 gen 8+ / 8 GB RAM / SSD | Correr el sistema web con fluidez |
+| **Monitor** | 19" o más, resolución 1366×768 | Ver mapa de asientos y formularios completos |
+| **Impresora térmica** | 80mm con conexión USB | Imprimir tickets de pasaje y etiquetas de encomienda |
+| **Lector QR / barras** | USB plug-and-play | Escanear DNI o código de seguimiento de encomienda |
+| **Internet** | Mínimo 10 Mbps por agencia | Conectarse al servidor en la nube |
+
+---
+
+## Por agencia (equipo compartido)
+
+| Equipo | Para qué sirve |
+|--------|----------------|
+| **Router WiFi** | Conectar todos los puestos y dispositivos |
+| **UPS 500VA** | Proteger ante cortes de luz — evita pérdida de datos |
+| **Switch 8 puertos** (si hay 3+ PCs) | Conectar varios equipos por cable |
+
+---
+
+## Impresoras recomendadas
+
+El sistema genera tickets y etiquetas en PDF. Cualquier impresora compatible con Windows funciona.
+
+| Modelo | Precio aprox. | Uso recomendado |
+|--------|--------------|-----------------|
+| **Epson TM-T20III** | S/ 450 | Tickets de pasaje (mejor calidad) |
+| **Bixolon SRP-350III** | S/ 380 | Tickets de pasaje |
+| **Xprinter XP-58IIH** | S/ 120 | Tickets de pasaje (económica) |
+| **Zebra ZD220** | S/ 600 | Etiquetas de encomiendas |
+
+> Para imprimir manifiestos A4 y reportes en PDF basta con una impresora de oficina normal (HP, Epson, Canon).
+
+---
+
+## Dispositivos opcionales
+
+| Dispositivo | Para qué sirve |
+|-------------|----------------|
+| **Tablet o celular** (Android/iOS) | El conductor puede ver sus viajes desde `/conductor` sin PC |
+| **TV o pantalla secundaria** | Mostrar horarios del día en la sala de espera |
+
+---
+
+## Navegadores compatibles
+
+No se instala ningún programa. Solo abrir el navegador y entrar a la URL del sistema.
+
+| Navegador | Versión mínima | Recomendado |
+|-----------|---------------|-------------|
+| Google Chrome | 110+ | ✅ Sí |
+| Microsoft Edge | 110+ | ✅ Sí |
+| Firefox | 110+ | ✅ Sí |
+| Safari (Mac/iPad) | 16+ | ✅ Sí |
+| Internet Explorer | Cualquiera | ❌ No funciona |
+
+---
+
+## Presupuesto estimado por agencia
+
+Para una agencia con **2 operadores**:
+
+| Item | Cant. | Precio unit. | Total |
+|------|-------|-------------|-------|
+| Computadora básica (Core i3 / 8GB / SSD) | 2 | S/ 1,200 | S/ 2,400 |
+| Monitor 19" | 2 | S/ 280 | S/ 560 |
+| Impresora térmica Epson TM-T20III | 1 | S/ 450 | S/ 450 |
+| Lector QR USB | 1 | S/ 80 | S/ 80 |
+| Router WiFi | 1 | S/ 120 | S/ 120 |
+| UPS 500VA | 1 | S/ 180 | S/ 180 |
+| Cables de red | — | — | S/ 50 |
+| **Total aproximado** | | | **S/ 3,840** |
+
+> El servidor Hetzner cubre **todas las agencias** por ~S/ 20/mes adicionales. No hay costo extra por agregar más agencias o usuarios al sistema.
