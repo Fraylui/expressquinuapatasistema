@@ -171,7 +171,7 @@ public class ReporteService {
         return result;
     }
 
-    /** Encomiendas sin cambio de estado en más de 24 horas. */
+    /** Encomiendas sin cambio de estado en más de 24 horas, con nivel de criticidad. */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getEncomiendasPendientes(Long agenciaId) {
         List<Object[]> rows = new ArrayList<>();
@@ -179,27 +179,47 @@ public class ReporteService {
             rows = entityManager.createNativeQuery(
                 "SELECT e.id, e.codigo_tracking, e.estado, e.descripcion, " +
                 "CAST(EXTRACT(EPOCH FROM (NOW() - e.fecha_registro))/3600 AS INT), " +
-                "c1.nombres || ' ' || c1.apellidos, c2.nombres || ' ' || c2.apellidos " +
+                "c1.nombres || ' ' || c1.apellidos, c2.nombres || ' ' || c2.apellidos, " +
+                "e.es_fragil, e.observaciones, " +
+                "ag_orig.nombre, ag_dest.nombre " +
                 "FROM encomiendas e " +
                 "LEFT JOIN clientes c1 ON c1.id = e.remitente_id " +
                 "LEFT JOIN clientes c2 ON c2.id = e.destinatario_id " +
+                "LEFT JOIN agencias ag_orig ON ag_orig.id = e.agencia_origen_id " +
+                "LEFT JOIN agencias ag_dest ON ag_dest.id = e.agencia_destino_id " +
                 "WHERE (CAST(:ag AS BIGINT) IS NULL OR e.agencia_id = :ag) " +
                 "AND e.estado NOT IN ('ENTREGADO','DEVUELTO') " +
                 "AND e.fecha_registro < NOW() - INTERVAL '24 hours' " +
-                "ORDER BY e.fecha_registro ASC LIMIT 20")
+                "ORDER BY e.fecha_registro ASC")
                 .setParameter("ag", agenciaId).getResultList();
         } catch (Exception ignored) {}
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object[] r : rows) {
+            int horas = r[4] != null ? ((Number) r[4]).intValue() : 0;
+            boolean esFragil = r[7] != null && (Boolean) r[7];
+            String obs = r[8] != null ? r[8].toString() : "";
+            boolean deViajeCancelado = obs.contains("cancelado");
+
+            // Criticidad: CRITICA > 7 días o frágil >48h, ALTA >48h, NORMAL >24h
+            String criticidad;
+            if (horas >= 168 || (esFragil && horas >= 48)) criticidad = "CRITICA";
+            else if (horas >= 48) criticidad = "ALTA";
+            else criticidad = "NORMAL";
+
             java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
-            item.put("id",             ((Number) r[0]).longValue());
-            item.put("codigoTracking", str(r[1]));
-            item.put("estado",         str(r[2]));
-            item.put("descripcion",    str(r[3]));
-            item.put("horas",          r[4] != null ? ((Number) r[4]).intValue() : 0);
-            item.put("remitente",      str(r[5]));
-            item.put("destinatario",   str(r[6]));
+            item.put("id",                ((Number) r[0]).longValue());
+            item.put("codigoTracking",    str(r[1]));
+            item.put("estado",            str(r[2]));
+            item.put("descripcion",       str(r[3]));
+            item.put("horas",             horas);
+            item.put("remitente",         str(r[5]));
+            item.put("destinatario",      str(r[6]));
+            item.put("esFragil",          esFragil);
+            item.put("criticidad",        criticidad);
+            item.put("deViajeCancelado",  deViajeCancelado);
+            item.put("agenciaOrigen",     r[9] != null ? str(r[9]) : null);
+            item.put("agenciaDestino",    r[10] != null ? str(r[10]) : null);
             result.add(item);
         }
         return result;
@@ -296,6 +316,51 @@ public class ReporteService {
     private double delta(BigDecimal hoy, BigDecimal ayer) {
         if (ayer.compareTo(BigDecimal.ZERO) == 0) return hoy.compareTo(BigDecimal.ZERO) > 0 ? 100.0 : 0.0;
         return Math.round(hoy.subtract(ayer).divide(ayer, 6, java.math.RoundingMode.HALF_UP).doubleValue() * 1000.0) / 10.0;
+    }
+
+    /** Conductores con viajes activos hoy (PROGRAMADO, EN_RUTA, ATRASADO). */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getConductoresActivos(Long agenciaId) {
+        List<Object[]> rows = new ArrayList<>();
+        try {
+            rows = entityManager.createNativeQuery(
+                "SELECT v.id, v.estado, v.fecha_hora_sal, " +
+                "r.origen, r.destino, veh.placa, veh.tipo, " +
+                "con.nombres || ' ' || con.apellidos, con.licencia, " +
+                "(SELECT COUNT(*) FROM asientos a WHERE a.viaje_id = v.id AND a.estado IN ('OCUPADO','RESERVADO')), " +
+                "veh.num_asientos " +
+                "FROM viajes v " +
+                "LEFT JOIN rutas r ON r.id = v.ruta_id " +
+                "LEFT JOIN vehiculos veh ON veh.id = v.vehiculo_id " +
+                "LEFT JOIN conductores con ON con.id = v.conductor_id " +
+                "WHERE v.estado IN ('PROGRAMADO','EN_RUTA','ATRASADO') " +
+                "AND (CAST(:ag AS BIGINT) IS NULL OR v.agencia_id = :ag) " +
+                "ORDER BY v.fecha_hora_sal ASC")
+                .setParameter("ag", agenciaId).getResultList();
+        } catch (Exception ignored) {}
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] r : rows) {
+            int asientosOcupados = r[9] != null ? ((Number) r[9]).intValue() : 0;
+            int numAsientos      = r[10] != null ? ((Number) r[10]).intValue() : 1;
+            int capacidad        = Math.max(1, numAsientos - 1);
+
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("viajeId",          ((Number) r[0]).longValue());
+            m.put("estado",           str(r[1]));
+            m.put("fechaHoraSal",     r[2]);
+            m.put("origen",           str(r[3]));
+            m.put("destino",          str(r[4]));
+            m.put("placa",            str(r[5]));
+            m.put("tipoVehiculo",     str(r[6]));
+            m.put("conductorNombre",  str(r[7]));
+            m.put("licencia",         str(r[8]));
+            m.put("asientosOcupados", asientosOcupados);
+            m.put("capacidad",        capacidad);
+            m.put("ocupacionPct",     Math.round((asientosOcupados * 100.0) / capacidad));
+            result.add(m);
+        }
+        return result;
     }
 
     private String str(Object o) { return o != null ? String.valueOf(o) : "—"; }

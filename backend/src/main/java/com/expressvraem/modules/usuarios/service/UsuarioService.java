@@ -176,7 +176,15 @@ public class UsuarioService {
         u.setEmail(dto.email());
         u.setDni(dto.dni());
         if (dto.telefono() != null) u.setTelefono(dto.telefono());
-        if (dto.rol() != null && !dto.rol().isBlank()) u.setRol(dto.rol());
+        if (dto.rol() != null && !dto.rol().isBlank()) {
+            if ("SUPER_ADMIN".equals(dto.rol()) && !"SUPER_ADMIN".equals(u.getRol())) {
+                throw new BusinessException("No se puede asignar el rol SUPER_ADMIN.", "OPERACION_NO_PERMITIDA");
+            }
+            if ("SUPER_ADMIN".equals(u.getRol()) && !dto.rol().equals(u.getRol())) {
+                throw new BusinessException("No se puede cambiar el rol de un SUPER_ADMIN.", "OPERACION_NO_PERMITIDA");
+            }
+            u.setRol(dto.rol());
+        }
         if (dto.agenciaId() != null) u.setAgenciaId(dto.agenciaId());
         if (dto.nuevaPassword() != null && !dto.nuevaPassword().isBlank()) {
             u.setPasswordHash(passwordEncoder.encode(dto.nuevaPassword()));
@@ -207,10 +215,50 @@ public class UsuarioService {
     public void cambiarEstado(Long id, Boolean activo) {
         Usuario u = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario", id));
+
+        // Nunca se puede desactivar a un SUPER_ADMIN
+        if ("SUPER_ADMIN".equals(u.getRol()) && Boolean.FALSE.equals(activo)) {
+            throw new BusinessException(
+                "No se puede desactivar a un SUPER_ADMIN.",
+                "OPERACION_NO_PERMITIDA");
+        }
+
+        // No puede desactivarse a sí mismo
+        String emailActual = currentUser();
+        if (u.getEmail().equals(emailActual) && Boolean.FALSE.equals(activo)) {
+            throw new BusinessException(
+                "No puedes desactivar tu propia cuenta.",
+                "OPERACION_NO_PERMITIDA");
+        }
+
         String antes = toJson(u);
         u.setActivo(activo);
         usuarioRepository.save(u);
         audit("UPDATE", id, u.getAgenciaId(),
               antes, "{\"activo\":" + activo + "}");
+    }
+
+    @Transactional
+    public void cambiarRol(Long id, String nuevoRol) {
+        Usuario u = usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario", id));
+
+        // No se puede cambiar el rol del SUPER_ADMIN ni asignar ese rol desde aquí
+        if ("SUPER_ADMIN".equals(u.getRol())) {
+            throw new BusinessException(
+                "No se puede cambiar el rol de un SUPER_ADMIN.",
+                "OPERACION_NO_PERMITIDA");
+        }
+        if ("SUPER_ADMIN".equals(nuevoRol)) {
+            throw new BusinessException(
+                "No se puede asignar el rol SUPER_ADMIN a través de este endpoint.",
+                "OPERACION_NO_PERMITIDA");
+        }
+
+        String antes = toJson(u);
+        u.setRol(nuevoRol);
+        usuarioRepository.save(u);
+        audit("UPDATE", id, u.getAgenciaId(),
+              antes, "{\"rol\":\"" + nuevoRol + "\"}");
     }
 }

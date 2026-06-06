@@ -1,7 +1,7 @@
 FROM maven:3.9-eclipse-temurin-17-alpine
 WORKDIR /app
 COPY pom.xml .
-RUN mvn dependency:go-offline -q
+RUN mvn -B dependency:go-offline dependency:resolve-plugins -q
 COPY src ./src
 EXPOSE 8080
 CMD ["mvn", "spring-boot:run", "-Dmaven.test.skip=true", "-Dspring-boot.run.jvmArguments=-Dspring.devtools.restart.enabled=true"]

@@ -1,4 +1,4 @@
-﻿package com.expressvraem.modules.pasajes.service;
+package com.expressvraem.modules.pasajes.service;
 
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.google.zxing.BarcodeFormat;

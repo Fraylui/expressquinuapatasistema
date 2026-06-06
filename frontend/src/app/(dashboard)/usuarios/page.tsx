@@ -266,10 +266,10 @@ export default function UsuariosPage() {
   const { user: me } = useAuthStore()
 
   const { data: usuariosData, mutate } = useSWR('/api/usuarios')
-  const { data: agenciasData }         = useSWR<{ data: Agencia[] }>('/api/agencias')
+  const { data: agenciasData }         = useSWR<Agencia[] | { data: Agencia[] }>('/api/agencias')
 
   const todosUsuarios: UsuarioRow[] = usuariosData?.data ?? usuariosData ?? []
-  const agencias: Agencia[]         = agenciasData?.data ?? agenciasData ?? []
+  const agencias: Agencia[]         = Array.isArray(agenciasData) ? agenciasData : (agenciasData as any)?.data ?? []
 
   const [q, setQ]                   = useState('')
   const [filtroRol, setFiltroRol]   = useState('')

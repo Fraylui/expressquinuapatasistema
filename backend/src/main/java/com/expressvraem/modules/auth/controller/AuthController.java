@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -52,6 +53,22 @@ public class AuthController {
         String email = auth.getName();
         var usuario = usuarioRepository.findByEmail(email);
         return ResponseEntity.ok(ApiResponse.ok(usuario.orElse(null)));
+    }
+
+    /** Solo SUPER_ADMIN puede desbloquear manualmente una cuenta bloqueada. */
+    @PostMapping("/desbloquear")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> desbloquear(@RequestParam String email) {
+        authService.desbloquearCuenta(email);
+        return ResponseEntity.ok(ApiResponse.ok("Cuenta " + email + " desbloqueada correctamente", null));
+    }
+
+    /** SUPER_ADMIN puede consultar intentos fallidos recientes (para el panel de seguridad). */
+    @GetMapping("/intentos-fallidos")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> intentosFallidos() {
+        var resumen = authService.getResumenIntentosFallidos();
+        return ResponseEntity.ok(ApiResponse.ok(resumen));
     }
 
     private String extraerIp(HttpServletRequest request) {

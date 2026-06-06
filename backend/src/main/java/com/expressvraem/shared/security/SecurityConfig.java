@@ -53,7 +53,8 @@ public class SecurityConfig {
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder());
         return provider;
     }
@@ -84,9 +85,17 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health").permitAll()
 
                 // ── SOLO SUPER_ADMIN ─────────────────────────────────
-                .requestMatchers("/api/auditoria/**").hasRole("SUPER_ADMIN")
+                .requestMatchers("/api/auditoria/exportar").hasRole("SUPER_ADMIN")
+                .requestMatchers("/api/auditoria/exportar-pdf").hasRole("SUPER_ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/agencias/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/modulos/**").hasRole("SUPER_ADMIN")
+                .requestMatchers("/api/auth/desbloquear").hasRole("SUPER_ADMIN")
+                .requestMatchers("/api/auth/intentos-fallidos").hasRole("SUPER_ADMIN")
+
+                // ── SUPER_ADMIN + GERENTE (auditoría lectura) ────────
+                .requestMatchers("/api/auditoria/resumen").hasAnyRole("SUPER_ADMIN","GERENTE")
+                .requestMatchers("/api/auditoria/actividad").hasAnyRole("SUPER_ADMIN","GERENTE")
+                .requestMatchers(HttpMethod.GET, "/api/auditoria").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
 
                 // ── SUPER_ADMIN + GERENTE ────────────────────────────
                 .requestMatchers("/api/reportes/**").hasAnyRole("SUPER_ADMIN","GERENTE")
@@ -101,7 +110,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
                 .requestMatchers(HttpMethod.PATCH, "/api/usuarios/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
 
-                // ── CONDUCTOR — solo sus endpoints ───────────────────
+                // ── CONDUCTOR — lista visible para todos los roles operativos ────────
+                .requestMatchers(HttpMethod.GET, "/api/conductor/lista").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR","CONDUCTOR")
+                // El resto de /api/conductor/** solo el CONDUCTOR mismo
                 .requestMatchers("/api/conductor/**").hasRole("CONDUCTOR")
 
                 // ── OPERACIONES (encomiendas, caja, pasajes, etc.) — excluye CONDUCTOR ──

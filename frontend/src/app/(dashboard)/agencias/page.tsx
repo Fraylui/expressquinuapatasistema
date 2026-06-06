@@ -17,7 +17,9 @@ import api from '@/services/api'
 // ── Metric card ───────────────────────────────────────────────────────────────
 
 function MetricasCard({ agenciaId }: { agenciaId: number }) {
-  const { data: metricas } = useSWR<AgenciaMetricas>(`/api/agencias/${agenciaId}/metricas`)
+  const { data: metricas, error } = useSWR<AgenciaMetricas>(`/api/agencias/${agenciaId}/metricas`)
+
+  if (error) return null
 
   if (!metricas) {
     return (

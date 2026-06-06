@@ -15,6 +15,7 @@ import java.util.Optional;
 
 @Repository
 public interface CajaRepository extends JpaRepository<Caja, Long> {
+    List<Caja> findByEstado(String estado);
     Optional<Caja> findByUsuarioIdAndEstado(Long usuarioId, String estado);
     boolean existsByUsuarioIdAndEstado(Long usuarioId, String estado);
     List<Caja> findByAgenciaIdAndEstado(Long agenciaId, String estado);

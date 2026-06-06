@@ -3,11 +3,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import useSWR from 'swr'
 import toast from 'react-hot-toast'
 import {
-  Package, Plus, Search, X, ChevronRight, ChevronLeft,
+  Package, Plus, Search, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Printer, Check, Loader2, Eye, RefreshCw, CheckCircle2,
-  Truck, Bell, MapPin, Clock, Tag, AlertTriangle, QrCode,
+  Truck, Bell, MapPin, Clock, Tag, AlertTriangle, QrCode, Bus, Info,
 } from 'lucide-react'
-import { encomiendaService, type RegistrarEncomiendaDTO, type EntregarEncomiendaDTO } from '@/services/encomiendas.service'
+import {
+  encomiendaService,
+  type RegistrarEncomiendaDTO,
+  type EntregarEncomiendaDTO,
+  type ViajeEnTransito,
+  type RecepcionItemDTO,
+  type RecepcionResultado,
+} from '@/services/encomiendas.service'
 import { promocionesService, type PromocionDTO } from '@/services/promociones.service'
 import { BuscadorCliente, type BuscadorClienteRef } from '@/components/modules/clientes/BuscadorCliente'
 import type { Encomienda, Cliente, Agencia } from '@/types'
@@ -731,6 +738,15 @@ function EnviadasTab({ viajes = [] }: { viajes?: ViajeSimple[] }) {
     finally { setCargando(false) }
   }
 
+  const imprimirEtiqueta = async (encId: number) => {
+    try {
+      const blob = await encomiendaService.getEtiquetaPDF(encId)
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { toast.error('Error al generar etiqueta') }
+  }
+
   useEffect(() => { cargarLista() }, [filtroEstado])
 
   const toggleHistorial = async (encId: number) => {
@@ -1001,8 +1017,367 @@ function EnviadasTab({ viajes = [] }: { viajes?: ViajeSimple[] }) {
   )
 }
 
+// ── Recepcionar Tab ───────────────────────────────────────────────────────────
+
+interface EstadoRecepcion {
+  recibido: boolean
+  observacion: string
+}
+
+function RecepcionarTab({ onBadgeChange }: { onBadgeChange?: (n: number) => void }) {
+  const [viajes, setViajes] = useState<ViajeEnTransito[]>([])
+  const [cargando, setCargando] = useState(false)
+  const [viajeExpandido, setViajeExpandido] = useState<number | null>(null)
+  const [estados, setEstados] = useState<Record<number, Record<number, EstadoRecepcion>>>({})
+  const [procesando, setProcesando] = useState<number | null>(null)
+  const [resultados, setResultados] = useState<Record<number, RecepcionResultado>>({})
+
+  const cargar = useCallback(async () => {
+    setCargando(true)
+    try {
+      const data = await encomiendaService.getViajesEnTransito()
+      setViajes(data)
+      onBadgeChange?.(data.length)
+      // Init estado: todos marcados como recibido por defecto
+      const init: Record<number, Record<number, EstadoRecepcion>> = {}
+      data.forEach(v => {
+        init[v.viajeId] = {}
+        v.encomiendas.forEach((e: any) => {
+          init[v.viajeId][e.id] = { recibido: true, observacion: '' }
+        })
+      })
+      setEstados(init)
+    } catch {
+      toast.error('Error cargando viajes en tránsito')
+    } finally {
+      setCargando(false)
+    }
+  }, [onBadgeChange])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const toggleViaje = (viajeId: number) =>
+    setViajeExpandido(v => v === viajeId ? null : viajeId)
+
+  const toggleRecibido = (viajeId: number, encId: number) =>
+    setEstados(prev => ({
+      ...prev,
+      [viajeId]: {
+        ...prev[viajeId],
+        [encId]: { ...prev[viajeId][encId], recibido: !prev[viajeId][encId].recibido },
+      },
+    }))
+
+  const setObservacion = (viajeId: number, encId: number, obs: string) =>
+    setEstados(prev => ({
+      ...prev,
+      [viajeId]: {
+        ...prev[viajeId],
+        [encId]: { ...prev[viajeId][encId], observacion: obs },
+      },
+    }))
+
+  const confirmarRecepcion = async (viaje: ViajeEnTransito) => {
+    const estadosViaje = estados[viaje.viajeId] ?? {}
+    const items: RecepcionItemDTO[] = viaje.encomiendas.map((e: any) => ({
+      encomiendaId: e.id,
+      recibido: estadosViaje[e.id]?.recibido ?? true,
+      observacion: estadosViaje[e.id]?.observacion || undefined,
+    }))
+
+    const faltantes = items.filter(i => !i.recibido).length
+    if (faltantes > 0) {
+      const faltantesConMotivo = items.filter(i => !i.recibido && !i.observacion)
+      if (faltantesConMotivo.length > 0) {
+        toast.error(`Ingresa el motivo para los ${faltantesConMotivo.length} paquete(s) no recibido(s)`)
+        return
+      }
+    }
+
+    setProcesando(viaje.viajeId)
+    try {
+      const resultado = await encomiendaService.recepcionar(viaje.viajeId, items)
+      setResultados(prev => ({ ...prev, [viaje.viajeId]: resultado }))
+      // Remove the processed viaje from list
+      setViajes(prev => prev.filter(v => v.viajeId !== viaje.viajeId))
+      onBadgeChange?.(viajes.length - 1)
+      if (resultado.faltantes === 0) {
+        toast.success(`✓ ${resultado.recibidas} encomienda(s) recibidas correctamente`)
+      } else {
+        toast.error(`${resultado.faltantes} encomienda(s) no llegaron — marcadas como OBSERVADO`)
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al procesar recepción')
+    } finally {
+      setProcesando(null)
+    }
+  }
+
+  const formatHora = (iso?: string) => {
+    if (!iso) return '—'
+    try { return format(new Date(iso), 'dd/MM HH:mm', { locale: es }) } catch { return '—' }
+  }
+
+  if (cargando) {
+    return (
+      <div className="flex justify-center items-center py-20 text-gray-400">
+        <Loader2 size={22} className="animate-spin mr-2" /> Cargando viajes en tránsito…
+      </div>
+    )
+  }
+
+  // Show completed results
+  const completados = Object.entries(resultados)
+  if (viajes.length === 0 && completados.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 size={28} className="text-emerald-500" />
+        </div>
+        <p className="text-base font-bold text-gray-800 dark:text-slate-200">Sin viajes pendientes de recepción</p>
+        <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">
+          Todas las encomiendas en tránsito ya fueron recibidas o no hay envíos hacia esta agencia.
+        </p>
+        <button onClick={cargar}
+          className="mt-4 flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-[#334155] rounded-xl text-sm text-gray-500 hover:bg-gray-50 dark:hover:bg-[#293548] transition-colors mx-auto">
+          <RefreshCw size={13} /> Actualizar
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
+            {viajes.length > 0
+              ? `${viajes.length} viaje(s) con encomiendas pendientes de verificar`
+              : 'Todos los viajes procesados'}
+          </p>
+        </div>
+        <button onClick={cargar}
+          className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-[#334155] rounded-xl text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-[#293548] transition-colors">
+          <RefreshCw size={12} /> Actualizar
+        </button>
+      </div>
+
+      {/* Completed results */}
+      {completados.length > 0 && (
+        <div className="space-y-2">
+          {completados.map(([vId, res]) => (
+            <div key={vId} className={`rounded-xl border px-4 py-3 flex items-center gap-3 ${
+              res.faltantes > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'
+            }`}>
+              {res.faltantes > 0
+                ? <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                : <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />}
+              <div className="flex-1 text-sm">
+                <span className="font-semibold">Viaje #{vId} procesado:</span>
+                <span className="ml-2 text-emerald-700 font-medium">{res.recibidas} recibidas</span>
+                {res.faltantes > 0 && (
+                  <>
+                    <span className="mx-1.5 text-gray-300">·</span>
+                    <span className="text-amber-700 font-medium">{res.faltantes} faltantes</span>
+                    <span className="ml-2 text-amber-600 text-xs">{res.codigosFaltantes.join(', ')}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Viajes pendientes */}
+      {viajes.map(viaje => {
+        const expandido = viajeExpandido === viaje.viajeId
+        const estadosViaje = estados[viaje.viajeId] ?? {}
+        const procesandoEste = procesando === viaje.viajeId
+        const pendientes = Object.values(estadosViaje).filter(e => !e.recibido).length
+
+        return (
+          <div key={viaje.viajeId}
+            className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-200 dark:border-[#334155] overflow-hidden shadow-sm">
+
+            {/* Franja superior */}
+            <div className="h-1 w-full bg-purple-400" />
+
+            {/* Header del viaje */}
+            <button
+              onClick={() => toggleViaje(viaje.viajeId)}
+              className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50/50 dark:hover:bg-[#293548]/50 transition-colors text-left">
+
+              {/* Ícono */}
+              <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center shrink-0">
+                <Truck size={18} className="text-purple-600 dark:text-purple-400" />
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-gray-900 dark:text-slate-100 text-sm">
+                    {viaje.rutaOrigen ?? '—'} → {viaje.rutaDestino ?? '—'}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
+                    En tránsito
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 dark:text-slate-500">
+                  {viaje.vehiculoPlaca && (
+                    <span className="flex items-center gap-1">
+                      <Bus size={11} /> {viaje.vehiculoPlaca} · {viaje.vehiculoTipo}
+                    </span>
+                  )}
+                  {viaje.fechaHoraSal && (
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} /> {formatHora(viaje.fechaHoraSal)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Count + chevron */}
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="text-right">
+                  <span className="text-lg font-black text-gray-900 dark:text-slate-100 tabular-nums">
+                    {viaje.totalEncomiendas}
+                  </span>
+                  <p className="text-[10px] text-gray-400 dark:text-slate-500 leading-none">paquetes</p>
+                </div>
+                {pendientes > 0 && (
+                  <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                    {pendientes} sin recibir
+                  </span>
+                )}
+                {expandido
+                  ? <ChevronUp size={16} className="text-gray-400" />
+                  : <ChevronDown size={16} className="text-gray-400" />}
+              </div>
+            </button>
+
+            {/* Checklist expandido */}
+            {expandido && (
+              <div className="border-t border-gray-100 dark:border-[#293548]">
+
+                {/* Instrucción */}
+                <div className="px-5 py-3 bg-blue-50 dark:bg-blue-900/10 flex items-start gap-2">
+                  <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    Verifica físicamente cada paquete. Desmarca los que <strong>no llegaron</strong> e ingresa el motivo.
+                  </p>
+                </div>
+
+                {/* Lista de encomiendas */}
+                <div className="divide-y divide-gray-50 dark:divide-[#293548]">
+                  {viaje.encomiendas.map((enc: any) => {
+                    const estado = estadosViaje[enc.id] ?? { recibido: true, observacion: '' }
+                    return (
+                      <div key={enc.id} className={`px-5 py-3 transition-colors ${
+                        !estado.recibido ? 'bg-red-50/50 dark:bg-red-900/10' : ''
+                      }`}>
+                        <div className="flex items-start gap-3">
+                          {/* Checkbox */}
+                          <button
+                            onClick={() => toggleRecibido(viaje.viajeId, enc.id)}
+                            className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
+                              estado.recibido
+                                ? 'bg-emerald-500 border-emerald-500 shadow-sm'
+                                : 'border-red-400 bg-red-50 dark:bg-red-900/20'
+                            }`}>
+                            {estado.recibido && <Check size={11} className="text-white" />}
+                            {!estado.recibido && <X size={11} className="text-red-500" />}
+                          </button>
+
+                          {/* Info del paquete */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold text-[#064e3b] dark:text-emerald-400">
+                                {enc.codigoTracking}
+                              </span>
+                              {enc.esFragil && (
+                                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-semibold">
+                                  <AlertTriangle size={9} /> Frágil
+                                </span>
+                              )}
+                              {enc.formaCobro === 'POR_COBRAR' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
+                                  Cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-600 dark:text-slate-400 mt-0.5">
+                              <span className="text-gray-400">Para:</span>{' '}
+                              <span className="font-medium">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</span>
+                              {enc.destinatarioTel && (
+                                <span className="text-gray-400 ml-1.5">· {enc.destinatarioTel}</span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-gray-400 dark:text-slate-500">
+                              {enc.descripcion}
+                              {enc.pesoKg && <span className="ml-1.5">· {enc.pesoKg} kg</span>}
+                              {enc.numBultos && enc.numBultos > 1 && <span className="ml-1">· {enc.numBultos} bultos</span>}
+                            </p>
+
+                            {/* Motivo si no recibido */}
+                            {!estado.recibido && (
+                              <input
+                                value={estado.observacion}
+                                onChange={e => setObservacion(viaje.viajeId, enc.id, e.target.value)}
+                                placeholder="Motivo: no llegó, dañado, incompleto…"
+                                className="mt-2 w-full px-3 py-1.5 border border-red-200 dark:border-red-800 rounded-lg text-xs focus:ring-2 focus:ring-red-300/40 focus:border-red-400 focus:outline-none bg-white dark:bg-[#1e293b] text-gray-700 dark:text-slate-300 placeholder-gray-400"
+                              />
+                            )}
+                          </div>
+
+                          {/* Estado visual */}
+                          <div className="shrink-0">
+                            {estado.recibido
+                              ? <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-semibold">Recibido</span>
+                              : <span className="text-[10px] px-2 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Faltante</span>
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Footer de acción */}
+                <div className="px-5 py-4 bg-gray-50/80 dark:bg-[#293548]/50 border-t border-gray-100 dark:border-[#293548] flex items-center justify-between gap-4">
+                  <div className="text-sm text-gray-600 dark:text-slate-400">
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                      {Object.values(estadosViaje).filter(e => e.recibido).length}
+                    </span> recibidas
+                    {pendientes > 0 && (
+                      <>
+                        <span className="mx-2 text-gray-300">·</span>
+                        <span className="font-semibold text-red-600 dark:text-red-400">{pendientes}</span> faltantes
+                      </>
+                    )}
+                    <span className="ml-2 text-gray-400">de {viaje.totalEncomiendas} totales</span>
+                  </div>
+
+                  <button
+                    onClick={() => confirmarRecepcion(viaje)}
+                    disabled={procesandoEste}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#064e3b] text-white text-sm font-semibold rounded-xl hover:bg-[#065f46] disabled:opacity-50 transition-colors shadow-sm">
+                    {procesandoEste
+                      ? <><Loader2 size={14} className="animate-spin" /> Procesando…</>
+                      : <><CheckCircle2 size={14} /> Confirmar recepción</>}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
-type PageTab = 'enviadas' | 'para-entregar'
+type PageTab = 'enviadas' | 'para-entregar' | 'recepcionar'
 type PageVista = 'tabs' | 'nueva' | 'exito-registro' | 'exito-entrega'
 
 export default function EncomiendaPage() {
@@ -1028,6 +1403,7 @@ export default function EncomiendaPage() {
   )
   const [entregaSuccessData, setEntregaSuccessData] = useState<{ enc: EncomiendaEnriquecida; cobrado: boolean } | null>(null)
   const [wsBadge, setWsBadge] = useState(0)
+  const [recepcionBadge, setRecepcionBadge] = useState(0)
 
   const remitenteRef = useRef<BuscadorClienteRef>(null)
   const destinatarioRef = useRef<BuscadorClienteRef>(null)
@@ -1509,11 +1885,28 @@ export default function EncomiendaPage() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setTab('recepcionar')}
+              className={`relative px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                tab === 'recepcionar'
+                  ? 'border-purple-600 text-purple-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              Recepcionar
+              {recepcionBadge > 0 && tab !== 'recepcionar' && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-purple-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {recepcionBadge > 9 ? '9+' : recepcionBadge}
+                </span>
+              )}
+            </button>
           </div>
 
           {tab === 'enviadas' && <EnviadasTab viajes={viajes} />}
           {tab === 'para-entregar' && (
             <ParaEntregarTab onEntregaSuccess={handleEntregaSuccess} />
+          )}
+          {tab === 'recepcionar' && (
+            <RecepcionarTab onBadgeChange={setRecepcionBadge} />
           )}
         </div>
       )}

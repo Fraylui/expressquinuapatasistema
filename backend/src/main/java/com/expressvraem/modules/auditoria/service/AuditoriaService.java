@@ -1,4 +1,4 @@
-﻿package com.expressvraem.modules.auditoria.service;
+package com.expressvraem.modules.auditoria.service;
 
 import com.expressvraem.modules.auditoria.entity.Auditoria;
 import com.expressvraem.modules.auditoria.repository.AuditoriaRepository;

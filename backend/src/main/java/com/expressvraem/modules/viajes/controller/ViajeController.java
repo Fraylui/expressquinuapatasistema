@@ -1,5 +1,7 @@
 package com.expressvraem.modules.viajes.controller;
 
+import com.expressvraem.modules.conductores.entity.Conductor;
+import com.expressvraem.modules.conductores.repository.ConductorRepository;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.repository.EncomiendaRepository;
 import com.expressvraem.shared.websocket.WebSocketEventPublisher;
@@ -41,11 +43,12 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ViajeController {
 
-    private final ViajeRepository viajeRepository;
-    private final AsientoRepository asientoRepository;
+    private final ViajeRepository      viajeRepository;
+    private final AsientoRepository    asientoRepository;
     private final EncomiendaRepository encomiendaRepository;
-    private final EntityManager entityManager;
-    private final LogService logService;
+    private final ConductorRepository  conductorRepository;
+    private final EntityManager        entityManager;
+    private final LogService           logService;
     private final WebSocketEventPublisher wsPublisher;
 
     /**
@@ -66,7 +69,8 @@ public class ViajeController {
 
         int numAsientos = ((Number) vehRow[3]).intValue();
 
-        // Validar conflictos de horario antes de programar
+        // Validar licencia y conflictos de horario antes de programar
+        validarLicenciaConductor(dto.conductorId());
         validarConflictos(dto.vehiculoId(), dto.conductorId(), dto.fechaHoraSal(), -1L);
 
         Viaje viaje = Viaje.builder()
@@ -134,8 +138,13 @@ public class ViajeController {
                 .setParameter("ids", ids).getResultList())
                 .forEach(r -> libresCnt.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
 
+        OffsetDateTime limite = OffsetDateTime.now().minusMinutes(30);
         List<Viaje> conLibres = todos.stream()
                 .filter(v -> libresCnt.getOrDefault(v.getId(), 0L) > 0)
+                // Excluir viajes PROGRAMADO cuya salida fue hace más de 30 min
+                .filter(v -> !"PROGRAMADO".equals(v.getEstado())
+                        || v.getFechaHoraSal() == null
+                        || !v.getFechaHoraSal().isBefore(limite))
                 .filter(v -> fechaFinal == null || v.getFechaHoraSal() == null
                         || v.getFechaHoraSal().toLocalDate().equals(fechaFinal))
                 .toList();
@@ -157,6 +166,157 @@ public class ViajeController {
                     m.put("asientosLibres", dto.getAsientosLibres());
                     return m;
                 }).toList();
+
+        return ResponseEntity.ok(ApiResponse.ok(resultado));
+    }
+
+    // ─── Historial de viajes completados/cancelados ────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    @GetMapping("/historial")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> historial(
+            @RequestParam(required = false) String desde,
+            @RequestParam(required = false) String hasta,
+            @RequestParam(required = false) String estado,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "50") int size) {
+
+        Long agenciaId = AgenciaContext.getAgenciaId();
+        List<String> estados = (estado != null && !estado.isBlank())
+                ? List.of(estado)
+                : List.of("COMPLETADO", "CANCELADO");
+
+        List<Viaje> viajes = (agenciaId != null)
+                ? viajeRepository.findByAgenciaIdAndEstadoIn(agenciaId, estados)
+                : viajeRepository.findByEstadoIn(estados);
+
+        // Filtro por rango de fechas
+        if (desde != null && !desde.isBlank()) {
+            OffsetDateTime desdeDate = OffsetDateTime.parse(desde + "T00:00:00Z");
+            viajes = viajes.stream()
+                    .filter(v -> v.getFechaHoraSal() != null && !v.getFechaHoraSal().isBefore(desdeDate))
+                    .toList();
+        }
+        if (hasta != null && !hasta.isBlank()) {
+            OffsetDateTime hastaDate = OffsetDateTime.parse(hasta + "T23:59:59Z");
+            viajes = viajes.stream()
+                    .filter(v -> v.getFechaHoraSal() != null && !v.getFechaHoraSal().isAfter(hastaDate))
+                    .toList();
+        }
+
+        viajes = viajes.stream()
+                .sorted(Comparator.comparing(Viaje::getFechaHoraSal,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+
+        if (viajes.isEmpty()) return ResponseEntity.ok(ApiResponse.ok(List.of()));
+
+        // Aplicar paginación
+        int fromIdx = Math.min(page * size, viajes.size());
+        int toIdx   = Math.min(fromIdx + size, viajes.size());
+        viajes = viajes.subList(fromIdx, toIdx);
+
+        List<Long> viajeIds = viajes.stream().map(Viaje::getId).toList();
+        List<Long> rutaIds  = viajes.stream().map(Viaje::getRutaId).filter(Objects::nonNull).distinct().toList();
+        List<Long> vehIds   = viajes.stream().map(Viaje::getVehiculoId).filter(Objects::nonNull).distinct().toList();
+        List<Long> condIds  = viajes.stream().map(Viaje::getConductorId).filter(Objects::nonNull).distinct().toList();
+
+        // Rutas
+        Map<Long, Object[]> rutas = new HashMap<>();
+        if (!rutaIds.isEmpty())
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, origen, destino, distancia_km FROM rutas WHERE id IN :ids")
+                    .setParameter("ids", rutaIds).getResultList())
+                    .forEach(r -> rutas.put(((Number) r[0]).longValue(), r));
+
+        // Vehículos
+        Map<Long, Object[]> vehs = new HashMap<>();
+        if (!vehIds.isEmpty())
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, placa, tipo, num_asientos FROM vehiculos WHERE id IN :ids")
+                    .setParameter("ids", vehIds).getResultList())
+                    .forEach(r -> vehs.put(((Number) r[0]).longValue(), r));
+
+        // Conductores
+        Map<Long, String> conds = new HashMap<>();
+        if (!condIds.isEmpty())
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, nombres || ' ' || apellidos FROM usuarios WHERE id IN :ids")
+                    .setParameter("ids", condIds).getResultList())
+                    .forEach(r -> conds.put(((Number) r[0]).longValue(), String.valueOf(r[1])));
+
+        // Asientos ocupados
+        Map<Long, Long> ocupados = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, COUNT(*) FROM asientos WHERE viaje_id IN :ids AND estado IN ('OCUPADO','RESERVADO') GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> ocupados.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
+
+        // Encomiendas
+        Map<Long, Long> encCnt = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, COUNT(*) FROM encomiendas WHERE viaje_id IN :ids GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> encCnt.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
+
+        // Ingresos de pasajes (excluye anulados)
+        Map<Long, java.math.BigDecimal> ingresosPasajes = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, COALESCE(SUM(precio_final), 0) FROM pasajes WHERE viaje_id IN :ids AND estado != 'ANULADO' GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> ingresosPasajes.put(((Number) r[0]).longValue(),
+                        new java.math.BigDecimal(r[1].toString())));
+
+        // Ingresos de encomiendas (excluye devueltas y pago-en-destino)
+        Map<Long, java.math.BigDecimal> ingresosEnc = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, COALESCE(SUM(precio_envio - COALESCE(monto_descuento,0)), 0) " +
+                "FROM encomiendas WHERE viaje_id IN :ids AND estado != 'DEVUELTO' AND forma_cobro != 'POR_COBRAR' GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> ingresosEnc.put(((Number) r[0]).longValue(),
+                        new java.math.BigDecimal(r[1].toString())));
+
+        List<Map<String, Object>> resultado = viajes.stream().map(v -> {
+            Object[] ruta = rutas.get(v.getRutaId());
+            Object[] veh  = vehs.get(v.getVehiculoId());
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",             v.getId());
+            m.put("estado",         v.getEstado());
+            m.put("fechaHoraSal",   v.getFechaHoraSal());
+            m.put("fechaHoraArr",   v.getFechaHoraArr());
+            m.put("observaciones",  v.getObservaciones());
+            m.put("conductorNombre", conds.getOrDefault(v.getConductorId(), "—"));
+
+            if (ruta != null) {
+                m.put("rutaOrigen",  String.valueOf(ruta[1]));
+                m.put("rutaDestino", String.valueOf(ruta[2]));
+                m.put("distanciaKm", ruta[3] != null ? ((Number) ruta[3]).doubleValue() : null);
+            }
+            if (veh != null) {
+                m.put("vehiculoPlaca",     String.valueOf(veh[1]));
+                m.put("vehiculoTipo",      String.valueOf(veh[2]));
+                m.put("vehiculoAsientos",  ((Number) veh[3]).intValue());
+            }
+
+            long totalPasajeros  = ocupados.getOrDefault(v.getId(), 0L);
+            long totalEncomiendas = encCnt.getOrDefault(v.getId(), 0L);
+            java.math.BigDecimal ipas = ingresosPasajes.getOrDefault(v.getId(), java.math.BigDecimal.ZERO);
+            java.math.BigDecimal ienc = ingresosEnc.getOrDefault(v.getId(), java.math.BigDecimal.ZERO);
+
+            m.put("totalPasajeros",       totalPasajeros);
+            m.put("totalEncomiendas",     totalEncomiendas);
+            m.put("ingresosPasajes",      ipas);
+            m.put("ingresosEncomiendas",  ienc);
+            m.put("totalIngresos",        ipas.add(ienc));
+
+            // Duración en minutos
+            if (v.getFechaHoraSal() != null && v.getFechaHoraArr() != null) {
+                m.put("duracionMinutos",
+                        ChronoUnit.MINUTES.between(v.getFechaHoraSal(), v.getFechaHoraArr()));
+            }
+            return m;
+        }).toList();
 
         return ResponseEntity.ok(ApiResponse.ok(resultado));
     }
@@ -214,9 +374,9 @@ public class ViajeController {
         Viaje viaje = viajeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Viaje", id));
 
-        if (!"PROGRAMADO".equals(viaje.getEstado())) {
+        if (!"PROGRAMADO".equals(viaje.getEstado()) && !"ATRASADO".equals(viaje.getEstado())) {
             throw new BusinessException(
-                    "Solo se puede confirmar salida de un viaje PROGRAMADO. Estado actual: " + viaje.getEstado(),
+                    "Solo se puede confirmar salida de un viaje PROGRAMADO o ATRASADO. Estado actual: " + viaje.getEstado(),
                     "ESTADO_INVALIDO");
         }
 
@@ -257,9 +417,9 @@ public class ViajeController {
             @PathVariable Long id, Authentication auth) {
         Viaje viaje = viajeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Viaje", id));
-        if (!"PROGRAMADO".equals(viaje.getEstado())) {
+        if (!"PROGRAMADO".equals(viaje.getEstado()) && !"ATRASADO".equals(viaje.getEstado())) {
             throw new BusinessException(
-                    "Solo se puede cancelar un viaje PROGRAMADO. Estado actual: " + viaje.getEstado(),
+                    "Solo se puede cancelar un viaje PROGRAMADO o ATRASADO. Estado actual: " + viaje.getEstado(),
                     "ESTADO_INVALIDO");
         }
         viaje.setEstado("CANCELADO");
@@ -343,14 +503,15 @@ public class ViajeController {
         Viaje viaje = viajeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Viaje", id));
 
-        if (!"PROGRAMADO".equals(viaje.getEstado())) {
+        if (!"PROGRAMADO".equals(viaje.getEstado()) && !"ATRASADO".equals(viaje.getEstado())) {
             throw new BusinessException(
-                    "Solo se puede editar un viaje PROGRAMADO. Estado actual: " + viaje.getEstado(),
+                    "Solo se puede editar un viaje PROGRAMADO o ATRASADO. Estado actual: " + viaje.getEstado(),
                     "ESTADO_INVALIDO");
         }
 
-        // Validar cambio de vehículo solo si no hay ventas
-        if (dto.vehiculoId() != null && !dto.vehiculoId().equals(viaje.getVehiculoId())) {
+        // Validar cambio de vehículo solo si no hay ventas; si ok, recrear asientos
+        boolean cambiaVehiculo = dto.vehiculoId() != null && !dto.vehiculoId().equals(viaje.getVehiculoId());
+        if (cambiaVehiculo) {
             long vendidos = asientoRepository.countByViajeIdAndEstado(viaje.getId(), "OCUPADO")
                           + asientoRepository.countByViajeIdAndEstado(viaje.getId(), "RESERVADO");
             if (vendidos > 0) {
@@ -360,14 +521,37 @@ public class ViajeController {
             }
         }
 
-        // Validar conflictos de horario con el nuevo conductor/vehículo
+        // Validar licencia y conflictos de horario con el nuevo conductor/vehículo
+        validarLicenciaConductor(dto.conductorId());
         Long vehId = dto.vehiculoId() != null ? dto.vehiculoId() : viaje.getVehiculoId();
         validarConflictos(vehId, dto.conductorId(), dto.fechaHoraSal(), id);
 
         viaje.setConductorId(dto.conductorId());
         viaje.setFechaHoraSal(dto.fechaHoraSal());
         viaje.setObservaciones(dto.observaciones());
-        if (dto.vehiculoId() != null && !dto.vehiculoId().equals(viaje.getVehiculoId())) {
+        if (cambiaVehiculo) {
+            // Eliminar asientos del vehículo anterior y generar los del nuevo
+            asientoRepository.deleteByViajeId(viaje.getId());
+
+            Object[] newVehRow = (Object[]) entityManager
+                    .createNativeQuery("SELECT num_asientos FROM vehiculos WHERE id = :vid")
+                    .setParameter("vid", dto.vehiculoId())
+                    .getSingleResult();
+            int nuevosAsientos = ((Number) newVehRow[0]).intValue();
+
+            Long agId = AgenciaContext.getAgenciaId() != null ? AgenciaContext.getAgenciaId() : viaje.getAgenciaId();
+            List<Asiento> lista = new ArrayList<>(nuevosAsientos);
+            for (int i = 1; i <= nuevosAsientos; i++) {
+                lista.add(Asiento.builder()
+                        .agenciaId(agId)
+                        .viajeId(viaje.getId())
+                        .vehiculoId(dto.vehiculoId())
+                        .numero(i)
+                        .estado("LIBRE")
+                        .build());
+            }
+            asientoRepository.saveAll(lista);
+
             viaje.setVehiculoId(dto.vehiculoId());
         }
         viaje.setUpdatedAt(OffsetDateTime.now());
@@ -379,10 +563,28 @@ public class ViajeController {
         return ResponseEntity.ok(ApiResponse.ok("Viaje actualizado", enrich(viaje)));
     }
 
+    /** Bloquea si la licencia del conductor está vencida o si el conductor no existe. */
+    private void validarLicenciaConductor(Long conductorId) {
+        Conductor c = conductorRepository.findById(conductorId)
+                .orElseThrow(() -> new BusinessException(
+                        "Conductor no encontrado (id=" + conductorId + ")", "CONDUCTOR_NO_ENCONTRADO"));
+        if (!c.isActivo()) {
+            throw new BusinessException(
+                    "El conductor " + c.getNombres() + " " + c.getApellidos() + " está inactivo.",
+                    "CONDUCTOR_INACTIVO");
+        }
+        if (c.getFechaVencLic() != null && c.getFechaVencLic().isBefore(LocalDate.now())) {
+            throw new BusinessException(
+                    "La licencia del conductor " + c.getNombres() + " " + c.getApellidos()
+                    + " venció el " + c.getFechaVencLic() + ". Renuévela antes de asignarlo a un viaje.",
+                    "LICENCIA_VENCIDA");
+        }
+    }
+
     /** Verifica que el vehículo y el conductor no tengan otro viaje a ±4 horas. */
     private void validarConflictos(Long vehiculoId, Long conductorId,
                                    OffsetDateTime fechaHoraSal, Long excludeId) {
-        List<String> activos = List.of("PROGRAMADO", "EN_RUTA");
+        List<String> activos = List.of("PROGRAMADO", "EN_RUTA", "ATRASADO");
         List<Viaje> candidatos = viajeRepository.findByEstadoIn(activos).stream()
                 .filter(v -> !v.getId().equals(excludeId))
                 .filter(v -> v.getVehiculoId().equals(vehiculoId) || v.getConductorId().equals(conductorId))

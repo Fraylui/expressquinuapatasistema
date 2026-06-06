@@ -6,6 +6,7 @@ import com.expressvraem.modules.caja.service.CajaService;
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.service.ClienteService;
 import com.expressvraem.modules.encomiendas.dto.EntregarEncomiendaDTO;
+import com.expressvraem.modules.encomiendas.dto.RecepcionItemDTO;
 import com.expressvraem.modules.encomiendas.dto.RegistrarEncomiendaDTO;
 import com.expressvraem.modules.promociones.service.PromocionService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
@@ -32,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -56,7 +58,7 @@ public class EncomiendaService {
         "EN_TRANSITO",     Set.of("LLEGADO_AGENCIA", "OBSERVADO"),
         "LLEGADO_AGENCIA", Set.of("DISPONIBLE"),
         "DISPONIBLE",      Set.of("ENTREGADO"),
-        "OBSERVADO",       Set.of("REGISTRADO", "DEVUELTO"),
+        "OBSERVADO",       Set.of("REGISTRADO", "DISPONIBLE", "DEVUELTO"),
         "ENTREGADO",       Set.of(),
         "DEVUELTO",        Set.of()
     );
@@ -375,6 +377,73 @@ public class EncomiendaService {
         stats.put("entregadasHoy",    entregadasHoy);
         stats.put("total",            todas.size());
         return stats;
+    }
+
+    // ─── Recepción masiva por viaje ────────────────────────────────────────────
+
+    public List<Encomienda> getEnTransitoParaAgencia(Long agenciaId) {
+        return encomiendaRepository.findEnTransitoParaAgenciaDestino(agenciaId);
+    }
+
+    @Transactional
+    public Map<String, Object> recepcionar(Long viajeId,
+                                           List<RecepcionItemDTO> items,
+                                           Long operadorId,
+                                           Long agenciaId,
+                                           String ip,
+                                           String nombreOperador) {
+        int recibidas = 0;
+        int faltantes = 0;
+        List<String> codigosFaltantes = new ArrayList<>();
+
+        for (RecepcionItemDTO item : items) {
+            Encomienda enc = encomiendaRepository.findById(item.encomiendaId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Encomienda", item.encomiendaId()));
+
+            if (!"EN_TRANSITO".equals(enc.getEstado())) continue;
+
+            if (item.recibido()) {
+                enc.setEstado("LLEGADO_AGENCIA");
+                encomiendaRepository.save(enc);
+                guardarHistorial(enc.getId(), enc.getAgenciaId(), operadorId,
+                        "EN_TRANSITO", "LLEGADO_AGENCIA",
+                        "Recibido en recepción masiva - viaje #" + viajeId);
+                wsPublisher.publicarCambioEstadoEncomienda(enc.getCodigoTracking(),
+                        new EstadoEncomiendaDTO(enc.getCodigoTracking(),
+                                "EN_TRANSITO", "LLEGADO_AGENCIA",
+                                "Llegó a agencia destino", nombreOperador, LocalDateTime.now()));
+                recibidas++;
+            } else {
+                String motivo = item.observacion() != null && !item.observacion().isBlank()
+                        ? item.observacion()
+                        : "No llegó en viaje #" + viajeId;
+                enc.setEstado("OBSERVADO");
+                enc.setObservaciones(motivo);
+                encomiendaRepository.save(enc);
+                guardarHistorial(enc.getId(), enc.getAgenciaId(), operadorId,
+                        "EN_TRANSITO", "OBSERVADO", motivo);
+                wsPublisher.publicarCambioEstadoEncomienda(enc.getCodigoTracking(),
+                        new EstadoEncomiendaDTO(enc.getCodigoTracking(),
+                                "EN_TRANSITO", "OBSERVADO",
+                                motivo, nombreOperador, LocalDateTime.now()));
+                codigosFaltantes.add(enc.getCodigoTracking());
+                faltantes++;
+            }
+        }
+
+        auditoriaService.registrar(operadorId, nombreOperador, agenciaId,
+                "UPDATE", "ENCOMIENDAS", "Encomienda", viajeId,
+                "recepcion_masiva recibidas=" + recibidas + " faltantes=" + faltantes, ip);
+
+        log.info("Recepción masiva viaje={} agencia={} recibidas={} faltantes={}",
+                viajeId, agenciaId, recibidas, faltantes);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("recibidas", recibidas);
+        result.put("faltantes", faltantes);
+        result.put("total", recibidas + faltantes);
+        result.put("codigosFaltantes", codigosFaltantes);
+        return result;
     }
 
     private void guardarHistorial(Long encId, Long agenciaId, Long usuarioId,

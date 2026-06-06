@@ -5,7 +5,6 @@ import com.expressvraem.modules.rutas.repository.RutaRepository;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
-import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -27,17 +26,13 @@ public class ConfiguracionRutaController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<Ruta>>> listar() {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        List<Ruta> rutas = agenciaId != null
-                ? rutaRepository.findByAgenciaId(agenciaId)
-                : rutaRepository.findAll();
-        return ResponseEntity.ok(ApiResponse.ok(rutas));
+        // Rutas son globales — todas las agencias ven el mismo catálogo
+        return ResponseEntity.ok(ApiResponse.ok(rutaRepository.findAll()));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<Ruta>> crear(@Valid @RequestBody RutaDTO dto) {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) agenciaId = 1L;
+        Long agenciaId = 1L; // catálogo compartido de la empresa
 
         String codigo = dto.getCodigo().toUpperCase().trim();
         if (rutaRepository.existsByCodigoAndIdNot(codigo, 0L)) {
