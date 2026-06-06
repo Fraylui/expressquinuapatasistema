@@ -121,9 +121,8 @@ public class ComprobantePdfService {
             float ciH = 8 + 2              // header empresa compact
                       + 10 + 4            // tracking bold + gap
                       + 8 * 6             // 6 filas de datos
-                      + 6;                // gap antes de corte
-            // Línea de corte: ~12
-            float cortH = 12f;
+                      + 6;                // gap final
+            float cortH = 0f;
             // Sección COMPROBANTE (abajo): cabecera + QR + datos
             float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
                       + 10 + 8 + 8 + 8    // header empresa
@@ -183,11 +182,6 @@ public class ComprobantePdfService {
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Monto:",       montoStr + (esPorCobrar ? " (EN DESTINO)" : ""), y); y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Forma pago:",  esPorCobrar ? "POR COBRAR" : (enc.getFormaCobro() != null ? enc.getFormaCobro() : "EFECTIVO"), y); y -= 2;
                 y = drawLabel(cs, fontBold, fontNorm, 6f,   "Hash ctrl:",   hash, y); y -= 4;
-
-                // ════════════════════════════════════════════════════════════════
-                //  LÍNEA DE CORTE
-                // ════════════════════════════════════════════════════════════════
-                y = drawCutLine(cs, fontNorm, y); y -= 4;
 
                 // ════════════════════════════════════════════════════════════════
                 //  SECCIÓN 2: COMPROBANTE DE ENCOMIENDA (copia del cliente)
@@ -317,27 +311,6 @@ public class ComprobantePdfService {
         cs.setLineWidth(0.5f);
         cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
         return y - 3;
-    }
-
-    /** Línea de corte con tijeras y texto "CORTAR AQUI" */
-    private float drawCutLine(PDPageContentStream cs, PDType1Font font, float y) throws Exception {
-        // Línea punteada manual (series de segmentos cortos)
-        cs.setLineWidth(0.4f);
-        float x = MARGIN;
-        float step = 4f;
-        while (x < PAGE_W - MARGIN) {
-            cs.moveTo(x, y);
-            cs.lineTo(Math.min(x + 2f, PAGE_W - MARGIN), y);
-            cs.stroke();
-            x += step;
-        }
-        y -= 3;
-        // Texto centrado
-        String cutText = "- - - - - CORTAR AQUI - - - - -";
-        float tw = font.getStringWidth(cutText) / 1000f * 6f;
-        cs.beginText(); cs.setFont(font, 6f);
-        cs.newLineAtOffset((PAGE_W - tw) / 2f, y - 6f); cs.showText(cutText); cs.endText();
-        return y - 6f - 1;
     }
 
     private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
