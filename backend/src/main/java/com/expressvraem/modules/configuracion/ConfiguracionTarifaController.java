@@ -5,7 +5,6 @@ import com.expressvraem.modules.tarifas.entity.Tarifa;
 import com.expressvraem.modules.tarifas.repository.TarifaRepository;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
-import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.persistence.EntityManager;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -30,20 +29,15 @@ public class ConfiguracionTarifaController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<TarifaResponseDTO>>> listar() {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        List<Tarifa> tarifas = agenciaId != null
-                ? tarifaRepository.findByAgenciaId(agenciaId)
-                : tarifaRepository.findAll();
-        return ResponseEntity.ok(ApiResponse.ok(tarifas.stream().map(this::enrich).collect(Collectors.toList())));
+        // Tarifas son globales — el precio de cada ruta es el mismo para toda la empresa
+        return ResponseEntity.ok(ApiResponse.ok(
+                tarifaRepository.findAll().stream().map(this::enrich).collect(Collectors.toList())));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<TarifaResponseDTO>> crear(@Valid @RequestBody TarifaDTO dto) {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) agenciaId = 1L;
-
         Tarifa t = new Tarifa();
-        t.setAgenciaId(agenciaId);
+        t.setAgenciaId(1L); // catálogo compartido de la empresa
         t.setRutaId(dto.getRutaId());
         t.setTipoVehiculo(dto.getTipoVehiculo());
         t.setPrecio(dto.getPrecio());

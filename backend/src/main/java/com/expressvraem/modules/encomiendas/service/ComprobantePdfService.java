@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -43,6 +44,7 @@ public class ComprobantePdfService {
     private static final String CIUDAD    = "Huamanga - Ayacucho  Telf: 066-312456";
     private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
 
+    @Transactional(readOnly = true)
     public byte[] generarComprobante(Encomienda enc, String operadorNombre) {
         try (PDDocument doc = new PDDocument()) {
 
@@ -95,10 +97,11 @@ public class ComprobantePdfService {
             String qrContent    = TRACK_URL + enc.getCodigoTracking();
             String montoStr     = enc.getMonto() != null
                     ? "S/ " + enc.getMonto().toPlainString()
-                    : "S/ " + enc.getPrecioEnvio().toPlainString();
+                    : enc.getPrecioEnvio() != null ? "S/ " + enc.getPrecioEnvio().toPlainString() : "—";
 
             String monto4hash   = enc.getMonto() != null
-                    ? enc.getMonto().toPlainString() : enc.getPrecioEnvio().toPlainString();
+                    ? enc.getMonto().toPlainString()
+                    : enc.getPrecioEnvio() != null ? enc.getPrecioEnvio().toPlainString() : "0";
             String hash = computeHash(enc.getCodigoTracking(), monto4hash, remDoc, fechaStr);
 
             // ── Estimar altura total ───────────────────────────────────────────
@@ -341,6 +344,7 @@ public class ComprobantePdfService {
                 .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
                 .replace('ñ','n').replace('Ñ','N').replace('ü','u').replace('Ü','U')
                 .replace('→','>').replace('—','-').replace('–','-').replace('…','.')
-                .replace('¡','!').replace('¿','?').replaceAll("[^\\x00-\\x7E]", "?");
+                .replace('¡','!').replace('¿','?').replaceAll("[\\r\\n\\t]", " ")
+                .replaceAll("[^\\x20-\\x7E]", "?");
     }
 }

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/caja")
@@ -54,6 +55,19 @@ public class CajaController {
     private String getClientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         return (xff != null && !xff.isBlank()) ? xff.split(",")[0].trim() : request.getRemoteAddr();
+    }
+
+    @GetMapping("/consolidado-agencias")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> consolidadoAgencias() {
+        return ResponseEntity.ok(ApiResponse.ok(cajaService.getConsolidadoPorAgencia()));
+    }
+
+    @GetMapping("/estado-operadores")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> estadoOperadores(Authentication auth) {
+        Long agenciaId = resolveAgenciaId(auth);
+        return ResponseEntity.ok(ApiResponse.ok(cajaService.getEstadoOperadores(agenciaId)));
     }
 
     @GetMapping("/turno-actual")

@@ -17,4 +17,6 @@ public interface AsientoRepository extends JpaRepository<Asiento, Long> {
     List<Asiento> findByViajeIdAndEstado(Long viajeId, String estado);
 
     long countByViajeIdAndEstado(Long viajeId, String estado);
+
+    void deleteByViajeId(Long viajeId);
 }

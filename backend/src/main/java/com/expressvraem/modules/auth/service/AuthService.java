@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,20 +32,99 @@ public class AuthService {
     private final UserDetailsServiceImpl userDetailsService;
     private final AuditoriaService auditoriaService;
 
+    private static final int  MAX_INTENTOS    = 5;
+    private static final long BLOQUEO_MINUTOS = 30;
+
+    // email → [intentos, primerIntento]
+    private final Map<String, long[]> intentosFallidos = new ConcurrentHashMap<>();
+
+    private void registrarIntentoFallido(String email) {
+        long ahora = System.currentTimeMillis();
+        intentosFallidos.compute(email, (k, v) -> {
+            if (v == null || ahora - v[1] > BLOQUEO_MINUTOS * 60_000) {
+                return new long[]{1, ahora};
+            }
+            v[0]++;
+            return v;
+        });
+    }
+
+    private void verificarBloqueo(String email) {
+        long[] datos = intentosFallidos.get(email);
+        if (datos == null) return;
+        long ahora   = System.currentTimeMillis();
+        long minutos = (ahora - datos[1]) / 60_000;
+        if (datos[0] >= MAX_INTENTOS && minutos < BLOQUEO_MINUTOS) {
+            long restantes = BLOQUEO_MINUTOS - minutos;
+            throw new BusinessException(
+                "Cuenta bloqueada temporalmente por " + MAX_INTENTOS + " intentos fallidos. " +
+                "Intenta nuevamente en " + restantes + " minuto(s).",
+                "CUENTA_BLOQUEADA");
+        }
+        // Limpiar si ya venció el bloqueo
+        if (minutos >= BLOQUEO_MINUTOS) intentosFallidos.remove(email);
+    }
+
+    private void limpiarIntentos(String email) {
+        intentosFallidos.remove(email);
+    }
+
+    /** Solo SUPER_ADMIN puede usar este método para desbloquear manualmente. */
+    public void desbloquearCuenta(String email) {
+        intentosFallidos.remove(email);
+        log.info("Cuenta {} desbloqueada manualmente por SUPER_ADMIN", email);
+    }
+
+    public java.util.Map<String, Object> getResumenIntentosFallidos() {
+        long ahora = System.currentTimeMillis();
+        var activos = intentosFallidos.entrySet().stream()
+            .filter(e -> ahora - e.getValue()[1] < BLOQUEO_MINUTOS * 60_000)
+            .map(e -> {
+                var m = new java.util.LinkedHashMap<String, Object>();
+                m.put("email",        e.getKey());
+                m.put("intentos",     e.getValue()[0]);
+                m.put("bloqueado",    e.getValue()[0] >= MAX_INTENTOS);
+                m.put("minutosRest",  BLOQUEO_MINUTOS - (ahora - e.getValue()[1]) / 60_000);
+                return m;
+            }).toList();
+        var result = new java.util.LinkedHashMap<String, Object>();
+        result.put("cuentasConIntentos", activos.size());
+        result.put("cuentasBloqueadas",  activos.stream().filter(m -> (Boolean) m.get("bloqueado")).count());
+        result.put("detalle", activos);
+        return result;
+    }
+
     @Transactional
     public LoginResponseDTO login(LoginRequestDTO dto, String ip) {
+        // Verificar bloqueo antes de cualquier consulta
+        verificarBloqueo(dto.email());
+
         var userOpt = usuarioRepository.findByEmailAndActivo(dto.email(), true);
         if (userOpt.isEmpty()) {
+            registrarIntentoFallido(dto.email());
             auditLoginFallido(dto.email(), null, ip, "USUARIO_NO_ENCONTRADO");
             throw new BusinessException("Credenciales inválidas", "AUTH_INVALID");
         }
         Usuario usuario = userOpt.get();
 
         if (!passwordEncoder.matches(dto.password(), usuario.getPasswordHash())) {
-            log.warn("Login fallido para: {} desde IP: {}", dto.email(), ip);
-            auditLoginFallido(dto.email(), usuario.getAgenciaId(), ip, "PASSWORD_INCORRECTO");
-            throw new BusinessException("Credenciales inválidas", "AUTH_INVALID");
+            registrarIntentoFallido(dto.email());
+            long[] datos = intentosFallidos.get(dto.email());
+            long intentos = datos != null ? datos[0] : 1;
+            log.warn("Login fallido para: {} desde IP: {} (intento {}/{})", dto.email(), ip, intentos, MAX_INTENTOS);
+            auditLoginFallido(dto.email(), usuario.getAgenciaId(), ip,
+                "PASSWORD_INCORRECTO (intento " + intentos + "/" + MAX_INTENTOS + ")");
+            if (intentos >= MAX_INTENTOS) {
+                throw new BusinessException(
+                    "Cuenta bloqueada por " + MAX_INTENTOS + " intentos fallidos. " +
+                    "Intenta nuevamente en " + BLOQUEO_MINUTOS + " minutos.",
+                    "CUENTA_BLOQUEADA");
+            }
+            throw new BusinessException("Credenciales inválidas. Intentos restantes: " +
+                (MAX_INTENTOS - intentos), "AUTH_INVALID");
         }
+
+        limpiarIntentos(dto.email());
 
         usuario.setUltimoAcceso(LocalDateTime.now());
         usuario.setIpUltimoAcceso(ip);

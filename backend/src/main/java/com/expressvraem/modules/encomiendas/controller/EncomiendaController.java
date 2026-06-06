@@ -6,7 +6,14 @@ import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
 import com.expressvraem.modules.encomiendas.dto.EntregarEncomiendaDTO;
+import com.expressvraem.modules.encomiendas.dto.RecepcionItemDTO;
 import com.expressvraem.modules.encomiendas.dto.RegistrarEncomiendaDTO;
+import com.expressvraem.modules.rutas.entity.Ruta;
+import com.expressvraem.modules.rutas.repository.RutaRepository;
+import com.expressvraem.modules.vehiculos.entity.Vehiculo;
+import com.expressvraem.modules.vehiculos.repository.VehiculoRepository;
+import com.expressvraem.modules.viajes.entity.Viaje;
+import com.expressvraem.modules.viajes.repository.ViajeRepository;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.entity.HistorialEncomienda;
 import com.expressvraem.modules.encomiendas.service.ComprobantePdfService;
@@ -27,6 +34,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +53,10 @@ public class EncomiendaController {
     private final UsuarioRepository usuarioRepository;
     private final ClienteRepository clienteRepository;
     private final AgenciaRepository agenciaRepository;
+    private final ViajeRepository viajeRepository;
+    private final RutaRepository rutaRepository;
+    private final VehiculoRepository vehiculoRepository;
+    private final com.expressvraem.modules.encomiendas.repository.EncomiendaRepository encomiendaRepository;
 
     private Long resolveUserId(Authentication auth) {
         return usuarioRepository.findByEmail(auth.getName())
@@ -360,5 +372,86 @@ public class EncomiendaController {
     private String nombreDisplay(Cliente c) {
         if ("EMPRESA".equals(c.getTipo()) && c.getRazonSocial() != null) return c.getRazonSocial();
         return c.getApellidos() + ", " + c.getNombres();
+    }
+
+    // ─── Viajes en tránsito hacia esta agencia ──────────────────────────────────
+
+    @GetMapping("/api/encomiendas/viajes-en-transito")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> viajesEnTransito(Authentication auth) {
+        Long agenciaId = resolveAgenciaId(auth);
+
+        List<Encomienda> encs = encomiendaService.getEnTransitoParaAgencia(agenciaId);
+        Map<Long, String> agenciasMap = buildAgenciasMap();
+        Map<Long, Cliente> clienteMap = buildClienteMap(encs);
+
+        // Group by viajeId
+        Map<Long, List<Encomienda>> porViaje = encs.stream()
+                .collect(Collectors.groupingBy(Encomienda::getViajeId));
+
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        for (Map.Entry<Long, List<Encomienda>> entry : porViaje.entrySet()) {
+            Long viajeId = entry.getKey();
+            List<Encomienda> lista = entry.getValue();
+
+            Map<String, Object> grupo = new LinkedHashMap<>();
+            grupo.put("viajeId", viajeId);
+
+            // Enrich with viaje + ruta + vehiculo info
+            viajeRepository.findById(viajeId).ifPresent(v -> {
+                grupo.put("fechaHoraSal", v.getFechaHoraSal());
+                grupo.put("estadoViaje", v.getEstado());
+                rutaRepository.findById(v.getRutaId()).ifPresent(r -> {
+                    grupo.put("rutaOrigen", r.getOrigen());
+                    grupo.put("rutaDestino", r.getDestino());
+                });
+                vehiculoRepository.findById(v.getVehiculoId()).ifPresent(vh -> {
+                    grupo.put("vehiculoPlaca", vh.getPlaca());
+                    grupo.put("vehiculoTipo", vh.getTipo());
+                });
+            });
+
+            grupo.put("totalEncomiendas", lista.size());
+            grupo.put("encomiendas", lista.stream()
+                    .map(e -> enrichEncomienda(e, agenciasMap, clienteMap))
+                    .collect(Collectors.toList()));
+
+            resultado.add(grupo);
+        }
+
+        return ResponseEntity.ok(ApiResponse.ok(resultado));
+    }
+
+    // ─── Encomiendas urgentes (de viajes cancelados) ──────────────────────────
+
+    @GetMapping("/api/encomiendas/urgentes")
+    public ResponseEntity<ApiResponse<List<Encomienda>>> urgentes(Authentication auth) {
+        Long agenciaId = resolveAgenciaId(auth);
+        return ResponseEntity.ok(ApiResponse.ok(
+                agenciaId != null ? encomiendaRepository.findUrgentesDeViajeCancelado(agenciaId) : List.of()));
+    }
+
+    // ─── Encomiendas listas para entregar en mi agencia ───────────────────────
+
+    @GetMapping("/api/encomiendas/para-entregar")
+    public ResponseEntity<ApiResponse<List<Encomienda>>> paraEntregar(Authentication auth) {
+        Long agenciaId = resolveAgenciaId(auth);
+        return ResponseEntity.ok(ApiResponse.ok(
+                agenciaId != null ? encomiendaRepository.findDisponiblesParaEntrega(agenciaId) : List.of()));
+    }
+
+    // ─── Recepción masiva ───────────────────────────────────────────────────────
+
+    @PostMapping("/api/encomiendas/viaje/{viajeId}/recepcionar")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> recepcionar(
+            @PathVariable Long viajeId,
+            @RequestBody List<RecepcionItemDTO> items,
+            Authentication auth,
+            HttpServletRequest request) {
+        Long agenciaId = resolveAgenciaId(auth);
+        Map<String, Object> result = encomiendaService.recepcionar(
+                viajeId, items,
+                resolveUserId(auth), agenciaId,
+                extraerIp(request), resolveNombreOperador(auth));
+        return ResponseEntity.ok(ApiResponse.ok("Recepción completada", result));
     }
 }

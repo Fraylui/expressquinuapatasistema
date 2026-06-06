@@ -10,7 +10,9 @@ import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
 import com.expressvraem.modules.promociones.service.PromocionService;
 import com.expressvraem.modules.viajes.entity.Asiento;
+import com.expressvraem.modules.viajes.entity.Viaje;
 import com.expressvraem.modules.viajes.repository.AsientoRepository;
+import com.expressvraem.modules.viajes.repository.ViajeRepository;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
@@ -38,6 +40,7 @@ public class PasajeService {
     private final PasajeRepository pasajeRepository;
     private final AsientoRepository asientoRepository;
     private final ClienteRepository clienteRepository;
+    private final ViajeRepository viajeRepository;
     private final WebSocketEventPublisher wsPublisher;
     private final CajaService cajaService;
     private final AuditoriaService auditoriaService;
@@ -50,6 +53,22 @@ public class PasajeService {
     public PasajeResponseDTO venderPasaje(VentaPasajeDTO dto, Long operadorId,
                                           String ip, String usuarioNombre) {
         Long agenciaId = AgenciaContext.getAgenciaId();
+
+        // Validar que el viaje no haya vencido (más de 30 min desde su hora de salida)
+        Viaje viaje = viajeRepository.findById(dto.viajeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Viaje", dto.viajeId()));
+
+        if (!"PROGRAMADO".equals(viaje.getEstado()) && !"EN_RUTA".equals(viaje.getEstado())) {
+            throw new BusinessException(
+                    "No se puede vender pasajes para un viaje en estado: " + viaje.getEstado(),
+                    "VIAJE_NO_ACTIVO");
+        }
+        if (viaje.getFechaHoraSal() != null &&
+                viaje.getFechaHoraSal().isBefore(java.time.OffsetDateTime.now().minusMinutes(30))) {
+            throw new BusinessException(
+                    "Este viaje ya superó su hora de salida. No se pueden registrar más pasajes.",
+                    "VIAJE_VENCIDO");
+        }
 
         // Lock asiento por viaje + numero (SELECT FOR UPDATE via JPQL pessimistic lock)
         Asiento asiento = asientoRepository.findByViajeIdAndNumero(dto.viajeId(), dto.asientoNumero())

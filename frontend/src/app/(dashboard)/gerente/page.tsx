@@ -37,6 +37,18 @@ interface ViajeDelDia {
 interface EncomiendaPendiente {
   id: number; codigoTracking: string; estado: string
   descripcion: string; horas: number; remitente: string; destinatario: string
+  esFragil?: boolean; criticidad?: 'NORMAL' | 'ALTA' | 'CRITICA'
+  deViajeCancelado?: boolean; agenciaOrigen?: string; agenciaDestino?: string
+}
+interface ConductorActivo {
+  viajeId: number; estado: string; fechaHoraSal: string
+  origen: string; destino: string; placa: string; tipoVehiculo: string
+  conductorNombre: string; licencia: string
+  asientosOcupados: number; capacidad: number; ocupacionPct: number
+}
+interface EstadoOperador {
+  usuarioId: number; nombre: string; tieneCaja: boolean
+  cajaId?: number; fechaApertura?: string; saldoActual?: number
 }
 interface TopRuta {
   ruta: string; origen: string; destino: string; pasajes: number; ingresos: number
@@ -226,6 +238,15 @@ export default function GerentePage() {
 
   const { data: topRutasRaw } = useSWR(ag(`/api/reportes/top-rutas?dias=${topDias}`), { refreshInterval: 300_000 })
   const topRutas: TopRuta[] = (topRutasRaw as any) ?? []
+
+  const { data: conductoresRaw } = useSWR(ag('/api/reportes/conductores-activos'), { refreshInterval: 60_000 })
+  const conductoresActivos: ConductorActivo[] = (conductoresRaw as any) ?? []
+
+  const { data: operadoresRaw } = useSWR(
+    agenciaFiltro ? `/api/caja/estado-operadores` : null,
+    { refreshInterval: 120_000 }
+  )
+  const estadoOperadores: EstadoOperador[] = (operadoresRaw as any) ?? []
 
   // ── Chart data ────────────────────────────────────────────────────────────────
   const chartData = periodo === 'HOY'
@@ -623,6 +644,98 @@ export default function GerentePage() {
         </div>
       </div>
 
+      {/* ── Conductores activos del día ── */}
+      {conductoresActivos.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Bus size={14} className="text-[#064e3b]" />
+            Conductores activos hoy
+            <span className="ml-auto text-xs font-normal text-gray-400">{conductoresActivos.length} viaje{conductoresActivos.length !== 1 ? 's' : ''}</span>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {['Conductor', 'Ruta', 'Hora', 'Vehículo', 'Ocupación', 'Estado'].map(h => (
+                    <th key={h} className="pb-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide pr-4">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {conductoresActivos.map(c => (
+                  <tr key={c.viajeId} className="hover:bg-gray-50 transition-colors">
+                    <td className="py-2.5 pr-4">
+                      <p className="font-medium text-gray-800">{c.conductorNombre}</p>
+                      <p className="text-gray-400 font-mono text-[10px]">{c.licencia}</p>
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600 whitespace-nowrap">{c.origen} → {c.destino}</td>
+                    <td className="py-2.5 pr-4 font-mono text-gray-600 whitespace-nowrap">
+                      {c.fechaHoraSal ? format(new Date(c.fechaHoraSal), 'HH:mm') : '—'}
+                    </td>
+                    <td className="py-2.5 pr-4 whitespace-nowrap">
+                      <span className="font-mono text-gray-700">{c.placa}</span>
+                      <span className="text-gray-400 ml-1">({c.tipoVehiculo})</span>
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${c.ocupacionPct >= 90 ? 'bg-emerald-500' : c.ocupacionPct >= 60 ? 'bg-amber-400' : 'bg-blue-400'}`}
+                            style={{ width: `${Math.min(c.ocupacionPct, 100)}%` }} />
+                        </div>
+                        <span className="text-[10px] text-gray-500">{c.asientosOcupados}/{c.capacidad}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                        c.estado === 'EN_RUTA' ? 'bg-emerald-100 text-emerald-700' :
+                        c.estado === 'ATRASADO' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>{c.estado === 'EN_RUTA' ? 'En ruta' : c.estado === 'ATRASADO' ? 'Atrasado' : 'Programado'}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Estado operadores (solo cuando hay filtro de agencia) ── */}
+      {agenciaFiltro && estadoOperadores.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Users size={14} className="text-[#064e3b]" />
+            Estado de operadores
+            {estadoOperadores.filter(o => !o.tieneCaja).length > 0 && (
+              <span className="ml-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
+                {estadoOperadores.filter(o => !o.tieneCaja).length} sin caja
+              </span>
+            )}
+          </h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {estadoOperadores.map(op => (
+              <div key={op.usuarioId} className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${
+                op.tieneCaja ? 'border-emerald-100 bg-emerald-50/50' : 'border-red-100 bg-red-50/50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${op.tieneCaja ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                  <span className="text-sm font-medium text-gray-800">{op.nombre}</span>
+                </div>
+                <div className="text-right">
+                  {op.tieneCaja
+                    ? <p className="text-xs font-mono text-emerald-700 font-semibold">S/ {Number(op.saldoActual ?? 0).toFixed(2)}</p>
+                    : <p className="text-xs text-red-600 font-medium">Sin caja abierta</p>
+                  }
+                  {op.fechaApertura && (
+                    <p className="text-[10px] text-gray-400">{format(new Date(op.fechaApertura), 'HH:mm')}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Encomiendas pendientes ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -631,11 +744,18 @@ export default function GerentePage() {
             Encomiendas sin movimiento
             <span className="text-xs text-gray-400 font-normal">+24 h</span>
           </h3>
-          {encPendientes.length > 0 && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
-              {encPendientes.length} alerta{encPendientes.length > 1 ? 's' : ''}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {encPendientes.filter(e => e.criticidad === 'CRITICA').length > 0 && (
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
+                {encPendientes.filter(e => e.criticidad === 'CRITICA').length} crítica{encPendientes.filter(e => e.criticidad === 'CRITICA').length > 1 ? 's' : ''}
+              </span>
+            )}
+            {encPendientes.length > 0 && (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                {encPendientes.length} total
+              </span>
+            )}
+          </div>
         </div>
 
         {encPendientes.length === 0 ? (
@@ -648,32 +768,52 @@ export default function GerentePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {['Código', 'Estado', 'Sin cambio', 'Remitente', 'Destinatario', 'Descripción'].map(h => (
-                    <th key={h} className="pb-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
+                  {['', 'Código', 'Estado', 'Sin cambio', 'Origen → Destino', 'Remitente', 'Descripción'].map(h => (
+                    <th key={h} className="pb-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide pr-3">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {encPendientes.map(enc => (
-                  <tr key={enc.id} className="hover:bg-amber-50/40 transition-colors">
-                    <td className="py-2.5 font-mono text-gray-700 whitespace-nowrap">{enc.codigoTracking}</td>
-                    <td className="py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                        ESTADO_ENC[enc.estado] ?? 'bg-gray-100 text-gray-600'
-                      }`}>{enc.estado}</span>
-                    </td>
-                    <td className="py-2.5">
-                      <span className={`font-bold tabular-nums ${enc.horas >= 48 ? 'text-red-600' : 'text-amber-600'}`}>
-                        {enc.horas}h
-                      </span>
-                    </td>
-                    <td className="py-2.5 text-gray-600 whitespace-nowrap">{enc.remitente}</td>
-                    <td className="py-2.5 text-gray-600 whitespace-nowrap">{enc.destinatario}</td>
-                    <td className="py-2.5 text-gray-400 max-w-[160px] truncate">{enc.descripcion}</td>
-                  </tr>
-                ))}
+                {encPendientes.map(enc => {
+                  const critica = enc.criticidad === 'CRITICA'
+                  const alta    = enc.criticidad === 'ALTA'
+                  return (
+                    <tr key={enc.id} className={`hover:bg-amber-50/40 transition-colors ${critica ? 'bg-red-50/30' : ''}`}>
+                      <td className="py-2.5 pr-2">
+                        <div className="flex gap-1">
+                          {critica && <span title="Crítica" className="w-2 h-2 rounded-full bg-red-500 mt-1" />}
+                          {!critica && alta && <span title="Alta" className="w-2 h-2 rounded-full bg-amber-500 mt-1" />}
+                          {enc.esFragil && <span title="Frágil" className="text-[10px]">⚠</span>}
+                          {enc.deViajeCancelado && <span title="De viaje cancelado" className="text-[10px] text-red-500">✕</span>}
+                        </div>
+                      </td>
+                      <td className="py-2.5 font-mono text-gray-700 whitespace-nowrap pr-3">{enc.codigoTracking}</td>
+                      <td className="py-2.5 pr-3">
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${ESTADO_ENC[enc.estado] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {enc.estado}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <span className={`font-bold tabular-nums ${critica ? 'text-red-600' : alta ? 'text-amber-600' : 'text-gray-500'}`}>
+                          {enc.horas >= 168 ? `${Math.floor(enc.horas/24)}d` : `${enc.horas}h`}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3 text-gray-500 text-[10px] whitespace-nowrap">
+                        {enc.agenciaOrigen && enc.agenciaDestino ? `${enc.agenciaOrigen} → ${enc.agenciaDestino}` : '—'}
+                      </td>
+                      <td className="py-2.5 pr-3 text-gray-600 whitespace-nowrap">{enc.remitente}</td>
+                      <td className="py-2.5 text-gray-400 max-w-[140px] truncate">{enc.descripcion}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
+            <div className="mt-3 flex items-center gap-4 text-[10px] text-gray-400 border-t border-gray-50 pt-3">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Crítica (+7 días o frágil +48h)</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Alta (+48h)</span>
+              <span className="flex items-center gap-1"><span className="text-red-500">✕</span> De viaje cancelado</span>
+              <span className="flex items-center gap-1">⚠ Frágil</span>
+            </div>
           </div>
         )}
       </div>

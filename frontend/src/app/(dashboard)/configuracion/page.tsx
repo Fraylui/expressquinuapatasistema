@@ -286,7 +286,7 @@ function RutasTab() {
 
 interface TarifaFormState { rutaId: string; tipoVehiculo: string; precio: string }
 const emptyTarifa: TarifaFormState = { rutaId: '', tipoVehiculo: '', precio: '' }
-const TIPOS_VEHICULO = ['COMBI', 'CAMIONETA', 'BUS', 'MINIVAN']
+const TIPOS_VEHICULO = ['COMBI', 'CAMIONETA']
 
 function TarifasTab() {
   const { data: tarifasData, isLoading } = useSWR<Tarifa[]>('/api/configuracion/tarifas')

@@ -1,20 +1,23 @@
 'use client'
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import useSWR from 'swr'
 import toast from 'react-hot-toast'
 import {
   Bus, Clock, MapPin, Users, CheckCircle, FileText, Plus,
   X, Package, UserCheck, AlertTriangle, ChevronDown, ChevronUp,
   Pencil, Search, Ticket, Calendar, Navigation, Gauge,
-  ArrowRight, Route, Layers, ChevronRight,
+  ArrowRight, Route, Layers, ChevronRight, History, TrendingUp,
+  DollarSign, Filter, Download, RefreshCw, CheckCircle2,
+  XCircle, Timer, Loader2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/stores/authStore'
-import { format, isToday, isThisWeek } from 'date-fns'
+import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import api from '@/services/api'
 import Link from 'next/link'
+import { useWebSocket } from '@/hooks/useWebSocket'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface ViajeDTO {
@@ -25,13 +28,335 @@ interface ViajeDTO {
   ruta?:    { origen: string; destino: string; distanciaKm?: number }
   vehiculo?: { id?: number; placa: string; tipo: string; numAsientos: number }
 }
+interface ViajeHistorial {
+  id: number; estado: string
+  fechaHoraSal: string; fechaHoraArr?: string; observaciones?: string
+  conductorNombre?: string
+  rutaOrigen?: string; rutaDestino?: string; distanciaKm?: number
+  vehiculoPlaca?: string; vehiculoTipo?: string; vehiculoAsientos?: number
+  totalPasajeros: number; totalEncomiendas: number
+  ingresosPasajes: number; ingresosEncomiendas: number; totalIngresos: number
+  duracionMinutos?: number
+}
 interface RutaOpt { id: number; origen: string; destino: string; distanciaKm?: number }
 interface VehOpt  { id: number; placa: string; tipo: string; numAsientos?: number }
 interface CondOpt { id: number; nombres: string; apellidos: string; licencia: string }
 
 const emptyForm     = { rutaId: '', vehiculoId: '', conductorId: '', fechaHoraSal: '', observaciones: '' }
 const emptyEditForm = { conductorId: '', vehiculoId: '', fechaHoraSal: '', observaciones: '' }
-type FiltroFecha    = 'hoy' | 'semana' | 'todos'
+
+type PageTab = 'operaciones' | 'historial'
+
+interface AlertaCancelacion {
+  viajeId:              number
+  ruta:                 string
+  horaProgramada:       string
+  totalPasajeros:       number
+  totalEncomiendas:     number
+  pasajerosAfectados:   { pasajeId: number; boleta: string; asiento: number; monto: number; clienteNombre: string }[]
+  encomiendasRetenidas: { encomiendaId: number; codigo: string; descripcion: string }[]
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function fmtDuracion(mins?: number): string {
+  if (!mins) return '—'
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+function fmtMoney(n: number): string {
+  return `S/ ${Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2 })}`
+}
+
+// ── Componente de Historial ────────────────────────────────────────────────────
+function HistorialTab() {
+  const [viajes, setViajes]         = useState<ViajeHistorial[]>([])
+  const [cargando, setCargando]     = useState(false)
+  const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroDesde, setFiltroDesde]   = useState('')
+  const [filtroHasta, setFiltroHasta]   = useState('')
+  const [filtroBusq,  setFiltroBusq]    = useState('')
+
+  const cargar = useCallback(async () => {
+    setCargando(true)
+    try {
+      const params: Record<string, string> = {}
+      if (filtroEstado) params.estado = filtroEstado
+      if (filtroDesde)  params.desde  = filtroDesde
+      if (filtroHasta)  params.hasta  = filtroHasta
+      const r: any = await api.get('/api/viajes/historial', { params })
+      setViajes((r.data ?? []) as ViajeHistorial[])
+    } catch { toast.error('Error cargando historial') }
+    finally { setCargando(false) }
+  }, [filtroEstado, filtroDesde, filtroHasta])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const filtrados = useMemo(() => {
+    if (!filtroBusq.trim()) return viajes
+    const q = filtroBusq.toLowerCase()
+    return viajes.filter(v =>
+      v.rutaOrigen?.toLowerCase().includes(q) ||
+      v.rutaDestino?.toLowerCase().includes(q) ||
+      v.conductorNombre?.toLowerCase().includes(q) ||
+      v.vehiculoPlaca?.toLowerCase().includes(q)
+    )
+  }, [viajes, filtroBusq])
+
+  // Métricas agregadas
+  const completados = filtrados.filter(v => v.estado === 'COMPLETADO')
+  const totalPax    = completados.reduce((s, v) => s + v.totalPasajeros,    0)
+  const totalEnc    = completados.reduce((s, v) => s + v.totalEncomiendas,  0)
+  const totalIng    = completados.reduce((s, v) => s + v.totalIngresos,     0)
+
+  const imprimirManifiesto = async (id: number) => {
+    try {
+      const blob = await api.get(`/api/manifiestos/${id}/pdf`, { responseType: 'blob' }) as unknown as Blob
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { toast.error('Error al generar el manifiesto') }
+  }
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── KPI cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: 'Viajes completados', value: completados.length, icon: CheckCircle2, color: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-l-emerald-400' },
+          { label: 'Pasajeros transportados', value: totalPax, icon: Users, color: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-l-blue-400' },
+          { label: 'Encomiendas', value: totalEnc, icon: Package, color: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-600 dark:text-amber-400', border: 'border-l-amber-400' },
+          { label: 'Ingresos totales', value: fmtMoney(totalIng), icon: DollarSign, color: 'bg-indigo-50 dark:bg-indigo-900/20', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-l-indigo-400' },
+        ].map(({ label, value, icon: Icon, color, text, border }) => (
+          <div key={label} className={`bg-white dark:bg-[#1e293b] rounded-xl border border-gray-100 dark:border-[#334155] border-l-4 ${border} p-4 flex items-center gap-3`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+              <Icon size={18} className={text} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider leading-tight">{label}</p>
+              <p className="text-xl font-extrabold text-gray-900 dark:text-slate-100 tabular-nums leading-tight mt-0.5">{value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filtros ── */}
+      <div className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-[#334155] p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Búsqueda */}
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input value={filtroBusq} onChange={e => setFiltroBusq(e.target.value)}
+              placeholder="Ruta, conductor, placa…"
+              className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-[#334155] bg-white dark:bg-[#0f172a] rounded-xl text-sm text-gray-800 dark:text-slate-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
+          </div>
+
+          {/* Estado */}
+          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
+            className="px-3 py-2 border border-gray-200 dark:border-[#334155] bg-white dark:bg-[#0f172a] rounded-xl text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 transition-colors">
+            <option value="">Todos</option>
+            <option value="COMPLETADO">Completados</option>
+            <option value="CANCELADO">Cancelados</option>
+          </select>
+
+          {/* Desde */}
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Desde</label>
+            <input type="date" value={filtroDesde} onChange={e => setFiltroDesde(e.target.value)}
+              className="px-3 py-2 border border-gray-200 dark:border-[#334155] bg-white dark:bg-[#0f172a] rounded-xl text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 transition-colors" />
+          </div>
+
+          {/* Hasta */}
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Hasta</label>
+            <input type="date" value={filtroHasta} onChange={e => setFiltroHasta(e.target.value)}
+              className="px-3 py-2 border border-gray-200 dark:border-[#334155] bg-white dark:bg-[#0f172a] rounded-xl text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 transition-colors" />
+          </div>
+
+          {/* Limpiar + Actualizar */}
+          {(filtroEstado || filtroDesde || filtroHasta || filtroBusq) && (
+            <button onClick={() => { setFiltroEstado(''); setFiltroDesde(''); setFiltroHasta(''); setFiltroBusq('') }}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-[#334155] text-gray-500 dark:text-slate-400 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-[#293548] transition-colors">
+              <X size={13} /> Limpiar
+            </button>
+          )}
+          <button onClick={cargar} disabled={cargando}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-[#334155] text-gray-500 dark:text-slate-400 text-xs rounded-xl hover:bg-gray-50 dark:hover:bg-[#293548] transition-colors ml-auto">
+            {cargando ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Actualizar
+          </button>
+        </div>
+      </div>
+
+      {/* ── Lista ── */}
+      {cargando ? (
+        <div className="flex justify-center items-center py-16 text-gray-400 dark:text-slate-500">
+          <Loader2 size={22} className="animate-spin mr-2" /> Cargando historial…
+        </div>
+      ) : filtrados.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-4">
+            <History size={28} className="text-gray-300 dark:text-slate-600" />
+          </div>
+          <p className="text-base font-bold text-gray-700 dark:text-slate-300">Sin viajes en el historial</p>
+          <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">
+            {(filtroEstado || filtroDesde || filtroHasta || filtroBusq)
+              ? 'No hay resultados para los filtros seleccionados'
+              : 'Los viajes completados y cancelados aparecerán aquí'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtrados.map(v => {
+            const esCompletado = v.estado === 'COMPLETADO'
+            const esCancelado  = v.estado === 'CANCELADO'
+            let sal: { fecha: string; hora: string } = { fecha: '—', hora: '—' }
+            try {
+              const d = new Date(v.fechaHoraSal)
+              sal = { fecha: format(d, "dd MMM yyyy", { locale: es }), hora: format(d, 'HH:mm') }
+            } catch {}
+            let arrStr = '—'
+            try {
+              if (v.fechaHoraArr) arrStr = format(new Date(v.fechaHoraArr), 'dd/MM HH:mm', { locale: es })
+            } catch {}
+
+            return (
+              <div key={v.id}
+                className={`bg-white dark:bg-[#1e293b] rounded-2xl border overflow-hidden transition-all hover:shadow-md ${
+                  esCompletado ? 'border-gray-200 dark:border-[#334155]' : 'border-red-200 dark:border-red-900/40'
+                }`}>
+
+                {/* Barra superior de color */}
+                <div className={`h-1 w-full ${esCompletado ? 'bg-emerald-400' : 'bg-red-400'}`} />
+
+                <div className="p-4">
+                  {/* Fila principal */}
+                  <div className="flex items-start gap-4">
+
+                    {/* Ícono estado */}
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                      esCompletado ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'
+                    }`}>
+                      {esCompletado
+                        ? <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
+                        : <XCircle size={18} className="text-red-500 dark:text-red-400" />}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      {/* Ruta */}
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-bold text-gray-900 dark:text-slate-100 text-sm">
+                          {v.rutaOrigen ?? '—'}
+                        </span>
+                        <ArrowRight size={13} className="text-gray-400 dark:text-slate-500 shrink-0" />
+                        <span className="font-bold text-gray-900 dark:text-slate-100 text-sm">
+                          {v.rutaDestino ?? '—'}
+                        </span>
+                        {v.distanciaKm && (
+                          <span className="text-[11px] bg-gray-100 dark:bg-[#293548] text-gray-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-mono">
+                            {v.distanciaKm} km
+                          </span>
+                        )}
+                        <span className={`ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          esCompletado ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                       : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                        }`}>
+                          {esCompletado ? 'Completado' : 'Cancelado'}
+                        </span>
+                      </div>
+
+                      {/* Vehículo + Conductor */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500 dark:text-slate-400 mb-2">
+                        {v.vehiculoPlaca && (
+                          <span className="flex items-center gap-1">
+                            <Bus size={11} />
+                            <span className="font-mono font-semibold text-gray-700 dark:text-slate-300">{v.vehiculoPlaca}</span>
+                            <span>· {v.vehiculoTipo}</span>
+                          </span>
+                        )}
+                        {v.conductorNombre && (
+                          <span className="flex items-center gap-1">
+                            <UserCheck size={11} />
+                            {v.conductorNombre}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Fechas + duración */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400 dark:text-slate-500 mb-3">
+                        <span className="flex items-center gap-1">
+                          <Calendar size={11} />
+                          <span className="font-medium text-gray-600 dark:text-slate-400">{sal.fecha}</span>
+                          <span className="font-mono">{sal.hora}</span>
+                        </span>
+                        {v.fechaHoraArr && (
+                          <span className="flex items-center gap-1">
+                            <CheckCircle size={11} />
+                            Llegó: <span className="font-mono">{arrStr}</span>
+                          </span>
+                        )}
+                        {v.duracionMinutos != null && (
+                          <span className="flex items-center gap-1">
+                            <Timer size={11} />
+                            {fmtDuracion(v.duracionMinutos)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Stats del viaje */}
+                      {esCompletado && (
+                        <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-50 dark:border-[#293548]">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                              <Users size={11} className="text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <span className="font-bold text-gray-900 dark:text-slate-100">{v.totalPasajeros}</span>
+                            <span className="text-gray-400 dark:text-slate-500">pasajero{v.totalPasajeros !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <div className="w-6 h-6 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+                              <Package size={11} className="text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <span className="font-bold text-gray-900 dark:text-slate-100">{v.totalEncomiendas}</span>
+                            <span className="text-gray-400 dark:text-slate-500">encomienda{v.totalEncomiendas !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <div className="w-6 h-6 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
+                              <DollarSign size={11} className="text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <span className="font-bold text-emerald-700 dark:text-emerald-400">{fmtMoney(v.totalIngresos)}</span>
+                            <span className="text-gray-400 dark:text-slate-500 text-[10px]">
+                              ({fmtMoney(v.ingresosPasajes)} pasajes + {fmtMoney(v.ingresosEncomiendas)} encom.)
+                            </span>
+                          </div>
+
+                          {/* Acción: Manifiesto */}
+                          <button onClick={() => imprimirManifiesto(v.id)}
+                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-[#334155] text-gray-500 dark:text-slate-400 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-[#293548] hover:text-gray-700 dark:hover:text-slate-300 transition-colors font-medium">
+                            <FileText size={12} /> Manifiesto PDF
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Cancelado: observación */}
+                      {esCancelado && v.observaciones && (
+                        <div className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                          <AlertTriangle size={11} className="shrink-0 mt-0.5" />
+                          {v.observaciones}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatFechaLarga(iso: string) {
@@ -48,9 +373,25 @@ function minDatetimeLocal() {
   return now.toISOString().slice(0, 16)
 }
 
+/** Devuelve cuántos minutos lleva atrasado un viaje PROGRAMADO (positivo = atrasado). */
+function minutosAtraso(fechaHoraSal: string): number {
+  try {
+    return Math.floor((Date.now() - new Date(fechaHoraSal).getTime()) / 60000)
+  } catch { return 0 }
+}
+function estaAtrasado(v: ViajeDTO): boolean {
+  return v.estado === 'ATRASADO' || (v.estado === 'PROGRAMADO' && minutosAtraso(v.fechaHoraSal) > 0)
+}
+function labelAtraso(mins: number): string {
+  if (mins < 60) return `${mins} min atrasado`
+  const h = Math.floor(mins / 60), m = mins % 60
+  return m > 0 ? `${h}h ${m}m atrasado` : `${h}h atrasado`
+}
+
 // ── Estilos de estado ─────────────────────────────────────────────────────────
 const ESTADO_STYLES: Record<string, { border: string; iconBg: string; iconText: string; dot: string; leftBar: string }> = {
   PROGRAMADO: { border: 'border-blue-200 dark:border-blue-900/50',    iconBg: 'bg-blue-50 dark:bg-blue-900/20',    iconText: 'text-blue-600 dark:text-blue-400',    dot: 'bg-blue-400',    leftBar: 'bg-blue-400' },
+  ATRASADO:   { border: 'border-amber-300 dark:border-amber-700/60',  iconBg: 'bg-amber-50 dark:bg-amber-900/20',  iconText: 'text-amber-600 dark:text-amber-400',  dot: 'bg-amber-400 animate-pulse', leftBar: 'bg-amber-400' },
   EN_RUTA:    { border: 'border-emerald-200 dark:border-emerald-900/50', iconBg: 'bg-emerald-50 dark:bg-emerald-900/20', iconText: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-400 animate-pulse', leftBar: 'bg-emerald-500' },
   COMPLETADO: { border: 'border-gray-200 dark:border-[#334155]',      iconBg: 'bg-gray-100 dark:bg-[#293548]',     iconText: 'text-gray-400 dark:text-slate-500',   dot: 'bg-gray-300',    leftBar: 'bg-gray-300' },
   CANCELADO:  { border: 'border-red-200 dark:border-red-900/40',      iconBg: 'bg-red-50 dark:bg-red-900/20',      iconText: 'text-red-500 dark:text-red-400',      dot: 'bg-red-400',     leftBar: 'bg-red-400' },
@@ -62,15 +403,16 @@ export default function ViajesPage() {
   const { data, mutate } = useSWR('/api/viajes', { revalidateOnFocus: false })
   const viajes: ViajeDTO[] = data || []
   const { user, hasModulo } = useAuthStore()
+  const { connected, suscribeToViajeCancelado } = useWebSocket()
 
+  const [tab,                   setTab]                   = useState<PageTab>('operaciones')
   const [confirmando,           setConfirmando]           = useState<number | null>(null)
   const [cancelando,            setCancelando]            = useState<number | null>(null)
   const [confirmCancelId,       setConfirmCancelId]       = useState<number | null>(null)
   const [imprimiendoManifiesto, setImprimiendoManifiesto] = useState<number | null>(null)
   const [busqueda,              setBusqueda]              = useState('')
   const [busquedaDebounced,     setBusquedaDebounced]     = useState('')
-  const [mostrarHistorial,      setMostrarHistorial]      = useState(false)
-  const [filtroFecha,           setFiltroFecha]           = useState<FiltroFecha>('todos')
+  const [alertasCancelacion,    setAlertasCancelacion]    = useState<AlertaCancelacion[]>([])
 
   // Modal crear
   const [modalProgramar, setModalProgramar] = useState(false)
@@ -86,13 +428,27 @@ export default function ViajesPage() {
   // SWR lazy
   const { data: rutasData } = useSWR<RutaOpt[]>((modalProgramar) ? '/api/configuracion/rutas' : null)
   const { data: vehData }   = useSWR<VehOpt[]>((modalProgramar || modalEditar) ? '/api/configuracion/vehiculos' : null)
-  const { data: condData }  = useSWR<CondOpt[]>((modalProgramar || modalEditar) ? '/api/conductores' : null)
+  const { data: condData }  = useSWR<CondOpt[]>((modalProgramar || modalEditar) ? '/api/conductor/lista' : null)
   const rutas       = rutasData ?? []
   const vehiculos   = vehData   ?? []
   const conductores = condData  ?? []
 
   const rol         = user?.rol ?? ''
   const puedeOperar = ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR'].includes(rol)
+
+  // Suscripción WebSocket — alerta cuando el sistema cancela un viaje automáticamente
+  useEffect(() => {
+    if (!connected || !user?.agenciaId) return
+    const sub = suscribeToViajeCancelado(user.agenciaId, (evt: AlertaCancelacion) => {
+      setAlertasCancelacion(prev => [evt, ...prev])
+      mutate() // recargar lista de viajes
+      toast.error(
+        `⚠ Viaje cancelado automáticamente: ${evt.ruta} — ${evt.totalPasajeros} pasajero(s) afectados`,
+        { duration: 8000 }
+      )
+    })
+    return () => sub?.unsubscribe()
+  }, [connected, user?.agenciaId])
 
   // Debounce búsqueda — evita filtrar en cada keystroke
   useEffect(() => {
@@ -111,19 +467,16 @@ export default function ViajesPage() {
     )
   }, [viajes, busquedaDebounced])
 
-  const pasaFiltroFecha = (v: ViajeDTO) => {
-    if (filtroFecha === 'todos') return true
-    const d = new Date(v.fechaHoraSal)
-    if (filtroFecha === 'hoy')    return isToday(d)
-    if (filtroFecha === 'semana') return isThisWeek(d, { locale: es })
-    return true
-  }
-
-  const programados = viajesFiltrados.filter(v => v.estado === 'PROGRAMADO')
+  // Atrasados primero, luego por hora de salida
+  const programados = viajesFiltrados
+    .filter(v => v.estado === 'PROGRAMADO' || v.estado === 'ATRASADO')
+    .sort((a, b) => {
+      const aAt = estaAtrasado(a) ? 1 : 0
+      const bAt = estaAtrasado(b) ? 1 : 0
+      if (aAt !== bAt) return bAt - aAt  // atrasados primero
+      return new Date(a.fechaHoraSal).getTime() - new Date(b.fechaHoraSal).getTime()
+    })
   const enRuta      = viajesFiltrados.filter(v => v.estado === 'EN_RUTA')
-  const completados = viajesFiltrados.filter(v => v.estado === 'COMPLETADO').filter(pasaFiltroFecha)
-  const cancelados  = viajesFiltrados.filter(v => v.estado === 'CANCELADO').filter(pasaFiltroFecha)
-  const hayHistorial = completados.length > 0 || cancelados.length > 0
 
   // ── Acciones ─────────────────────────────────────────────────────────────────
   const programarViaje = async () => {
@@ -183,11 +536,15 @@ export default function ViajesPage() {
     const vendidos      = v.asientosOcupados ?? 0
     const libres        = v.asientosLibres ?? (totalAsientos - vendidos)
     const pct           = Math.round((vendidos / totalAsientos) * 100)
-    const esProg        = v.estado === 'PROGRAMADO'
+    const esProg        = v.estado === 'PROGRAMADO' || v.estado === 'ATRASADO'
     const esRuta        = v.estado === 'EN_RUTA'
     const esTerminado   = ['COMPLETADO', 'CANCELADO'].includes(v.estado)
+    const atrasado      = estaAtrasado(v)
+    const minsAtraso    = atrasado ? minutosAtraso(v.fechaHoraSal) : 0
     const confirmCanc   = confirmCancelId === v.id
-    const st            = ESTADO_STYLES[v.estado] ?? ESTADO_STYLES.COMPLETADO
+    const st            = atrasado
+                            ? ESTADO_STYLES.ATRASADO
+                            : (ESTADO_STYLES[v.estado] ?? ESTADO_STYLES.COMPLETADO)
     const { fecha, hora } = formatFechaHora(v.fechaHoraSal)
 
     const pctColor = pct >= 90 ? 'bg-red-400' : pct >= 60 ? 'bg-amber-400' : 'bg-emerald-400'
@@ -220,8 +577,13 @@ export default function ViajesPage() {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
               <Badge estado={v.estado} />
+              {atrasado && (
+                <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                  <AlertTriangle size={10} /> {labelAtraso(minsAtraso)}
+                </span>
+              )}
               {esProg && puedeOperar && (
                 <button onClick={() => abrirEditar(v)} title="Editar viaje"
                   className="p-1.5 rounded-lg text-gray-300 dark:text-slate-600 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors opacity-0 group-hover:opacity-100">
@@ -411,7 +773,7 @@ export default function ViajesPage() {
             </p>
           </div>
         </div>
-        {puedeOperar && (
+        {puedeOperar && tab === 'operaciones' && (
           <button onClick={() => setModalProgramar(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#064e3b] hover:bg-[#065f46] text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
             <Plus size={15} /> Programar viaje
@@ -419,119 +781,195 @@ export default function ViajesPage() {
         )}
       </div>
 
-      {/* ── Stats row ── */}
-      {viajes.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {enRuta.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {enRuta.length} en ruta
-            </div>
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-[#334155]">
+        <button onClick={() => setTab('operaciones')}
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'operaciones'
+              ? 'border-[#064e3b] text-[#064e3b] dark:text-emerald-400 dark:border-emerald-400'
+              : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
+          }`}>
+          <Bus size={14} />
+          Operaciones
+          {(enRuta.length > 0 || programados.length > 0) && (
+            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+              tab === 'operaciones'
+                ? 'bg-[#064e3b]/10 dark:bg-emerald-900/30 text-[#064e3b] dark:text-emerald-400'
+                : 'bg-gray-100 dark:bg-[#293548] text-gray-500 dark:text-slate-400'
+            }`}>
+              {enRuta.length + programados.length}
+            </span>
           )}
-          {programados.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/40 rounded-xl text-xs font-semibold text-blue-700 dark:text-blue-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-              {programados.length} programado{programados.length !== 1 ? 's' : ''}
-            </div>
-          )}
-          {totalVendidos > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 dark:bg-[#1e293b] border border-gray-200 dark:border-[#334155] rounded-xl text-xs text-gray-600 dark:text-slate-400">
-              <Users size={12} className="text-gray-400" />
-              <span><strong>{totalVendidos}</strong> pasajeros vendidos</span>
-              {totalLibres > 0 && <span className="text-gray-300 dark:text-slate-600 mx-0.5">·</span>}
-              {totalLibres > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{totalLibres} libres</span>}
-            </div>
-          )}
-        </div>
-      )}
+        </button>
+        <button onClick={() => setTab('historial')}
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'historial'
+              ? 'border-[#064e3b] text-[#064e3b] dark:text-emerald-400 dark:border-emerald-400'
+              : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
+          }`}>
+          <History size={14} />
+          Historial
+        </button>
+      </div>
 
-      {/* ── Búsqueda ── */}
-      {viajes.length > 0 && (
-        <div className="relative max-w-sm">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar ruta, conductor, placa…"
-            className="w-full pl-9 pr-8 py-2.5 border border-gray-200 dark:border-[#334155] bg-white dark:bg-[#1e293b] rounded-xl text-sm text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
-          {busqueda && (
-            <button onClick={() => setBusqueda('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">
-              <X size={13} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Empty state global ── */}
-      {viajes.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-20 h-20 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-4">
-            <Bus size={32} className="text-gray-300 dark:text-slate-600" />
-          </div>
-          <p className="text-base font-semibold text-gray-600 dark:text-slate-300">Sin viajes registrados</p>
-          <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Programa el primer viaje del día para comenzar a vender pasajes</p>
-          {puedeOperar && (
-            <button onClick={() => setModalProgramar(true)}
-              className="mt-5 flex items-center gap-2 px-6 py-2.5 bg-[#064e3b] text-white text-sm font-semibold rounded-xl hover:bg-[#065f46] transition-colors">
-              <Plus size={15} /> Programar primer viaje
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Secciones activas ── */}
-      <Seccion titulo="En ruta"     lista={enRuta}     dot="bg-emerald-400 animate-pulse" />
-      <Seccion titulo="Programados" lista={programados} dot="bg-blue-400" />
-
-      {/* ── Empty state búsqueda ── */}
-      {viajes.length > 0 && viajesFiltrados.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-3">
-            <Search size={20} className="text-gray-400 dark:text-slate-500" />
-          </div>
-          <p className="text-sm font-semibold text-gray-600 dark:text-slate-300">Sin resultados para &ldquo;{busqueda}&rdquo;</p>
-          <button onClick={() => setBusqueda('')} className="mt-3 text-xs text-[#064e3b] dark:text-emerald-400 hover:underline">
-            Limpiar búsqueda
-          </button>
-        </div>
-      )}
-
-      {/* ── Historial ── */}
-      {hayHistorial && (
-        <section>
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-            <button onClick={() => setMostrarHistorial(v => !v)}
-              className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 transition-colors">
-              {mostrarHistorial ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              <span className="uppercase tracking-wider">Historial</span>
-              <span className="bg-gray-100 dark:bg-[#293548] text-gray-500 dark:text-slate-400 px-2 py-0.5 rounded-full text-[11px] tabular-nums">
-                {completados.length + cancelados.length}
-              </span>
-            </button>
-            {mostrarHistorial && (
-              <div className="flex items-center gap-1 p-0.5 bg-gray-100 dark:bg-[#293548] rounded-xl">
-                {(['hoy','semana','todos'] as FiltroFecha[]).map(f => (
-                  <button key={f} onClick={() => setFiltroFecha(f)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                      filtroFecha === f
-                        ? 'bg-white dark:bg-[#1e293b] text-gray-900 dark:text-slate-100 shadow-sm'
-                        : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
-                    }`}>
-                    {f === 'hoy' ? 'Hoy' : f === 'semana' ? 'Esta semana' : 'Todos'}
-                  </button>
-                ))}
+      {/* ── Tab: Operaciones ── */}
+      {tab === 'operaciones' && (
+        <>
+          {/* ── Alerta viajes atrasados ── */}
+          {programados.filter(estaAtrasado).length > 0 && (
+            <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-2xl px-4 py-3.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400" />
               </div>
-            )}
-          </div>
-          {mostrarHistorial && (
-            <div className="space-y-5">
-              <Seccion titulo="Completados" lista={completados} dot="bg-gray-300 dark:bg-slate-600" />
-              <Seccion titulo="Cancelados"  lista={cancelados}  dot="bg-red-400" />
-              {completados.length === 0 && cancelados.length === 0 && (
-                <p className="text-sm text-gray-400 dark:text-slate-500 text-center py-10">No hay viajes en este período</p>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                  {programados.filter(estaAtrasado).length === 1
+                    ? '1 viaje no salió a tiempo'
+                    : `${programados.filter(estaAtrasado).length} viajes no salieron a tiempo`}
+                </p>
+                <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5">
+                  Confirma la salida o cancela los viajes marcados como <strong>ATRASADO</strong>.
+                  Se cancelarán automáticamente a las 4 horas de su hora programada.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Stats */}
+          {viajes.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {enRuta.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {enRuta.length} en ruta
+                </div>
+              )}
+              {programados.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/40 rounded-xl text-xs font-semibold text-blue-700 dark:text-blue-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  {programados.length} programado{programados.length !== 1 ? 's' : ''}
+                </div>
+              )}
+              {totalVendidos > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 dark:bg-[#1e293b] border border-gray-200 dark:border-[#334155] rounded-xl text-xs text-gray-600 dark:text-slate-400">
+                  <Users size={12} className="text-gray-400" />
+                  <span><strong>{totalVendidos}</strong> pasajeros vendidos</span>
+                  {totalLibres > 0 && <span className="text-gray-300 dark:text-slate-600 mx-0.5">·</span>}
+                  {totalLibres > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{totalLibres} libres</span>}
+                </div>
               )}
             </div>
           )}
-        </section>
+
+          {/* Búsqueda */}
+          {viajes.length > 0 && (
+            <div className="relative max-w-sm">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                placeholder="Buscar ruta, conductor, placa…"
+                className="w-full pl-9 pr-8 py-2.5 border border-gray-200 dark:border-[#334155] bg-white dark:bg-[#1e293b] rounded-xl text-sm text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
+              {busqueda && (
+                <button onClick={() => setBusqueda('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {viajes.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-20 h-20 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-4">
+                <Bus size={32} className="text-gray-300 dark:text-slate-600" />
+              </div>
+              <p className="text-base font-semibold text-gray-600 dark:text-slate-300">Sin viajes activos</p>
+              <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Programa un viaje para comenzar a vender pasajes</p>
+              {puedeOperar && (
+                <button onClick={() => setModalProgramar(true)}
+                  className="mt-5 flex items-center gap-2 px-6 py-2.5 bg-[#064e3b] text-white text-sm font-semibold rounded-xl hover:bg-[#065f46] transition-colors">
+                  <Plus size={15} /> Programar primer viaje
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Alertas de viajes cancelados automáticamente ── */}
+          {alertasCancelacion.map((alerta, idx) => (
+            <div key={idx} className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-red-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-red-800 dark:text-red-300">
+                      Viaje #{alerta.viajeId} cancelado automáticamente
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {alerta.ruta} · programado {alerta.horaProgramada ? format(new Date(alerta.horaProgramada), 'HH:mm', { locale: es }) : '—'}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setAlertasCancelacion(prev => prev.filter((_, i) => i !== idx))}
+                  className="text-red-400 hover:text-red-600 shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+
+              {alerta.totalPasajeros > 0 && (
+                <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-red-100 dark:border-red-900/40 p-3">
+                  <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-1">
+                    <Ticket size={11} /> {alerta.totalPasajeros} pasajero(s) — dinero devuelto a caja · deben re-comprar boleta
+                  </p>
+                  <div className="space-y-1">
+                    {alerta.pasajerosAfectados.map(p => (
+                      <div key={p.pasajeId} className="flex items-center justify-between text-xs text-gray-700 dark:text-slate-300 py-1 border-b border-gray-100 dark:border-[#293548] last:border-0">
+                        <span className="font-medium">{p.clienteNombre}</span>
+                        <span className="flex items-center gap-3 text-gray-500 dark:text-slate-400">
+                          <span>Asiento {p.asiento}</span>
+                          <span className="font-mono text-red-600 dark:text-red-400">S/ {Number(p.monto).toFixed(2)}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {alerta.totalEncomiendas > 0 && (
+                <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-orange-100 dark:border-orange-900/40 p-3">
+                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-2 flex items-center gap-1">
+                    <Package size={11} /> {alerta.totalEncomiendas} encomienda(s) — regresadas a ALMACENADO · asignarlas al próximo viaje
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {alerta.encomiendasRetenidas.map(e => (
+                      <span key={e.encomiendaId} className="px-2 py-0.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50 rounded-full text-[11px] font-mono text-orange-700 dark:text-orange-300">
+                        {e.codigo}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Viajes activos */}
+          <Seccion titulo="En ruta"     lista={enRuta}     dot="bg-emerald-400 animate-pulse" />
+          <Seccion titulo="Programados" lista={programados} dot="bg-blue-400" />
+
+          {viajes.length > 0 && viajesFiltrados.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-3">
+                <Search size={20} className="text-gray-400 dark:text-slate-500" />
+              </div>
+              <p className="text-sm font-semibold text-gray-600 dark:text-slate-300">Sin resultados para &ldquo;{busqueda}&rdquo;</p>
+              <button onClick={() => setBusqueda('')} className="mt-3 text-xs text-[#064e3b] dark:text-emerald-400 hover:underline">
+                Limpiar búsqueda
+              </button>
+            </div>
+          )}
+        </>
       )}
+
+      {/* ── Tab: Historial ── */}
+      {tab === 'historial' && <HistorialTab />}
 
       {/* ═══════════════════════════════════════════════════════════════════════
           MODAL: PROGRAMAR VIAJE

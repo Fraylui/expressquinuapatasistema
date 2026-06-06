@@ -32,6 +32,12 @@ public interface EncomiendaRepository extends JpaRepository<Encomienda, Long>, J
     List<Encomienda> findByViajeId(Long viajeId);
     long countByViajeId(Long viajeId);
 
+    @Query("SELECT e FROM Encomienda e WHERE e.agenciaId = :agenciaId AND e.estado = 'ALMACENADO' AND e.observaciones LIKE '%cancelado%' ORDER BY e.fechaRegistro ASC")
+    List<Encomienda> findUrgentesDeViajeCancelado(@Param("agenciaId") Long agenciaId);
+
+    @Query("SELECT e FROM Encomienda e WHERE e.agenciaDestinoId = :agenciaId AND e.estado = 'DISPONIBLE' ORDER BY e.fechaRegistro ASC")
+    List<Encomienda> findDisponiblesParaEntrega(@Param("agenciaId") Long agenciaId);
+
     @Query("""
         SELECT e FROM Encomienda e
         WHERE e.agenciaDestinoId = :agenciaDestinoId
@@ -41,6 +47,16 @@ public interface EncomiendaRepository extends JpaRepository<Encomienda, Long>, J
     List<Encomienda> findParaEntrega(
             @Param("agenciaDestinoId") Long agenciaDestinoId,
             @Param("estados") java.util.Collection<String> estados);
+
+    @Query("""
+        SELECT e FROM Encomienda e
+        WHERE e.agenciaDestinoId = :agenciaId
+          AND e.estado = 'EN_TRANSITO'
+          AND e.viajeId IS NOT NULL
+        ORDER BY e.fechaRegistro ASC
+        """)
+    List<Encomienda> findEnTransitoParaAgenciaDestino(
+            @Param("agenciaId") Long agenciaId);
 
     @Query("""
         SELECT e FROM Encomienda e

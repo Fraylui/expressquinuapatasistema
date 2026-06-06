@@ -110,6 +110,14 @@ public class ReporteController {
         return ResponseEntity.ok(ApiResponse.ok(reporteService.getTopRutas(ag, dias)));
     }
 
+    /** Conductores con viajes activos hoy — para el panel gerencial. */
+    @GetMapping("/conductores-activos")
+    public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> conductoresActivos(
+            @RequestParam(required = false) Long agenciaId) {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getConductoresActivos(ag)));
+    }
+
     @GetMapping("/caja/excel")
     public ResponseEntity<byte[]> cajaExcel(
             @RequestParam(required = false) Long cajaId,

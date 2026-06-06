@@ -5,7 +5,7 @@ import {
   DollarSign, TrendingUp, TrendingDown, Lock, Unlock, Plus,
   Printer, RefreshCw, CheckCircle2, AlertCircle, Clock,
   Ticket, Package, ArrowDownCircle, ArrowUpCircle, Loader2, History,
-  Wallet, ChevronRight, Search, X,
+  Wallet, ChevronRight, Search, X, Building2, Users,
 } from 'lucide-react'
 import { cajaService, type TurnoActual } from '@/services/caja.service'
 import type { MovimientoCaja } from '@/types'
@@ -507,6 +507,187 @@ function HistorialTab({ rol }: { rol: string }) {
   )
 }
 
+// ── Consolidado por agencia (GERENTE / SUPER_ADMIN) ──────────────────────────
+interface ConsolidadoAgencia {
+  agenciaId:       number | null
+  agenciaNombre:   string
+  turnosAbiertos:  number
+  totalIngresos:   number
+  totalEgresos?:   number
+  saldoActual:     number
+  montoPasajes?:   number
+  cantPasajes?:    number
+  montoEncomiendas?: number
+  cantEncomiendas?:  number
+  montoPagoDestino?: number
+  cantPagoDestino?:  number
+}
+
+function ConsolidadoTab() {
+  const [datos,     setDatos]     = useState<ConsolidadoAgencia[]>([])
+  const [cargando,  setCargando]  = useState(false)
+  const [ultimaAct, setUltimaAct] = useState<Date | null>(null)
+
+  const cargar = async () => {
+    setCargando(true)
+    try {
+      const r = await api.get<any, any>('/api/caja/consolidado-agencias')
+      setDatos(r.data ?? [])
+      setUltimaAct(new Date())
+    } catch { toast.error('Error cargando consolidado') }
+    finally { setCargando(false) }
+  }
+
+  useEffect(() => {
+    cargar()
+    const id = setInterval(cargar, 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const agencias = datos.filter(d => d.agenciaNombre !== '__TOTAL__')
+  const total    = datos.find(d => d.agenciaNombre === '__TOTAL__')
+
+  const fmt = (n?: number) => `S/ ${(n ?? 0).toFixed(2)}`
+
+  if (cargando && datos.length === 0) {
+    return (
+      <div className="flex justify-center items-center py-20 text-gray-400">
+        <Loader2 size={22} className="animate-spin mr-2" /> Cargando consolidado…
+      </div>
+    )
+  }
+
+  if (agencias.length === 0) {
+    return (
+      <div className="text-center py-20 text-gray-400">
+        <Building2 size={40} className="mx-auto mb-3 opacity-30" />
+        <p className="text-sm font-medium">No hay turnos abiertos en ninguna agencia</p>
+        <p className="text-xs mt-1">El consolidado aparece cuando hay operadores con turno activo</p>
+        <button onClick={cargar} className="mt-4 text-xs text-blue-600 hover:underline flex items-center gap-1 mx-auto">
+          <RefreshCw size={12} /> Actualizar
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Header con última actualización */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500">
+            {agencias.length} agencia{agencias.length !== 1 ? 's' : ''} con turnos abiertos ·{' '}
+            <span className="font-semibold text-gray-700">{total?.turnosAbiertos ?? 0} operadores activos</span>
+          </p>
+          {ultimaAct && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              Actualizado {format(ultimaAct, 'HH:mm:ss')} · se refresca cada 60s
+            </p>
+          )}
+        </div>
+        <button onClick={cargar} disabled={cargando} title="Actualizar ahora"
+          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
+          <RefreshCw size={15} className={cargando ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* Cards por agencia */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {agencias.map(ag => (
+          <div key={ag.agenciaId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* Header de la card */}
+            <div className="bg-gradient-to-r from-[#064e3b] to-emerald-700 px-4 py-3 text-white">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-bold text-sm leading-tight">{ag.agenciaNombre}</p>
+                  <div className="flex items-center gap-1 mt-1 text-emerald-100 text-xs">
+                    <Users size={11} />
+                    <span>{ag.turnosAbiertos} turno{ag.turnosAbiertos !== 1 ? 's' : ''} abierto{ag.turnosAbiertos !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-emerald-200">Saldo total</p>
+                  <p className="text-lg font-bold font-mono">{fmt(ag.saldoActual)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Detalle */}
+            <div className="divide-y divide-gray-100 text-sm">
+              <div className="flex justify-between px-4 py-2.5">
+                <span className="flex items-center gap-1.5 text-gray-500 text-xs">
+                  <TrendingUp size={12} className="text-green-500" /> Total ingresos
+                </span>
+                <span className="font-mono font-semibold text-green-700">{fmt(ag.totalIngresos)}</span>
+              </div>
+
+              {(ag.cantPasajes ?? 0) > 0 && (
+                <div className="flex justify-between px-4 py-2 bg-blue-50/50">
+                  <span className="flex items-center gap-1.5 text-blue-600 text-xs">
+                    <Ticket size={11} /> Pasajes ({ag.cantPasajes})
+                  </span>
+                  <span className="font-mono text-xs text-blue-700">{fmt(ag.montoPasajes)}</span>
+                </div>
+              )}
+
+              {(ag.cantEncomiendas ?? 0) > 0 && (
+                <div className="flex justify-between px-4 py-2 bg-orange-50/50">
+                  <span className="flex items-center gap-1.5 text-orange-600 text-xs">
+                    <Package size={11} /> Encomiendas ({ag.cantEncomiendas})
+                  </span>
+                  <span className="font-mono text-xs text-orange-700">{fmt(ag.montoEncomiendas)}</span>
+                </div>
+              )}
+
+              {(ag.cantPagoDestino ?? 0) > 0 && (
+                <div className="flex justify-between px-4 py-2 bg-amber-50/50">
+                  <span className="flex items-center gap-1.5 text-amber-600 text-xs">
+                    <ArrowDownCircle size={11} /> Contraentrega ({ag.cantPagoDestino})
+                  </span>
+                  <span className="font-mono text-xs text-amber-700">{fmt(ag.montoPagoDestino)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between px-4 py-2.5">
+                <span className="flex items-center gap-1.5 text-gray-500 text-xs">
+                  <TrendingDown size={12} className="text-red-400" /> Egresos
+                </span>
+                <span className="font-mono text-xs text-red-600">-{fmt(ag.totalEgresos)}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Fila total empresa */}
+      {total && (
+        <div className="bg-gray-900 text-white rounded-xl px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+              <DollarSign size={18} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Total empresa — hoy</p>
+              <p className="text-sm text-gray-300">{total.turnosAbiertos} turno{total.turnosAbiertos !== 1 ? 's' : ''} · {agencias.length} agencia{agencias.length !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <div className="flex gap-8">
+            <div className="text-right">
+              <p className="text-xs text-gray-400">Total ingresos</p>
+              <p className="text-xl font-bold font-mono text-green-400">{fmt(total.totalIngresos)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-400">Saldo en cajas</p>
+              <p className="text-xl font-bold font-mono text-white">{fmt(total.saldoActual)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Filter pills ──────────────────────────────────────────────────────────────
 type TipoFiltro = 'TODOS' | 'PASAJE' | 'ENCOMIENDA' | 'PAGO_DESTINO' | 'EGRESO' | 'INGRESO'
 
@@ -527,7 +708,7 @@ function filtrarMovimientos(movs: MovimientoCaja[], filtro: TipoFiltro): Movimie
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-type PageTab = 'turno' | 'historial'
+type PageTab = 'turno' | 'historial' | 'consolidado'
 
 export default function CajaPage() {
   const { user } = useAuthStore()
@@ -790,18 +971,21 @@ export default function CajaPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {(['turno', 'historial'] as PageTab[]).map(t => (
+        {(['turno', 'historial', ...(rol === 'SUPER_ADMIN' || rol === 'GERENTE' ? ['consolidado'] : [])] as PageTab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize ${
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t ? 'border-[#064e3b] text-[#064e3b]' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {t === 'turno' ? 'Turno actual' : 'Historial de turnos'}
+            {t === 'turno' ? 'Turno actual' : t === 'historial' ? 'Historial de turnos' : 'Consolidado'}
           </button>
         ))}
       </div>
 
       {/* ── Historial tab ── */}
       {tab === 'historial' && <HistorialTab rol={rol ?? ''} />}
+
+      {/* ── Consolidado tab ── */}
+      {tab === 'consolidado' && <ConsolidadoTab />}
 
       {/* ── Turno tab ── */}
       {tab === 'turno' && (

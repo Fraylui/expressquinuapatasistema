@@ -87,6 +87,17 @@ export function useWebSocket() {
     []
   )
 
+  const suscribeToViajeCancelado = useCallback(
+    (agenciaId: number, callback: (msg: any) => void) => {
+      if (!clientRef.current?.active) return undefined
+      return clientRef.current.subscribe(
+        `/topic/viajes/cancelado/${agenciaId}`,
+        (msg: IMessage) => callback(JSON.parse(msg.body))
+      )
+    },
+    []
+  )
+
   return {
     connected,
     suscribeToAsientos,
@@ -94,5 +105,6 @@ export function useWebSocket() {
     suscribeToCaja,
     suscribeToNotificaciones,
     suscribeToAgenciaEncomiendas,
+    suscribeToViajeCancelado,
   }
 }

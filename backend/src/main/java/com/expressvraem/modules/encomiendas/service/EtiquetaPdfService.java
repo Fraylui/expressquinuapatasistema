@@ -19,16 +19,13 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.EnumMap;
 import java.util.Map;
 
-/**
- * Genera etiqueta de envío 100×150 mm para pegar sobre el paquete.
- * Incluye: origen→destino, QR, tracking, destinatario, frágil, pago en destino, bulto N de M.
- */
 @Service
 @RequiredArgsConstructor
 public class EtiquetaPdfService {
@@ -44,6 +41,7 @@ public class EtiquetaPdfService {
     private static final String EMPRESA   = "EXPRESS QUINUAPATA VRAEM S.A.C.";
     private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
 
+    @Transactional(readOnly = true)
     public byte[] generarEtiqueta(Encomienda enc, String operadorNombre) {
         int totalBultos = enc.getNumBultos() != null && enc.getNumBultos() > 1 ? enc.getNumBultos() : 1;
 
@@ -273,6 +271,7 @@ public class EtiquetaPdfService {
                 .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
                 .replace('ñ','n').replace('Ñ','N').replace('ü','u')
                 .replace('→','>').replace('—','-').replace('⚠','!')
-                .replaceAll("[^\\x00-\\x7E]", "?");
+                .replaceAll("[\\r\\n\\t]", " ")
+                .replaceAll("[^\\x20-\\x7E]", "?");
     }
 }

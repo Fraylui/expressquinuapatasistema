@@ -29,4 +29,8 @@ public class WebSocketEventPublisher {
     public void publicarEncomiendaEnCamino(Long agenciaDestinoId, Object dto) {
         messagingTemplate.convertAndSend("/topic/encomiendas/agencia/" + agenciaDestinoId, dto);
     }
+
+    public void publicarViajeCancelado(Long agenciaId, Object dto) {
+        messagingTemplate.convertAndSend("/topic/viajes/cancelado/" + agenciaId, dto);
+    }
 }

@@ -1,4 +1,4 @@
-﻿package com.expressvraem.modules.caja.service;
+package com.expressvraem.modules.caja.service;
 
 import com.expressvraem.modules.auditoria.entity.Auditoria;
 import com.expressvraem.modules.auditoria.service.AuditoriaService;
@@ -283,6 +283,138 @@ public class CajaService {
         return enrichCajaList(cajas.getContent());
     }
 
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getEstadoOperadores(Long agenciaId) {
+        if (agenciaId == null) return List.of();
+
+        // Todos los operadores activos de la agencia
+        List<Object[]> operadores = (List<Object[]>) entityManager.createNativeQuery(
+                "SELECT id, nombres, apellidos FROM usuarios " +
+                "WHERE agencia_id = :agId AND rol IN ('OPERADOR','ADMIN_AGENCIA') AND activo = true " +
+                "ORDER BY nombres")
+                .setParameter("agId", agenciaId)
+                .getResultList();
+
+        // Cajas abiertas hoy
+        List<Caja> abiertas = cajaRepository.findByAgenciaIdAndEstado(agenciaId, "ABIERTA");
+        java.util.Set<Long> usuariosConCaja = abiertas.stream()
+                .map(Caja::getUsuarioId).collect(java.util.stream.Collectors.toSet());
+
+        return operadores.stream().map(r -> {
+            Long uid     = ((Number) r[0]).longValue();
+            String nombre = r[1] + " " + r[2];
+            boolean tieneCaja = usuariosConCaja.contains(uid);
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("usuarioId",  uid);
+            m.put("nombre",     nombre);
+            m.put("tieneCaja",  tieneCaja);
+            if (tieneCaja) {
+                abiertas.stream().filter(c -> uid.equals(c.getUsuarioId())).findFirst()
+                        .ifPresent(c -> {
+                            m.put("cajaId",        c.getId());
+                            m.put("fechaApertura", c.getFechaApertura());
+                            m.put("saldoActual",   c.getMontoApertura()
+                                    .add(c.getTotalIngresos())
+                                    .subtract(c.getTotalEgresos()));
+                        });
+            }
+            return m;
+        }).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getConsolidadoPorAgencia() {
+        List<Caja> abiertas = cajaRepository.findByEstado("ABIERTA");
+        if (abiertas.isEmpty()) return List.of();
+
+        List<Long> cajaIds    = abiertas.stream().map(Caja::getId).toList();
+        List<Long> agenciaIds = abiertas.stream().map(Caja::getAgenciaId).distinct().toList();
+
+        // Nombres de agencias
+        Map<Long, String> agencias = new HashMap<>();
+        try {
+            ((List<Object[]>) entityManager.createNativeQuery(
+                    "SELECT id, nombre, ciudad FROM agencias WHERE id IN :ids")
+                    .setParameter("ids", agenciaIds).getResultList())
+                    .forEach(r -> agencias.put(((Number) r[0]).longValue(), r[1] + " — " + r[2]));
+        } catch (Exception e) { log.warn("Batch agencias: {}", e.getMessage()); }
+
+        // Stats por tipo de movimiento por caja
+        Map<Long, Map<String, TipoStat>> statsMap = batchStats(cajaIds);
+
+        // Agrupar por agencia
+        Map<Long, List<Caja>> porAgencia = new java.util.LinkedHashMap<>();
+        agenciaIds.forEach(aid -> porAgencia.put(aid, new java.util.ArrayList<>()));
+        abiertas.forEach(c -> porAgencia.computeIfAbsent(c.getAgenciaId(), k -> new java.util.ArrayList<>()).add(c));
+
+        List<Map<String, Object>> resultado = new java.util.ArrayList<>();
+        BigDecimal totalEmpresaIngresos = BigDecimal.ZERO;
+        BigDecimal totalEmpresaSaldo    = BigDecimal.ZERO;
+        int        totalTurnos          = 0;
+
+        for (Map.Entry<Long, List<Caja>> entry : porAgencia.entrySet()) {
+            Long agId = entry.getKey();
+            List<Caja> cajas = entry.getValue();
+            if (cajas.isEmpty()) continue;
+
+            BigDecimal sumIngresos  = BigDecimal.ZERO;
+            BigDecimal sumEgresos   = BigDecimal.ZERO;
+            BigDecimal sumApertura  = BigDecimal.ZERO;
+            BigDecimal sumPasajes   = BigDecimal.ZERO;
+            BigDecimal sumEnc       = BigDecimal.ZERO;
+            BigDecimal sumDestino   = BigDecimal.ZERO;
+            long       cntPasajes   = 0, cntEnc = 0, cntDestino = 0;
+
+            for (Caja c : cajas) {
+                sumIngresos = sumIngresos.add(c.getTotalIngresos());
+                sumEgresos  = sumEgresos.add(c.getTotalEgresos());
+                sumApertura = sumApertura.add(c.getMontoApertura());
+                Map<String, TipoStat> st = statsMap.getOrDefault(c.getId(), Map.of());
+                TipoStat stP = st.getOrDefault("PASAJE",       TipoStat.ZERO);
+                TipoStat stE = st.getOrDefault("ENCOMIENDA",   TipoStat.ZERO);
+                TipoStat stD = st.getOrDefault("PAGO_DESTINO", TipoStat.ZERO);
+                sumPasajes  = sumPasajes.add(stP.sum());
+                sumEnc      = sumEnc.add(stE.sum());
+                sumDestino  = sumDestino.add(stD.sum());
+                cntPasajes += stP.count();
+                cntEnc     += stE.count();
+                cntDestino += stD.count();
+            }
+
+            BigDecimal saldo = sumApertura.add(sumIngresos).subtract(sumEgresos);
+            totalEmpresaIngresos = totalEmpresaIngresos.add(sumIngresos);
+            totalEmpresaSaldo    = totalEmpresaSaldo.add(saldo);
+            totalTurnos         += cajas.size();
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("agenciaId",      agId);
+            m.put("agenciaNombre",  agencias.getOrDefault(agId, "Agencia " + agId));
+            m.put("turnosAbiertos", cajas.size());
+            m.put("totalIngresos",  sumIngresos);
+            m.put("totalEgresos",   sumEgresos);
+            m.put("saldoActual",    saldo);
+            m.put("montoPasajes",   sumPasajes);
+            m.put("cantPasajes",    cntPasajes);
+            m.put("montoEncomiendas", sumEnc);
+            m.put("cantEncomiendas",  cntEnc);
+            m.put("montoPagoDestino", sumDestino);
+            m.put("cantPagoDestino",  cntDestino);
+            resultado.add(m);
+        }
+
+        // Fila totales empresa al final
+        Map<String, Object> totales = new LinkedHashMap<>();
+        totales.put("agenciaId",      null);
+        totales.put("agenciaNombre",  "__TOTAL__");
+        totales.put("turnosAbiertos", totalTurnos);
+        totales.put("totalIngresos",  totalEmpresaIngresos);
+        totales.put("saldoActual",    totalEmpresaSaldo);
+        resultado.add(totales);
+
+        return resultado;
+    }
 
     public Map<String, Object> getResumenTurno(Long cajaId) {
         Caja caja = cajaRepository.findById(cajaId)

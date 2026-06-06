@@ -1,13 +1,14 @@
 ﻿'use client'
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import useSWR from 'swr'
 import {
   Download, FileText, Shield, Search, ChevronLeft, ChevronRight,
-  BarChart2, X, RefreshCw, Activity,
+  BarChart2, X, RefreshCw, Activity, Lock, Unlock, AlertTriangle,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { Auditoria } from '@/types'
 import api from '@/services/api'
+import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -190,13 +191,17 @@ const MODULOS = ['AUTH','PASAJES','ENCOMIENDAS','CAJA','CLIENTES','USUARIOS','AG
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AuditoriaPage() {
-  const { hasRole } = useAuthStore()
+  const { hasRole, user } = useAuthStore()
+  const [mounted, setMounted]               = useState(false)
+  const [desbloqueando, setDesbloqueando]   = useState<string | null>(null)
 
   const [filtros, setFiltros] = useState<Filtros>({
     q: '', modulo: '', accion: '', desde: '', hasta: '', ip: '', registroId: '', page: 0, size: 25,
   })
   const [fechaError, setFechaError] = useState('')
   const [periodo, setPeriodo]       = useState<'hoy' | 'semana'>('hoy')
+
+  useEffect(() => { setMounted(true) }, [])
 
   const buildQuery = useCallback((f: Filtros) => {
     const p = new URLSearchParams()
@@ -228,9 +233,13 @@ export default function AuditoriaPage() {
     setFechaError('')
   }
 
-  const { data, mutate }          = useSWR(buildQuery(filtros))
-  const { data: resumen }         = useSWR('/api/auditoria/resumen', { refreshInterval: 300_000 })
-  const { data: actividadRaw }    = useSWR(`/api/auditoria/actividad?periodo=${periodo}`, { refreshInterval: 300_000 })
+  const esSuperAdmin = mounted && user?.rol === 'SUPER_ADMIN'
+
+  const { data, mutate }             = useSWR(buildQuery(filtros))
+  const { data: resumen }            = useSWR('/api/auditoria/resumen', { refreshInterval: 300_000 })
+  const { data: actividadRaw }       = useSWR(`/api/auditoria/actividad?periodo=${periodo}`, { refreshInterval: 300_000 })
+  const { data: intentosRaw, mutate: mutateIntentos } =
+    useSWR(esSuperAdmin ? '/api/auth/intentos-fallidos' : null, { refreshInterval: 30_000 })
   const actividadData: any[]      = actividadRaw ?? []
 
   const logs: Auditoria[]         = data?.content       ?? []
@@ -240,7 +249,7 @@ export default function AuditoriaPage() {
 
   const hayFiltros = !!(filtros.q || filtros.modulo || filtros.accion || filtros.desde || filtros.hasta || filtros.ip || filtros.registroId)
 
-  if (!hasRole('GERENTE') && !hasRole('SUPER_ADMIN') && !hasRole('ADMIN')) {
+  if (mounted && !hasRole('GERENTE') && !hasRole('SUPER_ADMIN') && !hasRole('ADMIN')) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
@@ -250,6 +259,17 @@ export default function AuditoriaPage() {
         <p className="text-xs text-gray-400">Solo GERENTE y SUPER_ADMIN</p>
       </div>
     )
+  }
+
+  const desbloquearCuenta = async (email: string) => {
+    setDesbloqueando(email)
+    try {
+      await api.post(`/api/auth/desbloquear?email=${encodeURIComponent(email)}`)
+      toast.success(`Cuenta ${email} desbloqueada`)
+      mutateIntentos()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Error al desbloquear')
+    } finally { setDesbloqueando(null) }
   }
 
   const exportExcel = async () => {
@@ -298,6 +318,67 @@ export default function AuditoriaPage() {
         </div>
       </div>
 
+      {/* ── Panel de seguridad — solo SUPER_ADMIN ── */}
+      {esSuperAdmin && (() => {
+        const intentos = intentosRaw as any
+        const bloqueadas: any[] = intentos?.detalle?.filter((d: any) => d.bloqueado) ?? []
+        const conIntentos: any[] = intentos?.detalle?.filter((d: any) => !d.bloqueado && d.intentos > 0) ?? []
+        if (!intentos) return null
+        return (
+          <div className={`rounded-2xl border p-4 ${bloqueadas.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Shield size={15} className={bloqueadas.length > 0 ? 'text-red-500' : 'text-gray-400'} />
+                <span className="text-sm font-semibold text-gray-800">Panel de seguridad</span>
+                {bloqueadas.length > 0 && (
+                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+                    {bloqueadas.length} cuenta{bloqueadas.length > 1 ? 's' : ''} bloqueada{bloqueadas.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => mutateIntentos()} className="text-gray-400 hover:text-gray-600">
+                <RefreshCw size={13} />
+              </button>
+            </div>
+            {bloqueadas.length === 0 && conIntentos.length === 0 ? (
+              <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full inline-block" />
+                Sin intentos fallidos activos
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {[...bloqueadas, ...conIntentos].map((d: any) => (
+                  <div key={d.email} className={`flex items-center justify-between px-3 py-2 rounded-xl ${
+                    d.bloqueado ? 'bg-red-100/60 border border-red-200' : 'bg-amber-50 border border-amber-100'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      {d.bloqueado ? <Lock size={13} className="text-red-500" /> : <AlertTriangle size={13} className="text-amber-500" />}
+                      <div>
+                        <p className="text-xs font-semibold text-gray-800">{d.email}</p>
+                        <p className="text-[10px] text-gray-500">
+                          {d.bloqueado
+                            ? `Bloqueada — ${d.minutosRest} min restantes`
+                            : `${d.intentos} intento(s) fallido(s)`}
+                        </p>
+                      </div>
+                    </div>
+                    {d.bloqueado && (
+                      <button
+                        onClick={() => desbloquearCuenta(d.email)}
+                        disabled={desbloqueando === d.email}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-white border border-red-200 text-red-700 text-xs rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors font-medium">
+                        <Unlock size={11} />
+                        {desbloqueando === d.email ? 'Desbloqueando…' : 'Desbloquear'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {/* ── Stats ── */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
         <StatCard label="Total hoy"   value={res.total    ?? 0} accent="bg-[#064e3b]" />
@@ -334,7 +415,7 @@ export default function AuditoriaPage() {
             ))}
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={160}>
+        {mounted && <ResponsiveContainer width="100%" height={160}>
           <BarChart data={actividadData} margin={{ top: 0, right: 0, left: -28, bottom: 0 }}
             barSize={periodo === 'hoy' ? 8 : 18}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -351,7 +432,7 @@ export default function AuditoriaPage() {
                 radius={accion === 'LOGIN_FALLIDO' ? [4, 4, 0, 0] : undefined} />
             ))}
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer>}
       </div>
 
       {/* ── Filtros ── */}

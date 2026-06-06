@@ -37,6 +37,31 @@ export interface EntregarEncomiendaDTO {
   formaPago?: string
 }
 
+export interface RecepcionItemDTO {
+  encomiendaId: number
+  recibido: boolean
+  observacion?: string
+}
+
+export interface ViajeEnTransito {
+  viajeId: number
+  rutaOrigen?: string
+  rutaDestino?: string
+  fechaHoraSal?: string
+  vehiculoPlaca?: string
+  vehiculoTipo?: string
+  estadoViaje?: string
+  totalEncomiendas: number
+  encomiendas: any[]
+}
+
+export interface RecepcionResultado {
+  recibidas: number
+  faltantes: number
+  total: number
+  codigosFaltantes: string[]
+}
+
 export const encomiendaService = {
   registrar: (dto: RegistrarEncomiendaDTO) =>
     api.post<any, ApiResponse<Encomienda>>('/api/encomiendas', dto),
@@ -89,4 +114,12 @@ export const encomiendaService = {
     const response = await api.get(`/api/encomiendas/${id}/etiqueta`, { responseType: 'blob' })
     return response as unknown as Blob
   },
+
+  getViajesEnTransito: () =>
+    api.get<any, { data: ViajeEnTransito[] }>('/api/encomiendas/viajes-en-transito')
+       .then((r: any) => (r.data ?? []) as ViajeEnTransito[]),
+
+  recepcionar: (viajeId: number, items: RecepcionItemDTO[]) =>
+    api.post<any, { data: RecepcionResultado }>(`/api/encomiendas/viaje/${viajeId}/recepcionar`, items)
+       .then((r: any) => r.data as RecepcionResultado),
 }

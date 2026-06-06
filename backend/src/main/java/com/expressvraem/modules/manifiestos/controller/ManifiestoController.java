@@ -1,4 +1,4 @@
-﻿package com.expressvraem.modules.manifiestos.controller;
+package com.expressvraem.modules.manifiestos.controller;
 
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
