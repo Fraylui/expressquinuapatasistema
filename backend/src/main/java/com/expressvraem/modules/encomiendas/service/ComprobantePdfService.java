@@ -23,9 +23,15 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import javax.imageio.ImageIO;
 import java.security.MessageDigest;
 import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
@@ -46,10 +52,11 @@ public class ComprobantePdfService {
     @Transactional(readOnly = true)
     public byte[] generarComprobante(Encomienda enc, String operadorNombre) {
         EmpresaConfig emp = empresaConfigService.get();
-        String EMPRESA = emp.getNombre() != null ? emp.getNombre() : "Mi Empresa";
-        String RUC     = emp.getRuc()    != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
-        String DIR     = emp.getDireccion() != null ? emp.getDireccion() : "";
-        String CIUDAD  = emp.getCiudad()    != null ? emp.getCiudad()    : "";
+        String EMPRESA   = emp.getNombre()    != null ? emp.getNombre()    : "Mi Empresa";
+        String RUC       = emp.getRuc()       != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
+        String DIR       = emp.getDireccion() != null ? emp.getDireccion() : "";
+        String CIUDAD    = emp.getCiudad()    != null ? emp.getCiudad()    : "";
+        String LOGO_B64  = emp.getLogoBase64();
 
         try (PDDocument doc = new PDDocument()) {
 
@@ -118,7 +125,8 @@ public class ComprobantePdfService {
             // Línea de corte: ~12
             float cortH = 12f;
             // Sección COMPROBANTE (abajo): cabecera + QR + datos
-            float cpH = 10 + 8 + 8 + 8    // header empresa
+            float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
+                      + 10 + 8 + 8 + 8    // header empresa
                       + 6                 // dash
                       + 12 + 14          // titulo + tracking
                       + 72 + 10          // QR + nota
@@ -186,6 +194,15 @@ public class ComprobantePdfService {
                 // ════════════════════════════════════════════════════════════════
 
                 // Encabezado completo
+                PDImageXObject logoImg = buildLogoImage(doc, LOGO_B64);
+                if (logoImg != null) {
+                    float maxLogoH = 34f;
+                    float ratio    = (float) logoImg.getWidth() / logoImg.getHeight();
+                    float logoW    = Math.min(maxLogoH * ratio, PAGE_W - MARGIN * 2);
+                    float logoH    = logoW / ratio;
+                    cs.drawImage(logoImg, (PAGE_W - logoW) / 2f, y - logoH, logoW, logoH);
+                    y -= (logoH + 4);
+                }
                 y = drawCenteredText(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
                 y = drawCenteredText(cs, fontNorm, 7f, RUC, y);      y -= 1;
                 y = drawCenteredText(cs, fontNorm, 6f, DIR, y);      y -= 1;
@@ -321,6 +338,25 @@ public class ComprobantePdfService {
         cs.beginText(); cs.setFont(font, 6f);
         cs.newLineAtOffset((PAGE_W - tw) / 2f, y - 6f); cs.showText(cutText); cs.endText();
         return y - 6f - 1;
+    }
+
+    private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
+        if (logoBase64 == null || logoBase64.isBlank()) return null;
+        try {
+            String b64 = logoBase64.contains(",") ? logoBase64.split(",", 2)[1] : logoBase64;
+            byte[] bytes = Base64.getDecoder().decode(b64);
+            BufferedImage src = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (src == null) return null;
+            // Convertir a RGB opaco — PDFBox maneja este tipo sin problemas
+            BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = rgb.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, src.getWidth(), src.getHeight());
+            g.drawImage(src, 0, 0, null);
+            g.dispose();
+            return LosslessFactory.createFromImage(doc, rgb);
+        } catch (Exception e) { return null; }
     }
 
     private PDImageXObject buildQrImage(PDDocument doc, String text) throws Exception {

@@ -20,8 +20,14 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.stereotype.Service;
 
 import jakarta.persistence.EntityManager;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.Base64;
+import javax.imageio.ImageIO;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.format.DateTimeFormatter;
@@ -41,10 +47,11 @@ public class TicketPdfService {
 
     public byte[] generarTicket(Pasaje p) {
         EmpresaConfig emp = empresaConfigService.get();
-        String EMPRESA = emp.getNombre()    != null ? emp.getNombre()    : "Mi Empresa";
-        String RUC     = emp.getRuc()       != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
-        String DIR     = emp.getDireccion() != null ? emp.getDireccion() : "";
-        String CIUDAD  = emp.getCiudad()    != null ? emp.getCiudad()    : "";
+        String EMPRESA  = emp.getNombre()    != null ? emp.getNombre()    : "Mi Empresa";
+        String RUC      = emp.getRuc()       != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
+        String DIR      = emp.getDireccion() != null ? emp.getDireccion() : "";
+        String CIUDAD   = emp.getCiudad()    != null ? emp.getCiudad()    : "";
+        String LOGO_B64 = emp.getLogoBase64();
         try (PDDocument doc = new PDDocument()) {
 
             Object[] viajeRow = null;
@@ -107,7 +114,7 @@ public class TicketPdfService {
             String correl  = p.getCorrelativo()!= null ? p.getCorrelativo() : String.format("%08d", p.getId());
             String hash    = computeHash(cb, p.getPrecioFinal().toPlainString(), clienteDni, emitido);
 
-            float pageH = 610f;
+            float pageH = 610f + (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f);
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
@@ -117,7 +124,16 @@ public class TicketPdfService {
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
 
-                    y = ctext(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
+                    PDImageXObject logoImg = buildLogoImage(doc, LOGO_B64);
+                if (logoImg != null) {
+                    float maxLogoH = 34f;
+                    float ratio    = (float) logoImg.getWidth() / logoImg.getHeight();
+                    float logoW    = Math.min(maxLogoH * ratio, PAGE_W - MARGIN * 2);
+                    float logoH    = logoW / ratio;
+                    cs.drawImage(logoImg, (PAGE_W - logoW) / 2f, y - logoH, logoW, logoH);
+                    y -= (logoH + 4);
+                }
+                y = ctext(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
                 y = ctext(cs, fontNorm, 7f, RUC,      y);  y -= 1;
                 y = ctext(cs, fontNorm, 6f, DIR,      y);  y -= 1;
                 y = ctext(cs, fontNorm, 6f, CIUDAD,   y);  y -= 3;
@@ -210,6 +226,24 @@ public class TicketPdfService {
         cs.setLineWidth(0.5f);
         cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
         return y - 3;
+    }
+
+    private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
+        if (logoBase64 == null || logoBase64.isBlank()) return null;
+        try {
+            String b64 = logoBase64.contains(",") ? logoBase64.split(",", 2)[1] : logoBase64;
+            byte[] bytes = Base64.getDecoder().decode(b64);
+            BufferedImage src = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (src == null) return null;
+            BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = rgb.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, src.getWidth(), src.getHeight());
+            g.drawImage(src, 0, 0, null);
+            g.dispose();
+            return LosslessFactory.createFromImage(doc, rgb);
+        } catch (Exception e) { return null; }
     }
 
     private PDImageXObject buildQr(PDDocument doc, String text) throws Exception {
