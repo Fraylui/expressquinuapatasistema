@@ -2,6 +2,7 @@ package com.expressvraem.modules.encomiendas.service;
 
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
+import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.google.zxing.BarcodeFormat;
@@ -11,6 +12,9 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -23,8 +27,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.Base64;
 import java.util.EnumMap;
+import javax.imageio.ImageIO;
 import java.util.Map;
 
 @Service
@@ -44,14 +51,15 @@ public class EtiquetaPdfService {
 
     @Transactional(readOnly = true)
     public byte[] generarEtiqueta(Encomienda enc, String operadorNombre) {
-        String EMPRESA = empresaConfigService.get().getNombre();
-        if (EMPRESA == null || EMPRESA.isEmpty()) EMPRESA = "Mi Empresa";
+        EmpresaConfig emp = empresaConfigService.get();
+        String EMPRESA  = emp.getNombre() != null && !emp.getNombre().isEmpty() ? emp.getNombre() : "Mi Empresa";
+        String LOGO_B64 = emp.getLogoBase64();
         int totalBultos = enc.getNumBultos() != null && enc.getNumBultos() > 1 ? enc.getNumBultos() : 1;
 
         // Generar una página por bulto
         try (PDDocument doc = new PDDocument()) {
             for (int bulto = 1; bulto <= totalBultos; bulto++) {
-                generarPagina(doc, enc, bulto, totalBultos, EMPRESA);
+                generarPagina(doc, enc, bulto, totalBultos, EMPRESA, LOGO_B64);
             }
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             doc.save(baos);
@@ -61,7 +69,7 @@ public class EtiquetaPdfService {
         }
     }
 
-    private void generarPagina(PDDocument doc, Encomienda enc, int bultoNum, int totalBultos, String EMPRESA) throws Exception {
+    private void generarPagina(PDDocument doc, Encomienda enc, int bultoNum, int totalBultos, String EMPRESA, String LOGO_B64) throws Exception {
         PDPage page = new PDPage(new PDRectangle(W, H));
         doc.addPage(page);
 
@@ -93,10 +101,22 @@ public class EtiquetaPdfService {
         try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
             float y = H - M;
 
-            // ── Franja superior verde: EMPRESA ──────────────────────────────────
-            fillRect(cs, 0, H - 22, W, 22, 0.024f, 0.306f, 0.235f); // #064e3b
-            y = drawCenteredText(cs, fBold, 8f, EMPRESA, H - 6f, 1f, 1f, 1f);
-            y = H - 22 - 3;
+            // ── Franja superior verde: LOGO + EMPRESA ───────────────────────────
+            PDImageXObject logoImg = buildLogoImage(doc, LOGO_B64);
+            float franjaH = logoImg != null ? 46f : 22f;
+            fillRect(cs, 0, H - franjaH, W, franjaH, 0.024f, 0.306f, 0.235f); // #064e3b
+            if (logoImg != null) {
+                float maxLogoH = 28f;
+                float ratio    = (float) logoImg.getWidth() / logoImg.getHeight();
+                float logoW    = Math.min(maxLogoH * ratio, W - M * 2);
+                float logoH    = logoW / ratio;
+                float logoY    = H - franjaH + (franjaH - logoH - 10f) / 2f + 10f;
+                cs.drawImage(logoImg, (W - logoW) / 2f, logoY, logoW, logoH);
+                y = drawCenteredText(cs, fBold, 7f, EMPRESA, logoY - 2f, 1f, 1f, 1f);
+            } else {
+                y = drawCenteredText(cs, fBold, 8f, EMPRESA, H - 6f, 1f, 1f, 1f);
+            }
+            y = H - franjaH - 3;
 
             // ── ORIGEN → DESTINO en grande ──────────────────────────────────────
             fillRect(cs, 0, y - 28, W, 28, 0.039f, 0.373f, 0.294f); // #065f46
@@ -257,6 +277,24 @@ public class EtiquetaPdfService {
         cs.addRect(x, y, w, h);
         cs.fill();
         cs.setNonStrokingColor(0f, 0f, 0f);
+    }
+
+    private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
+        if (logoBase64 == null || logoBase64.isBlank()) return null;
+        try {
+            String b64 = logoBase64.contains(",") ? logoBase64.split(",", 2)[1] : logoBase64;
+            byte[] bytes = Base64.getDecoder().decode(b64);
+            BufferedImage src = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (src == null) return null;
+            BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = rgb.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setColor(new Color(0x06, 0x4e, 0x3b)); // fondo verde igual que la franja
+            g.fillRect(0, 0, src.getWidth(), src.getHeight());
+            g.drawImage(src, 0, 0, null);
+            g.dispose();
+            return LosslessFactory.createFromImage(doc, rgb);
+        } catch (Exception e) { return null; }
     }
 
     private PDImageXObject buildQrImage(PDDocument doc, String text) throws Exception {
