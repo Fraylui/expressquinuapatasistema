@@ -806,5 +806,22 @@ CREATE TABLE IF NOT EXISTS encomiendas_externas (
 );
 
 -- ============================================================
+-- EMPRESA CONFIG (single-row, id siempre = 1)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS empresa_config (
+    id          BIGINT PRIMARY KEY DEFAULT 1,
+    nombre      VARCHAR(200) NOT NULL DEFAULT 'Mi Empresa de Transporte S.A.C.',
+    ruc         VARCHAR(11),
+    direccion   VARCHAR(300),
+    ciudad      VARCHAR(200),
+    telefono    VARCHAR(50),
+    logo_base64 TEXT
+);
+
+-- Fila por defecto
+INSERT INTO empresa_config (id, nombre) VALUES (1, 'Mi Empresa de Transporte S.A.C.')
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
 -- FIN DEL SCHEMA v2.0
 -- ============================================================

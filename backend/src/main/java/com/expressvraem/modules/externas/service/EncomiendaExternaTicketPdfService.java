@@ -1,5 +1,7 @@
 package com.expressvraem.modules.externas.service;
 
+import com.expressvraem.modules.empresa.entity.EmpresaConfig;
+import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.externas.entity.EncomiendaExterna;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
@@ -29,15 +31,18 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EncomiendaExternaTicketPdfService {
 
+    private final EmpresaConfigService empresaConfigService;
+
     private static final float  PAGE_W   = 226.77f; // 80 mm
     private static final float  MARGIN   = 10f;
-    private static final String EMPRESA  = "EXPRESS QUINUAPATA VRAEM S.A.C.";
-    private static final String RUC      = "RUC: 20601234567";
-    private static final String DIR      = "Jr. Lima 245, Mercado Andres F. Vivanco";
-    private static final String CIUDAD   = "Huamanga - Ayacucho  Telf: 066-312456";
     private static final String BASE_URL = "https://expressvraem.pe/control/";
 
     public byte[] generarTicket(EncomiendaExterna enc, String operadorNombre) {
+        EmpresaConfig emp = empresaConfigService.get();
+        String EMPRESA = emp.getNombre() != null ? emp.getNombre() : "Mi Empresa";
+        String RUC     = emp.getRuc()    != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
+        String DIR     = emp.getDireccion() != null ? emp.getDireccion() : "";
+        String CIUDAD  = emp.getCiudad()    != null ? emp.getCiudad()    : "";
         try (PDDocument doc = new PDDocument()) {
 
             DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
@@ -150,7 +155,7 @@ public class EncomiendaExternaTicketPdfService {
 
                 // ── Footer ─────────────────────────────────────────────────────
                 y = drawCentered(cs, fontObliq, 6.5f, "Conserve este ticket para reclamar.", y);   y -= 1;
-                drawCentered(cs, fontNorm, 6f, "Uso interno — Express Quinuapata VRAEM", y);
+                drawCentered(cs, fontNorm, 6f, "Uso interno — " + ascii(EMPRESA), y);
             }
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();

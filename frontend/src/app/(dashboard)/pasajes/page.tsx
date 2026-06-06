@@ -15,18 +15,10 @@ import api from '@/services/api'
 import { pasajesService, PasajeResponseDTO, VentaPasajeDTO } from '@/services/pasajes.service'
 import { promocionesService, PromocionDTO } from '@/services/promociones.service'
 import { useAuthStore } from '@/stores/authStore'
+import { useEmpresaStore } from '@/stores/empresaStore'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { Pasaje } from '@/types'
-
-// ─── Empresa ──────────────────────────────────────────────────────────────────
-const EMPRESA = {
-  nombre:    'EXPRESS QUINUAPATA VRAEM S.A.C.',
-  ruc:       '20601234567',
-  direccion: 'Jr. Lima 245, Mercado Andrés F. Vivanco',
-  ciudad:    'Huamanga, Ayacucho',
-  telefono:  '066-312456',
-}
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────────
 type Step = 1 | 2 | 3 | 4
@@ -66,6 +58,7 @@ interface TicketInfo {
 }
 
 function TicketPreview({ t, onClose }: { t: TicketInfo; onClose: () => void }) {
+  const { nombre: empNombre, ruc: empRuc, direccion: empDir, ciudad: empCiudad, telefono: empTel } = useEmpresaStore()
   const [qrUrl, setQrUrl] = useState('')
 
   useEffect(() => {
@@ -101,10 +94,10 @@ function TicketPreview({ t, onClose }: { t: TicketInfo; onClose: () => void }) {
         img.qr{ display: block; margin: 3px auto; width: 80px; height: 80px; }
       </style>
     </head><body>
-      <div class="c b lg">${EMPRESA.nombre}</div>
-      <div class="c sm">RUC: ${EMPRESA.ruc}</div>
-      <div class="c sm">${EMPRESA.direccion}</div>
-      <div class="c sm">${EMPRESA.ciudad} | ${EMPRESA.telefono}</div>
+      <div class="c b lg">${empNombre}</div>
+      <div class="c sm">RUC: ${empRuc}</div>
+      <div class="c sm">${empDir}</div>
+      <div class="c sm">${empCiudad} | ${empTel}</div>
       <hr/>
       <div class="c b" style="font-size:13px">BOLETA DE PASAJE</div>
       <div class="c sm">N° ${t.codigoBoleta}</div>
@@ -145,8 +138,8 @@ function TicketPreview({ t, onClose }: { t: TicketInfo; onClose: () => void }) {
       {/* Vista previa */}
       <div className="mx-auto bg-white border border-dashed border-gray-400 rounded p-3 font-mono text-[11px] text-gray-900"
            style={{ width: 302, maxWidth: '100%' }}>
-        <div className="text-center font-bold text-[12px]">{EMPRESA.nombre}</div>
-        <div className="text-center text-[9px] text-gray-500">RUC: {EMPRESA.ruc} · {EMPRESA.telefono}</div>
+        <div className="text-center font-bold text-[12px]">{empNombre}</div>
+        <div className="text-center text-[9px] text-gray-500">RUC: {empRuc} · {empTel}</div>
         <hr className="border-dashed border-gray-400 my-1.5" />
         <div className="text-center font-bold text-[11px]">BOLETA DE PASAJE</div>
         <div className="text-center text-[9px] text-gray-400">N° {t.codigoBoleta}</div>

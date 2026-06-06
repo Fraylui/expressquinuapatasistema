@@ -1,16 +1,19 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import useSWR, { mutate } from 'swr'
 import toast from 'react-hot-toast'
 import {
   Plus, Pencil, ToggleLeft, ToggleRight, MapPin, Tag,
   Check, X, Truck, UserCircle, Search, AlertTriangle, Mail,
+  Building2, Upload, Trash2, ImageIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import api from '@/services/api'
+import { useEmpresaStore } from '@/stores/empresaStore'
+import { useEffect } from 'react'
 
-type Tab = 'rutas' | 'tarifas' | 'vehiculos' | 'conductores'
+type Tab = 'empresa' | 'rutas' | 'tarifas' | 'vehiculos' | 'conductores'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -987,9 +990,206 @@ function ConductoresTab() {
   )
 }
 
+// ─── EmpresaTab ───────────────────────────────────────────────────────────────
+
+function EmpresaTab() {
+  const { nombre, ruc, direccion, ciudad, telefono, logoBase64, setLogoBase64, fetchFromApi, saveToApi } = useEmpresaStore()
+  const [localNombre,    setLocalNombre]    = useState(nombre)
+  const [localRuc,       setLocalRuc]       = useState(ruc)
+  const [localDireccion, setLocalDireccion] = useState(direccion)
+  const [localCiudad,    setLocalCiudad]    = useState(ciudad)
+  const [localTelefono,  setLocalTelefono]  = useState(telefono)
+  const [saving,         setSaving]         = useState(false)
+  const [dragging,       setDragging]       = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { fetchFromApi() }, [])
+
+  // Sync local state when store updates from API
+  useEffect(() => {
+    setLocalNombre(nombre); setLocalRuc(ruc)
+    setLocalDireccion(direccion); setLocalCiudad(ciudad); setLocalTelefono(telefono)
+  }, [nombre, ruc, direccion, ciudad, telefono])
+
+  const handleGuardar = async () => {
+    if (!localNombre.trim()) { toast.error('El nombre de la empresa es obligatorio'); return }
+    setSaving(true)
+    try {
+      await saveToApi({
+        nombre:    localNombre.trim(),
+        ruc:       localRuc.trim(),
+        direccion: localDireccion.trim(),
+        ciudad:    localCiudad.trim(),
+        telefono:  localTelefono.trim(),
+      })
+      toast.success('Datos de empresa guardados')
+    } catch { toast.error('Error al guardar. El backend debe estar activo.') }
+    finally { setSaving(false) }
+  }
+
+  const procesarArchivo = (file: File) => {
+    if (!file.type.startsWith('image/')) { toast.error('Solo se permiten imágenes'); return }
+    if (file.size > 2 * 1024 * 1024)    { toast.error('La imagen no debe superar 2 MB'); return }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setLogoBase64(e.target?.result as string)
+      toast.success('Logo actualizado')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) procesarArchivo(file)
+    e.target.value = ''
+  }
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) procesarArchivo(file)
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+
+      {/* Logo */}
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {/* Header con gradiente */}
+        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-gray-100 px-6 py-4">
+          <h3 className="text-sm font-semibold text-gray-900">Logo de la empresa</h3>
+          <p className="text-xs text-gray-500 mt-0.5">PNG o JPG, máx. 2 MB. Aparece en el login y documentos.</p>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Preview oscuro estilo login */}
+          <div className="relative rounded-xl overflow-hidden bg-[#0f172a] flex flex-col items-center justify-center py-7 gap-2 shadow-inner">
+            {/* orbs decorativos */}
+            <div className="pointer-events-none absolute -top-10 -left-10 h-32 w-32 rounded-full bg-emerald-700/20 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-10 -right-10 h-32 w-32 rounded-full bg-teal-700/15 blur-2xl" />
+
+            {logoBase64 ? (
+              <img
+                src={logoBase64}
+                alt="Logo empresa"
+                className="relative max-h-16 max-w-[180px] w-auto object-contain drop-shadow-lg"
+              />
+            ) : (
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600/90 shadow-lg shadow-emerald-900/40">
+                <ImageIcon size={24} className="text-white" />
+              </div>
+            )}
+            <p className="relative text-xs text-white/40 mt-1">Vista previa del login</p>
+          </div>
+
+          {/* Drop zone */}
+          <div
+            className={`relative border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all duration-200 ${
+              dragging
+                ? 'border-emerald-400 bg-emerald-50 scale-[1.01]'
+                : 'border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/50'
+            }`}
+            onClick={() => inputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100">
+                <Upload size={16} className="text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700">Arrastra tu logo aquí</p>
+                <p className="text-xs text-gray-400 mt-0.5">o haz clic para seleccionar</p>
+              </div>
+            </div>
+            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+          </div>
+
+          {logoBase64 && (
+            <button
+              onClick={() => { setLogoBase64(null); toast.success('Logo eliminado') }}
+              className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 transition-colors cursor-pointer"
+            >
+              <Trash2 size={12} /> Quitar logo actual
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Datos */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-900">Datos de la empresa</h3>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Nombre de la empresa *</label>
+          <input
+            value={localNombre}
+            onChange={e => setLocalNombre(e.target.value)}
+            placeholder="Mi Empresa SAC"
+            className={inputCls()}
+          />
+          <p className="text-xs text-gray-400 mt-1">Este nombre aparece en el login, cabeceras y documentos.</p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">RUC</label>
+          <input
+            value={localRuc}
+            onChange={e => setLocalRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
+            placeholder="20123456789"
+            maxLength={11}
+            className={inputCls('font-mono')}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
+          <input
+            value={localDireccion}
+            onChange={e => setLocalDireccion(e.target.value)}
+            placeholder="Jr. Lima 245, Mercado Andrés F. Vivanco"
+            className={inputCls()}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
+            <input
+              value={localCiudad}
+              onChange={e => setLocalCiudad(e.target.value)}
+              placeholder="Huamanga, Ayacucho"
+              className={inputCls()}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
+            <input
+              value={localTelefono}
+              onChange={e => setLocalTelefono(e.target.value)}
+              placeholder="066-312456"
+              className={inputCls()}
+            />
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <Button variant="primary" loading={saving} onClick={handleGuardar}>
+            Guardar cambios
+          </Button>
+        </div>
+      </div>
+
+
+    </div>
+  )
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
+  { key: 'empresa',     label: 'Empresa',     icon: Building2 },
   { key: 'rutas',       label: 'Rutas',       icon: MapPin },
   { key: 'tarifas',     label: 'Tarifas',     icon: Tag },
   { key: 'vehiculos',   label: 'Vehículos',   icon: Truck },
@@ -997,16 +1197,16 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
 ]
 
 export default function ConfiguracionPage() {
-  const [tab, setTab] = useState<Tab>('rutas')
+  const [tab, setTab] = useState<Tab>('empresa')
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Configuración</h1>
-        <p className="text-sm text-gray-500">Gestión de rutas, tarifas, flota y conductores</p>
+        <p className="text-sm text-gray-500">Gestión de empresa, rutas, tarifas, flota y conductores</p>
       </div>
 
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -1023,6 +1223,7 @@ export default function ConfiguracionPage() {
         ))}
       </div>
 
+      {tab === 'empresa'     && <EmpresaTab />}
       {tab === 'rutas'       && <RutasTab />}
       {tab === 'tarifas'     && <TarifasTab />}
       {tab === 'vehiculos'   && <VehiculosTab />}

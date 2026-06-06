@@ -2,6 +2,8 @@ package com.expressvraem.modules.encomiendas.service;
 
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
+import com.expressvraem.modules.empresa.entity.EmpresaConfig;
+import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
@@ -34,13 +36,17 @@ public class ComprobanteEntregaPdfService {
 
     private final ClienteRepository clienteRepository;
     private final EntityManager entityManager;
+    private final EmpresaConfigService empresaConfigService;
 
     private static final float  PAGE_W    = 226.77f;
     private static final float  MARGIN    = 10f;
-    private static final String EMPRESA   = "EXPRESS QUINUAPATA VRAEM S.A.C.";
     private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
 
     public byte[] generarComprobanteEntrega(Encomienda enc, String operadorNombre) {
+        EmpresaConfig emp = empresaConfigService.get();
+        String EMPRESA = emp.getNombre() != null ? emp.getNombre() : "Mi Empresa";
+        String RUC     = emp.getRuc()    != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
+
         try (PDDocument doc = new PDDocument()) {
 
             Cliente rem = clienteRepository.findById(enc.getRemitenteId()).orElse(null);
@@ -147,7 +153,7 @@ public class ComprobanteEntregaPdfService {
                 y = drawDashes(cs, y);                                                                           y -= 3;
 
                 // ── Footer ─────────────────────────────────────────────────────
-                y = drawCenteredText(cs, fontObliq, 6.5f, "Gracias por usar Express Quinuapata VRAEM S.A.C.", y); y -= 1;
+                y = drawCenteredText(cs, fontObliq, 6.5f, "Gracias por usar " + ascii(EMPRESA), y); y -= 1;
                 drawCenteredText(cs, fontNorm, 6f, "expressvraem.pe", y);
             }
 
