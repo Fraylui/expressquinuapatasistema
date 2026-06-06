@@ -2,6 +2,7 @@ package com.expressvraem.modules.encomiendas.service;
 
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
+import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
@@ -32,23 +33,25 @@ public class EtiquetaPdfService {
 
     private final ClienteRepository clienteRepository;
     private final EntityManager entityManager;
+    private final EmpresaConfigService empresaConfigService;
 
     // 100 mm × 150 mm en puntos (1 mm = 2.8346 pt)
     private static final float W = 283.46f;
     private static final float H = 425.19f;
     private static final float M = 8f;   // margen
 
-    private static final String EMPRESA   = "EXPRESS QUINUAPATA VRAEM S.A.C.";
     private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
 
     @Transactional(readOnly = true)
     public byte[] generarEtiqueta(Encomienda enc, String operadorNombre) {
+        String EMPRESA = empresaConfigService.get().getNombre();
+        if (EMPRESA == null || EMPRESA.isEmpty()) EMPRESA = "Mi Empresa";
         int totalBultos = enc.getNumBultos() != null && enc.getNumBultos() > 1 ? enc.getNumBultos() : 1;
 
         // Generar una página por bulto
         try (PDDocument doc = new PDDocument()) {
             for (int bulto = 1; bulto <= totalBultos; bulto++) {
-                generarPagina(doc, enc, bulto, totalBultos);
+                generarPagina(doc, enc, bulto, totalBultos, EMPRESA);
             }
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             doc.save(baos);
@@ -58,7 +61,7 @@ public class EtiquetaPdfService {
         }
     }
 
-    private void generarPagina(PDDocument doc, Encomienda enc, int bultoNum, int totalBultos) throws Exception {
+    private void generarPagina(PDDocument doc, Encomienda enc, int bultoNum, int totalBultos, String EMPRESA) throws Exception {
         PDPage page = new PDPage(new PDRectangle(W, H));
         doc.addPage(page);
 

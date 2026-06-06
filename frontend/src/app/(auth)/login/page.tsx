@@ -1,14 +1,13 @@
 'use client'
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Bus, Eye, EyeOff, LogIn } from 'lucide-react'
+import { Eye, EyeOff, LogIn, Bus } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
-import { Button } from '@/components/ui/Button'
-import { useState } from 'react'
+import { useEmpresaStore } from '@/stores/empresaStore'
 
 const schema = z.object({
   email:    z.string().min(1, 'El email es obligatorio').email('Email inválido'),
@@ -20,11 +19,14 @@ type FormData = z.infer<typeof schema>
 export default function LoginPage() {
   const router = useRouter()
   const { login, isAuthenticated } = useAuthStore()
+  const { nombre, logoBase64, fetchFromApi } = useEmpresaStore()
   const [showPass, setShowPass] = useState(false)
 
   useEffect(() => {
     if (isAuthenticated) router.replace('/')
   }, [isAuthenticated, router])
+
+  useEffect(() => { fetchFromApi() }, [])
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -42,50 +44,65 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen w-full">
-      {/* Left panel */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-primary-900 text-white p-12">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-accent-700 rounded-xl flex items-center justify-center">
-            <Bus size={22} className="text-white" />
-          </div>
-          <div>
-            <p className="font-bold text-lg leading-tight">Express Quinuapata</p>
-            <p className="text-xs text-white/50">VRAEM SAC</p>
-          </div>
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold mb-3 leading-tight">
-            Sistema Integral de<br />Transporte VRAEM
-          </h1>
-          <p className="text-white/60 text-sm leading-relaxed">
-            Gestión completa de pasajes, encomiendas, caja y reportes
-            para las rutas Huamanga-Kimbiri, Huamanga-Pichari y
-            Huamanga-San Francisco.
-          </p>
-        </div>
-        <div className="flex gap-6 text-white/40 text-xs">
-          <span>Huamanga · Kimbiri · Pichari · San Francisco</span>
-        </div>
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#020617]">
+
+      {/* ── Fondo animado ── */}
+      <div className="pointer-events-none absolute inset-0">
+        {/* Orbs de color */}
+        <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-primary-700/20 blur-[120px]" />
+        <div className="absolute -bottom-40 -right-40 h-[500px] w-[500px] rounded-full bg-primary-500/15 blur-[100px]" />
+        <div className="absolute top-1/2 left-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/10 blur-[80px]" />
+        {/* Grid pattern */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)`,
+            backgroundSize: '60px 60px',
+          }}
+        />
       </div>
 
-      {/* Right panel */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-white">
-        <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <div className="flex items-center gap-2 mb-6 lg:hidden">
-              <div className="w-8 h-8 bg-primary-900 rounded-lg flex items-center justify-center">
-                <Bus size={16} className="text-white" />
+      {/* ── Card glassmorphism ── */}
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div
+          className="rounded-2xl border border-white/10 p-8 shadow-2xl"
+          style={{
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
+        >
+          {/* Logo */}
+          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+            {logoBase64 ? (
+              <img
+                src={logoBase64}
+                alt={nombre}
+                className="max-h-20 max-w-[200px] w-auto object-contain drop-shadow-lg"
+              />
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-600 shadow-lg shadow-primary-900/40">
+                <Bus size={26} className="text-white" />
               </div>
-              <span className="font-bold text-gray-900">Express Quinuapata VRAEM</span>
+            )}
+            <div>
+              <h1 className="text-lg font-bold leading-tight text-white">{nombre}</h1>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Iniciar sesión</h2>
-            <p className="text-sm text-gray-500 mt-1">Ingrese sus credenciales para continuar</p>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          {/* Título */}
+          <div className="mb-7 text-center">
+            <h2 className="text-2xl font-bold text-white">Iniciar sesión</h2>
+            <p className="mt-1 text-sm text-white/50">Accede al panel de gestión</p>
+          </div>
+
+          {/* Formulario */}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-white/70">
                 Correo electrónico
               </label>
               <input
@@ -93,15 +110,19 @@ export default function LoginPage() {
                 placeholder="usuario@quinuapata.com"
                 autoComplete="email"
                 {...register('email')}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/25 outline-none transition-all duration-200 focus:border-primary-500/60 focus:bg-white/8 focus:ring-2 focus:ring-primary-500/20"
               />
               {errors.email && (
-                <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
+                <p className="flex items-center gap-1 text-xs text-red-400">
+                  <span className="inline-block h-1 w-1 rounded-full bg-red-400" />
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            {/* Contraseña */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-white/70">
                 Contraseña
               </label>
               <div className="relative">
@@ -110,37 +131,53 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   {...register('password')}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-10"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-11 text-sm text-white placeholder-white/25 outline-none transition-all duration-200 focus:border-primary-500/60 focus:bg-white/8 focus:ring-2 focus:ring-primary-500/20"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-white/30 transition-colors duration-150 hover:text-white/70"
+                  aria-label="Mostrar/ocultar contraseña"
                 >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {errors.password && (
-                <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
+                <p className="flex items-center gap-1 text-xs text-red-400">
+                  <span className="inline-block h-1 w-1 rounded-full bg-red-400" />
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
-            <Button
+            {/* Botón submit */}
+            <button
               type="submit"
-              variant="primary"
-              size="md"
-              loading={isSubmitting}
-              icon={LogIn}
-              className="w-full justify-center"
+              disabled={isSubmitting}
+              className="group relative mt-2 flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary-900/40 transition-all duration-200 hover:bg-primary-500 hover:shadow-primary-800/50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Ingresar al sistema
-            </Button>
+              {isSubmitting ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <span>Verificando...</span>
+                </>
+              ) : (
+                <>
+                  <LogIn size={16} />
+                  <span>Ingresar al sistema</span>
+                </>
+              )}
+              {/* Shimmer on hover */}
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
+            </button>
           </form>
 
-          <p className="mt-6 text-xs text-gray-400 text-center">
-            Express Quinuapata VRAEM SAC &copy; {new Date().getFullYear()}
+          {/* Footer */}
+          <p className="mt-7 text-center text-xs text-white/25">
+            Solo personal autorizado · Express Quinuapata VRAEM SAC &copy; {new Date().getFullYear()}
           </p>
         </div>
+
       </div>
     </div>
   )

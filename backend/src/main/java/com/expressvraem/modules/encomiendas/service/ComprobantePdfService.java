@@ -2,6 +2,8 @@ package com.expressvraem.modules.encomiendas.service;
 
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
+import com.expressvraem.modules.empresa.entity.EmpresaConfig;
+import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
@@ -35,17 +37,20 @@ public class ComprobantePdfService {
 
     private final ClienteRepository clienteRepository;
     private final EntityManager entityManager;
+    private final EmpresaConfigService empresaConfigService;
 
     private static final float  PAGE_W    = 226.77f; // 80 mm
     private static final float  MARGIN    = 10f;
-    private static final String EMPRESA   = "EXPRESS QUINUAPATA VRAEM S.A.C.";
-    private static final String RUC       = "RUC: 20601234567";
-    private static final String DIR       = "Jr. Lima 245, Mercado Andres F. Vivanco";
-    private static final String CIUDAD    = "Huamanga - Ayacucho  Telf: 066-312456";
     private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
 
     @Transactional(readOnly = true)
     public byte[] generarComprobante(Encomienda enc, String operadorNombre) {
+        EmpresaConfig emp = empresaConfigService.get();
+        String EMPRESA = emp.getNombre() != null ? emp.getNombre() : "Mi Empresa";
+        String RUC     = emp.getRuc()    != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
+        String DIR     = emp.getDireccion() != null ? emp.getDireccion() : "";
+        String CIUDAD  = emp.getCiudad()    != null ? emp.getCiudad()    : "";
+
         try (PDDocument doc = new PDDocument()) {
 
             Cliente rem = clienteRepository.findById(enc.getRemitenteId()).orElse(null);
