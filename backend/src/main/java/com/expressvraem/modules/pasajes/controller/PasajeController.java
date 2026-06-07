@@ -68,9 +68,10 @@ public class PasajeController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<PasajeResponseDTO>>> lista(
             @RequestParam(required = false) String estado,
-            @RequestParam(required = false) String codigoBoleta) {
+            @RequestParam(required = false) String codigoBoleta,
+            @RequestParam(required = false) String clienteBusqueda) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        return ResponseEntity.ok(ApiResponse.ok(pasajeService.getLista(agenciaId, estado, codigoBoleta)));
+        return ResponseEntity.ok(ApiResponse.ok(pasajeService.getLista(agenciaId, estado, codigoBoleta, clienteBusqueda)));
     }
 
     @GetMapping("/{id}")

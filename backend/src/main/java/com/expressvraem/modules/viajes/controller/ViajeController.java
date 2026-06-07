@@ -4,6 +4,7 @@ import com.expressvraem.modules.conductores.entity.Conductor;
 import com.expressvraem.modules.conductores.repository.ConductorRepository;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.repository.EncomiendaRepository;
+import com.expressvraem.modules.viajes.service.LiquidacionViajeService;
 import com.expressvraem.shared.websocket.WebSocketEventPublisher;
 import com.expressvraem.modules.viajes.dto.EditarViajeDTO;
 import com.expressvraem.modules.viajes.dto.ProgramarViajeDTO;
@@ -20,7 +21,9 @@ import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.persistence.EntityManager;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -43,13 +46,14 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ViajeController {
 
-    private final ViajeRepository      viajeRepository;
-    private final AsientoRepository    asientoRepository;
-    private final EncomiendaRepository encomiendaRepository;
-    private final ConductorRepository  conductorRepository;
-    private final EntityManager        entityManager;
-    private final LogService           logService;
+    private final ViajeRepository         viajeRepository;
+    private final AsientoRepository       asientoRepository;
+    private final EncomiendaRepository    encomiendaRepository;
+    private final ConductorRepository     conductorRepository;
+    private final EntityManager           entityManager;
+    private final LogService              logService;
     private final WebSocketEventPublisher wsPublisher;
+    private final LiquidacionViajeService liquidacionViajeService;
 
     /**
      * Programa un nuevo viaje y genera los asientos según la capacidad del vehículo.
@@ -669,6 +673,20 @@ public class ViajeController {
             dto.setCantEncomiendas(encCnt.getOrDefault(v.getId(), 0L));
             return dto;
         }).filter(Objects::nonNull).toList();
+    }
+
+    /**
+     * PDF de liquidación: lista de pasajeros + encomiendas + totales de un viaje.
+     */
+    @GetMapping(value = "/{id}/liquidacion-pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    public ResponseEntity<byte[]> liquidacionPdf(@PathVariable Long id) {
+        byte[] pdf = liquidacionViajeService.generarLiquidacion(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"liquidacion-viaje-" + id + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
     }
 
     private ViajeResponseDTO enrich(Viaje v) {

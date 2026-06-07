@@ -109,6 +109,15 @@ function HistorialTab() {
   const totalEnc    = completados.reduce((s, v) => s + v.totalEncomiendas,  0)
   const totalIng    = completados.reduce((s, v) => s + v.totalIngresos,     0)
 
+  const descargarLiquidacion = async (id: number) => {
+    try {
+      const res = await api.get(`/api/viajes/${id}/liquidacion-pdf`, { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([res as any], { type: 'application/pdf' }))
+      window.open(url, '_blank')?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { toast.error('Error generando liquidación') }
+  }
+
   const imprimirManifiesto = async (id: number) => {
     try {
       const blob = await api.get(`/api/manifiestos/${id}/pdf`, { responseType: 'blob' }) as unknown as Blob
@@ -331,11 +340,19 @@ function HistorialTab() {
                             </span>
                           </div>
 
-                          {/* Acción: Manifiesto */}
-                          <button onClick={() => imprimirManifiesto(v.id)}
-                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-[#334155] text-gray-500 dark:text-slate-400 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-[#293548] hover:text-gray-700 dark:hover:text-slate-300 transition-colors font-medium">
-                            <FileText size={12} /> Manifiesto PDF
-                          </button>
+                          {/* Acciones: Manifiesto + Liquidación */}
+                          <div className="ml-auto flex items-center gap-2">
+                            <button onClick={() => imprimirManifiesto(v.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-[#334155] text-gray-500 dark:text-slate-400 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-[#293548] hover:text-gray-700 dark:hover:text-slate-300 transition-colors font-medium">
+                              <FileText size={12} /> Manifiesto
+                            </button>
+                            {esCompletado && (
+                              <button onClick={() => descargarLiquidacion(v.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#064e3b] text-white text-xs rounded-lg hover:bg-[#065f46] transition-colors font-semibold">
+                                <DollarSign size={12} /> Liquidación
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
 

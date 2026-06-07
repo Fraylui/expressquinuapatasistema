@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
 import {
   Bus, CheckCircle, ChevronRight, Clock, Printer,
-  Search, Users, X, AlertTriangle, FileText, Ticket, Tag,
+  Search, Users, X, AlertTriangle, FileText, Ticket, Tag, RefreshCw,
 } from 'lucide-react'
 import { SeatMap } from '@/components/modules/pasajes/SeatMap'
 import { Button } from '@/components/ui/Button'
@@ -488,6 +488,7 @@ export default function PasajesPage() {
   // List + anular + confirmar
   const [listFiltroEstado, setListFiltroEstado]   = useState('')
   const [listFiltroCodigo, setListFiltroCodigo]   = useState('')
+  const [listFiltroCliente, setListFiltroCliente] = useState('')
   const [anularModal, setAnularModal] = useState<{ open: boolean; id: number; codigo: string }>({
     open: false, id: 0, codigo: ''
   })
@@ -507,6 +508,7 @@ export default function PasajesPage() {
   const listParams = new URLSearchParams()
   if (listFiltroEstado) listParams.set('estado', listFiltroEstado)
   if (listFiltroCodigo) listParams.set('codigoBoleta', listFiltroCodigo)
+  if (listFiltroCliente) listParams.set('clienteBusqueda', listFiltroCliente)
   const { data: listData, mutate: mutateList } =
     useSWR<any>(`/api/pasajes?${listParams.toString()}`, fetcher, { refreshInterval: 30000 })
   const pasajes: Pasaje[] = listData ?? []
@@ -649,6 +651,18 @@ export default function PasajesPage() {
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Código inválido')
     } finally { setBuscandoCodigo(false) }
+  }
+
+  const handleReimprimir = async (pasajeId: number, codigo: string) => {
+    try {
+      const res = await api.get(`/api/pasajes/${pasajeId}/ticket`, { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([res as any], { type: 'application/pdf' }))
+      const w = window.open(url, '_blank')
+      if (w) setTimeout(() => URL.revokeObjectURL(url), 10000)
+      else toast.error('Permite ventanas emergentes para imprimir')
+    } catch {
+      toast.error(`No se pudo reimprimir boleta ${codigo}`)
+    }
   }
 
   const resetWizard = () => {
@@ -1188,10 +1202,19 @@ export default function PasajesPage() {
               <div className="relative">
                 <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
+                  value={listFiltroCliente}
+                  onChange={e => { setListFiltroCliente(e.target.value); setListFiltroCodigo('') }}
+                  placeholder="Nombre o DNI…"
+                  className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs w-40 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors"
+                />
+              </div>
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
                   value={listFiltroCodigo}
-                  onChange={e => setListFiltroCodigo(e.target.value.toUpperCase())}
+                  onChange={e => { setListFiltroCodigo(e.target.value.toUpperCase()); setListFiltroCliente('') }}
                   placeholder="N° boleta…"
-                  className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs w-36 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors"
+                  className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs w-32 focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors"
                 />
               </div>
               <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-xl">
@@ -1258,6 +1281,13 @@ export default function PasajesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        {p.estado === 'VENDIDO' && (
+                          <button
+                            onClick={() => handleReimprimir(p.id, p.codigoBoleta)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-600 text-[11px] font-semibold rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap">
+                            <RefreshCw size={11} /> Reimprimir
+                          </button>
+                        )}
                         {p.estado === 'RESERVADO' && (
                           <button
                             onClick={() => { setConfirmarModal({ open: true, id: p.id, codigo: p.codigoBoleta }); setConfirmarFormaPago('EFECTIVO') }}
