@@ -655,8 +655,8 @@ export default function PasajesPage() {
 
   const handleReimprimir = async (pasajeId: number, codigo: string) => {
     try {
-      const res = await api.get(`/api/pasajes/${pasajeId}/ticket`, { responseType: 'blob' })
-      const url = URL.createObjectURL(new Blob([res as any], { type: 'application/pdf' }))
+      const blob = await api.get(`/api/pasajes/${pasajeId}/ticket`, { responseType: 'blob' }) as unknown as Blob
+      const url = URL.createObjectURL(blob)
       const w = window.open(url, '_blank')
       if (w) setTimeout(() => URL.revokeObjectURL(url), 10000)
       else toast.error('Permite ventanas emergentes para imprimir')
