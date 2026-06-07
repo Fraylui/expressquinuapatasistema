@@ -33,4 +33,13 @@ public interface PasajeRepository extends JpaRepository<Pasaje, Long> {
     List<Pasaje> findActivosByViajeId(Long viajeId);
 
     long countByViajeIdAndEstadoNot(Long viajeId, String estado);
+
+    @Query("SELECT p FROM Pasaje p WHERE p.agenciaId = :agenciaId AND p.clienteId IN :clienteIds ORDER BY p.fechaVenta DESC")
+    List<Pasaje> findByAgenciaIdAndClienteIdIn(
+            @org.springframework.data.repository.query.Param("agenciaId") Long agenciaId,
+            @org.springframework.data.repository.query.Param("clienteIds") java.util.Collection<Long> clienteIds);
+
+    @Query("SELECT p FROM Pasaje p WHERE p.clienteId IN :clienteIds ORDER BY p.fechaVenta DESC")
+    List<Pasaje> findByClienteIdIn(
+            @org.springframework.data.repository.query.Param("clienteIds") java.util.Collection<Long> clienteIds);
 }

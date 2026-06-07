@@ -9,6 +9,8 @@ import com.expressvraem.modules.pasajes.dto.VentaPasajeDTO;
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
 import com.expressvraem.modules.promociones.service.PromocionService;
+import com.expressvraem.modules.tarifas.entity.Tarifa;
+import com.expressvraem.modules.tarifas.repository.TarifaRepository;
 import com.expressvraem.modules.viajes.entity.Asiento;
 import com.expressvraem.modules.viajes.entity.Viaje;
 import com.expressvraem.modules.viajes.repository.AsientoRepository;
@@ -18,6 +20,7 @@ import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
 import com.expressvraem.shared.websocket.WebSocketEventPublisher;
 import com.expressvraem.shared.websocket.dto.AsientoUpdateDTO;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,6 +48,8 @@ public class PasajeService {
     private final CajaService cajaService;
     private final AuditoriaService auditoriaService;
     private final PromocionService promocionService;
+    private final TarifaRepository tarifaRepository;
+    private final EntityManager entityManager;
 
     private static final AtomicLong SEQ = new AtomicLong(
             System.currentTimeMillis() % 100000);
@@ -129,6 +134,18 @@ public class PasajeService {
         BigDecimal precioFinal = dto.precioBase().subtract(descuento);
         if (precioFinal.compareTo(BigDecimal.ZERO) < 0) precioFinal = BigDecimal.ZERO;
 
+        // Resolver tarifaId real (rutaId + tipoVehiculo del viaje)
+        long tarifaId = 1L;
+        try {
+            Object[] vehRow = (Object[]) entityManager
+                    .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
+                    .setParameter("vid", viaje.getVehiculoId())
+                    .getSingleResult();
+            String tipoVehiculo = String.valueOf(vehRow[0]);
+            List<Tarifa> tarifas = tarifaRepository.findVigenteByRutaAndTipo(viaje.getRutaId(), tipoVehiculo);
+            if (!tarifas.isEmpty()) tarifaId = tarifas.get(0).getId();
+        } catch (Exception ignored) {}
+
         long seq = SEQ.incrementAndGet();
         String codigoBoleta = String.format("VTA-%d-%05d", LocalDateTime.now().getYear(), seq);
 
@@ -138,7 +155,7 @@ public class PasajeService {
                 .asientoId(asiento.getId())
                 .asientoNumero(dto.asientoNumero())
                 .clienteId(cliente.getId())
-                .tarifaId(1L)
+                .tarifaId(tarifaId)
                 .vendedorId(operadorId)
                 .operadorId(operadorId)
                 .precioBase(dto.precioBase())
@@ -267,16 +284,41 @@ public class PasajeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Pasaje", id));
     }
 
-    public List<PasajeResponseDTO> getLista(Long agenciaId, String estado, String codigoBoleta) {
+    public List<PasajeResponseDTO> getLista(Long agenciaId, String estado, String codigoBoleta, String clienteBusqueda) {
         List<Pasaje> pasajes;
-        if (codigoBoleta != null && !codigoBoleta.isBlank())
+
+        if (clienteBusqueda != null && !clienteBusqueda.isBlank()) {
+            String busq = clienteBusqueda.trim();
+            List<Cliente> clienteList;
+            if (busq.matches("\\d+")) {
+                if (agenciaId != null) {
+                    clienteList = clienteRepository.findByAgenciaIdAndNumDocContainingIgnoreCase(agenciaId, busq);
+                } else {
+                    clienteList = clienteRepository.findAll().stream()
+                            .filter(c -> c.getNumDoc() != null && c.getNumDoc().contains(busq)).toList();
+                }
+            } else {
+                if (agenciaId != null) {
+                    clienteList = clienteRepository.findByAgenciaIdAndApellidosContainingIgnoreCaseOrAgenciaIdAndNombresContainingIgnoreCase(
+                            agenciaId, busq, agenciaId, busq);
+                } else {
+                    clienteList = List.of();
+                }
+            }
+            List<Long> clienteIds = clienteList.stream().map(Cliente::getId).toList();
+            if (clienteIds.isEmpty()) return List.of();
+            pasajes = agenciaId != null
+                    ? pasajeRepository.findByAgenciaIdAndClienteIdIn(agenciaId, clienteIds)
+                    : pasajeRepository.findByClienteIdIn(clienteIds);
+        } else if (codigoBoleta != null && !codigoBoleta.isBlank()) {
             pasajes = pasajeRepository.searchByCodigoBoleta(codigoBoleta);
-        else if (agenciaId != null && estado != null)
+        } else if (agenciaId != null && estado != null) {
             pasajes = pasajeRepository.findByAgenciaIdAndEstado(agenciaId, estado);
-        else if (agenciaId != null)
+        } else if (agenciaId != null) {
             pasajes = pasajeRepository.findByAgenciaIdOrderByFechaVentaDesc(agenciaId);
-        else
+        } else {
             pasajes = pasajeRepository.findAll();
+        }
 
         Set<Long> clienteIds = pasajes.stream()
                 .map(Pasaje::getClienteId).filter(Objects::nonNull).collect(Collectors.toSet());
