@@ -138,7 +138,7 @@ public class LiquidacionViajeService {
             String placa   = vehRow  != null ? String.valueOf(vehRow[0])  : "—";
             String tipo    = vehRow  != null ? String.valueOf(vehRow[1])  : "—";
 
-            y = drawKV(cs, BOLD, NORMAL, "Ruta:",      origen + " → " + destino, y);
+            y = drawKV(cs, BOLD, NORMAL, "Ruta:",      origen + " -> " + destino, y);
             y -= 2;
             y = drawKV(cs, BOLD, NORMAL, "Salida:",    viaje.getFechaHoraSal() != null ? viaje.getFechaHoraSal().format(FMT) : "—", y);
             y -= 2;
