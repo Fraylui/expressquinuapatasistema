@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, LogIn, Bus, MapPin, Shield, Zap } from 'lucide-react'
+import { Eye, EyeOff, LogIn, Bus, Shield } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useEmpresaStore } from '@/stores/empresaStore'
 
@@ -29,12 +29,6 @@ const DOTS = [
   { top: '90%',  left: '42%', size: 3,  delay: '2.5s',  dur: '6s'  },
 ]
 
-const FEATURES = [
-  { icon: Bus,     label: 'Gestión de viajes'     },
-  { icon: MapPin,  label: 'Red de agencias'        },
-  { icon: Shield,  label: 'Acceso seguro'          },
-  { icon: Zap,     label: 'Tiempo real'            },
-]
 
 export default function LoginPage() {
   const router = useRouter()
@@ -160,47 +154,8 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Divider decorativo */}
-          <div className="mb-8 flex items-center gap-4 w-full max-w-xs">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-emerald-400/40" />
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
-            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-emerald-400/40" />
-          </div>
-
-          {/* Feature pills */}
-          <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
-            {FEATURES.map(({ icon: Icon, label }) => (
-              <div
-                key={label}
-                className="flex items-center gap-2.5 rounded-xl px-4 py-3 transition-all duration-200"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
-                <Icon size={14} className="shrink-0 text-emerald-400" />
-                <span className="text-xs font-medium text-white/70">{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Ruta animada decorativa */}
-          <div className="mt-10 flex items-center gap-2 text-emerald-400/50">
-            <MapPin size={12} />
-            <div className="flex items-center gap-1">
-              {['Quinuapata', 'Pichari', 'Kimbiri', 'Mazamari'].map((city, i) => (
-                <React.Fragment key={city}>
-                  <span className="text-[10px] font-medium">{city}</span>
-                  {i < 3 && <span className="text-emerald-600 text-[10px]">—</span>}
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
         </div>
 
-        {/* Badge inferior */}
-        <div className="relative z-10 pb-8 text-center">
-          <p className="text-[11px] text-white/25 tracking-wide">
-            VRAEM · Cusco · Junín
-          </p>
-        </div>
       </div>
 
       {/* ════════════════════════════════════════════════════

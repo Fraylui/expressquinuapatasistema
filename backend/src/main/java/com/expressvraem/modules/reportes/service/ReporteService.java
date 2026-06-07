@@ -376,10 +376,12 @@ public class ReporteService {
             String pasajero = "—", dni = "—", ruta = "—";
             try {
                 Object[] cl = (Object[]) entityManager
-                        .createNativeQuery("SELECT apellidos || ', ' || nombres, num_doc FROM clientes WHERE id = :id")
+                        .createNativeQuery("SELECT apellidos || ', ' || nombres, tipo_doc, num_doc FROM clientes WHERE id = :id")
                         .setParameter("id", p.getClienteId()).getSingleResult();
-                pasajero = cl[0] != null ? String.valueOf(cl[0]) : "—";
-                dni      = cl[1] != null ? String.valueOf(cl[1]) : "—";
+                pasajero       = cl[0] != null ? String.valueOf(cl[0]) : "—";
+                String tipoDoc = cl[1] != null ? String.valueOf(cl[1]) : "";
+                String numDoc  = cl[2] != null ? String.valueOf(cl[2]) : "—";
+                dni = tipoDoc.isBlank() ? numDoc : tipoDoc + ": " + numDoc;
             } catch (Exception ignored) {}
             try {
                 Object[] r = (Object[]) entityManager
