@@ -5,6 +5,7 @@ import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.viajes.entity.Viaje;
 import com.expressvraem.modules.viajes.repository.ViajeRepository;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
+import com.expressvraem.shared.utils.PdfUtils;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -109,15 +110,16 @@ public class LiquidacionViajeService {
             PDType1Font MONO   = new PDType1Font(Standard14Fonts.FontName.COURIER);
 
             // ── Encabezado empresa ────────────────────────────────────────────
-            y = drawCentered(cs, BOLD, 13f, emp.getNombre(), y);
+            y = drawCentered(cs, BOLD, 13f, PdfUtils.ascii(emp.getNombre()), y);
             y -= 3;
             if (emp.getRuc() != null && !emp.getRuc().isBlank()) {
                 y = drawCentered(cs, NORMAL, 9f, "RUC: " + emp.getRuc(), y);
                 y -= 1;
             }
             if (emp.getDireccion() != null && !emp.getDireccion().isBlank()) {
-                y = drawCentered(cs, NORMAL, 9f, emp.getDireccion()
-                        + (emp.getCiudad() != null && !emp.getCiudad().isBlank() ? " — " + emp.getCiudad() : ""), y);
+                y = drawCentered(cs, NORMAL, 9f, PdfUtils.ascii(emp.getDireccion())
+                        + (emp.getCiudad() != null && !emp.getCiudad().isBlank()
+                           ? " - " + PdfUtils.ascii(emp.getCiudad()) : ""), y);
                 y -= 1;
             }
             y -= 6;
@@ -145,9 +147,9 @@ public class LiquidacionViajeService {
             if (viaje.getFechaHoraArr() != null)
                 y = drawKV(cs, BOLD, NORMAL, "Llegada:", viaje.getFechaHoraArr().format(FMT), y);
             y -= 2;
-            y = drawKV(cs, BOLD, NORMAL, "Vehículo:",  tipo + " — " + placa, y);
+            y = drawKV(cs, BOLD, NORMAL, "Vehiculo:",  tipo + " - " + placa, y);
             y -= 2;
-            y = drawKV(cs, BOLD, NORMAL, "Conductor:", conductorNombre, y);
+            y = drawKV(cs, BOLD, NORMAL, "Conductor:", PdfUtils.ascii(conductorNombre), y);
             y -= 2;
             y = drawKV(cs, BOLD, NORMAL, "Estado:",    viaje.getEstado(), y);
             y -= 10;
@@ -356,8 +358,8 @@ public class LiquidacionViajeService {
     }
 
     private String safe(Object o) {
-        if (o == null) return "—";
-        String s = o.toString().trim();
-        return s.isEmpty() ? "—" : s;
+        if (o == null) return "-";
+        String s = PdfUtils.ascii(o.toString().trim());
+        return s.isEmpty() ? "-" : s;
     }
 }

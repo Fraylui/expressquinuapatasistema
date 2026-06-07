@@ -141,7 +141,7 @@ public class AuthService {
         };
 
         String token        = jwtTokenProvider.generateToken(userDetails, agenciaIdJwt, modulosActivos);
-        String refreshToken = jwtTokenProvider.generateToken(userDetails, agenciaIdJwt, modulosActivos);
+        String refreshToken = jwtTokenProvider.generateRefreshToken(userDetails, agenciaIdJwt);
 
         log.info("Login exitoso: {} ({}) desde IP: {}", dto.email(), usuario.getRol(), ip);
 
@@ -194,8 +194,9 @@ public class AuthService {
             default -> usuario.getAgenciaId();
         };
 
-        String newToken = jwtTokenProvider.generateToken(userDetails, agenciaIdJwt, modulosActivos);
-        return buildResponse(newToken, token, usuario, modulosActivos);
+        String newToken        = jwtTokenProvider.generateToken(userDetails, agenciaIdJwt, modulosActivos);
+        String newRefreshToken = jwtTokenProvider.generateRefreshToken(userDetails, agenciaIdJwt);
+        return buildResponse(newToken, newRefreshToken, usuario, modulosActivos);
     }
 
     private List<String> buildModulosActivos(Usuario usuario) {

@@ -3,11 +3,7 @@ package com.expressvraem.modules.externas.service;
 import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.externas.entity.EncomiendaExterna;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.expressvraem.shared.utils.PdfUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -15,17 +11,12 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.format.DateTimeFormatter;
-import java.util.EnumMap;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -33,9 +24,11 @@ public class EncomiendaExternaTicketPdfService {
 
     private final EmpresaConfigService empresaConfigService;
 
-    private static final float  PAGE_W   = 226.77f; // 80 mm
-    private static final float  MARGIN   = 10f;
-    private static final String BASE_URL = "https://expressvraem.pe/control/";
+    @Value("${app.control.url:https://expressvraem.pe/control/}")
+    private String controlUrl;
+
+    private static final float PAGE_W = 226.77f; // 80 mm
+    private static final float MARGIN = 10f;
 
     public byte[] generarTicket(EncomiendaExterna enc, String operadorNombre) {
         EmpresaConfig emp = empresaConfigService.get();
@@ -49,11 +42,10 @@ public class EncomiendaExternaTicketPdfService {
             String fechaStr = enc.getFechaRecepcion() != null ? enc.getFechaRecepcion().format(dtf) : "—";
 
             boolean cobrarAlDestinatario = "PENDIENTE".equals(enc.getEstadoPago());
-            String  qrContent = BASE_URL + enc.getCorrelativo();
+            String  qrContent = controlUrl + enc.getCorrelativo();
             String  montoStr  = "S/ " + enc.getMonto().toPlainString();
 
-            // Hash de control interno
-            String hash = computeHash(
+            String hash = PdfUtils.sha256Short(
                     enc.getCorrelativo(),
                     enc.getMonto().toPlainString(),
                     enc.getConductorDni() != null ? enc.getConductorDni() : "",
@@ -72,7 +64,7 @@ public class EncomiendaExternaTicketPdfService {
                     + 8 * 3 + 6      // cobro + operador
                     + 8 * 5 + 6      // control interno
                     + 20;
-            pageH = Math.max(pageH, 500f);
+            pageH = Math.max(pageH, 320f); // mínimo ~113mm — suficiente para contenido básico
 
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
@@ -200,32 +192,12 @@ public class EncomiendaExternaTicketPdfService {
         return y - 3;
     }
 
+    // Métodos delegados a PdfUtils (DRY)
     private PDImageXObject buildQrImage(PDDocument doc, String text) throws Exception {
-        QRCodeWriter writer = new QRCodeWriter();
-        Map<EncodeHintType, Object> hints = new EnumMap<>(EncodeHintType.class);
-        hints.put(EncodeHintType.MARGIN, 1);
-        BitMatrix matrix = writer.encode(text, BarcodeFormat.QR_CODE, 200, 200, hints);
-        BufferedImage img = MatrixToImageWriter.toBufferedImage(matrix);
-        return LosslessFactory.createFromImage(doc, img);
-    }
-
-    private String computeHash(String... parts) {
-        try {
-            String input = String.join("|", parts);
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02X", b & 0xFF));
-            return sb.substring(0, 8);
-        } catch (Exception e) { return "00000000"; }
+        return PdfUtils.buildQrImage(doc, text, 200);
     }
 
     private String ascii(String s) {
-        if (s == null) return "";
-        return s.replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u')
-                .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
-                .replace('ñ','n').replace('Ñ','N').replace('ü','u').replace('Ü','U')
-                .replace('→','>').replace('—','-').replace('–','-')
-                .replace('¡','!').replace('¿','?').replaceAll("[^\\x00-\\x7E]", "?");
+        return PdfUtils.ascii(s);
     }
 }
