@@ -111,8 +111,8 @@ function HistorialTab() {
 
   const descargarLiquidacion = async (id: number) => {
     try {
-      const res = await api.get(`/api/viajes/${id}/liquidacion-pdf`, { responseType: 'blob' })
-      const url = URL.createObjectURL(new Blob([res as any], { type: 'application/pdf' }))
+      const blob = await api.get(`/api/viajes/${id}/liquidacion-pdf`, { responseType: 'blob' }) as unknown as Blob
+      const url = URL.createObjectURL(blob)
       window.open(url, '_blank')?.focus()
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch { toast.error('Error generando liquidación') }
