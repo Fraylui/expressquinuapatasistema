@@ -21,6 +21,8 @@ public class JwtTokenProvider {
     private final SecretKey key;
     private final long expiration;
 
+    private static final long REFRESH_EXPIRATION = 7L * 24 * 60 * 60 * 1000; // 7 días
+
     public JwtTokenProvider(
             @Value("${jwt.secret}") String secret,
             @Value("${jwt.expiration:86400000}") long expiration) {
@@ -38,8 +40,21 @@ public class JwtTokenProvider {
                 .claim("roles", roles)
                 .claim("agenciaId", agenciaId)
                 .claim("modulosActivos", modulosActivos)
+                .claim("type", "access")
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /** Genera un refresh token de mayor duración (7 días) con claims mínimos. */
+    public String generateRefreshToken(UserDetails userDetails, Long agenciaId) {
+        return Jwts.builder()
+                .setSubject(userDetails.getUsername())
+                .claim("agenciaId", agenciaId)
+                .claim("type", "refresh")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + REFRESH_EXPIRATION))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }

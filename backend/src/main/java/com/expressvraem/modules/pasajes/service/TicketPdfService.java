@@ -3,11 +3,7 @@ package com.expressvraem.modules.pasajes.service;
 import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.pasajes.entity.Pasaje;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.expressvraem.shared.utils.PdfUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -15,25 +11,22 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import jakarta.persistence.EntityManager;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.util.Base64;
-import javax.imageio.ImageIO;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
-import java.util.EnumMap;
-import java.util.Map;
 
+/**
+ * Genera el ticket de pasaje en formato 80 mm de ancho, altura variable (~120-155 mm)
+ * para impresora térmica Epson TM-T20 / Xprinter XP-58.
+ *
+ * PAGE_W = 226.77 pt = 80 mm (1 mm = 2.8346 pt).
+ * La altura se calcula dinámicamente según el contenido real.
+ */
 @Service
 @RequiredArgsConstructor
 public class TicketPdfService {
@@ -41,19 +34,25 @@ public class TicketPdfService {
     private final EntityManager em;
     private final EmpresaConfigService empresaConfigService;
 
-    private static final float  PAGE_W   = 226.77f; // 80 mm
-    private static final float  MARGIN   = 10f;
-    private static final String BASE_URL = "expressvraem.pe/verificar/";
+    @Value("${app.verificacion.url:https://expressvraem.pe/verificar/}")
+    private String verificacionUrl;
+
+    // Dimensiones 80 mm de ancho, sin alto fijo — se calcula por contenido
+    private static final float PAGE_W = 226.77f;
+    private static final float MARGIN = 10f;
+    private static final float QR_SZ  = 76f;   // 26.8 mm — legible en térmica
 
     public byte[] generarTicket(Pasaje p) {
         EmpresaConfig emp = empresaConfigService.get();
-        String EMPRESA  = emp.getNombre()    != null ? emp.getNombre()    : "Mi Empresa";
-        String RUC      = emp.getRuc()       != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
-        String DIR      = emp.getDireccion() != null ? emp.getDireccion() : "";
-        String CIUDAD   = emp.getCiudad()    != null ? emp.getCiudad()    : "";
-        String LOGO_B64 = emp.getLogoBase64();
+        String empresa  = emp.getNombre()    != null ? emp.getNombre()    : "Mi Empresa";
+        String ruc      = emp.getRuc()       != null && !emp.getRuc().isEmpty() ? "RUC: " + emp.getRuc() : "";
+        String dir      = emp.getDireccion() != null ? emp.getDireccion() : "";
+        String ciudad   = emp.getCiudad()    != null ? emp.getCiudad()    : "";
+        String logoB64  = emp.getLogoBase64();
+
         try (PDDocument doc = new PDDocument()) {
 
+            // ── Enriquecimiento de datos ──────────────────────────────────────
             Object[] viajeRow = null;
             String origen = "", destino = "", placa = "", tipoVeh = "";
             try {
@@ -62,10 +61,10 @@ public class TicketPdfService {
                     "FROM viajes v JOIN vehiculos vh ON vh.id=v.vehiculo_id " +
                     "JOIN rutas r ON r.id=v.ruta_id WHERE v.id=:vid")
                     .setParameter("vid", p.getViajeId()).getSingleResult();
-                placa   = String.valueOf(viajeRow[2]);
-                tipoVeh = String.valueOf(viajeRow[3]);
-                origen  = String.valueOf(viajeRow[4]);
-                destino = String.valueOf(viajeRow[5]);
+                placa   = PdfUtils.ascii(String.valueOf(viajeRow[2]));
+                tipoVeh = PdfUtils.ascii(String.valueOf(viajeRow[3]));
+                origen  = PdfUtils.ascii(String.valueOf(viajeRow[4]));
+                destino = PdfUtils.ascii(String.valueOf(viajeRow[5]));
             } catch (Exception ignored) {}
 
             String clienteNombres = "", clienteApellidos = "", clienteDni = "";
@@ -74,21 +73,21 @@ public class TicketPdfService {
                 Object[] cr = (Object[]) em.createNativeQuery(
                     "SELECT nombres, apellidos, num_doc FROM clientes WHERE id=:cid")
                     .setParameter("cid", p.getClienteId()).getSingleResult();
-                clienteNombres   = String.valueOf(cr[0]);
-                clienteApellidos = String.valueOf(cr[1]);
+                clienteNombres   = PdfUtils.ascii(String.valueOf(cr[0]));
+                clienteApellidos = PdfUtils.ascii(String.valueOf(cr[1]));
                 clienteDni       = String.valueOf(cr[2]);
             } catch (Exception ignored) {}
             try {
                 Object[] or2 = (Object[]) em.createNativeQuery(
                     "SELECT nombres || ' ' || apellidos FROM usuarios WHERE id=:uid")
                     .setParameter("uid", p.getVendedorId()).getSingleResult();
-                operadorNombre = String.valueOf(or2[0]);
+                operadorNombre = PdfUtils.ascii(String.valueOf(or2[0]));
             } catch (Exception ignored) {}
             try {
                 Object[] ar = (Object[]) em.createNativeQuery(
                     "SELECT nombre FROM agencias WHERE id=:aid")
                     .setParameter("aid", p.getAgenciaId()).getSingleResult();
-                agenciaNombre = String.valueOf(ar[0]);
+                agenciaNombre = PdfUtils.ascii(String.valueOf(ar[0]));
             } catch (Exception ignored) {}
 
             DateTimeFormatter dtfDate = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -98,9 +97,9 @@ public class TicketPdfService {
             String fechaViaje = "", horaViaje = "";
             if (viajeRow != null && viajeRow[1] != null) {
                 java.time.LocalDateTime ldt;
-                if (viajeRow[1] instanceof java.time.OffsetDateTime odt)      ldt = odt.toLocalDateTime();
-                else if (viajeRow[1] instanceof java.sql.Timestamp ts)        ldt = ts.toLocalDateTime();
-                else                                                           ldt = null;
+                if (viajeRow[1] instanceof java.time.OffsetDateTime odt) ldt = odt.toLocalDateTime();
+                else if (viajeRow[1] instanceof java.sql.Timestamp ts)   ldt = ts.toLocalDateTime();
+                else                                                        ldt = null;
                 if (ldt != null) {
                     fechaViaje = ldt.format(dtfDate);
                     horaViaje  = ldt.format(dtfHora);
@@ -108,13 +107,27 @@ public class TicketPdfService {
             }
 
             String cb      = p.getCodigoBoleta() != null ? p.getCodigoBoleta() : "VTA-" + p.getId();
-            String qrUrl   = BASE_URL + cb;
+            String qrUrl   = verificacionUrl + cb;
             String emitido = p.getFechaVenta() != null ? p.getFechaVenta().format(dtfFull) : "";
             String serie   = p.getSerie()      != null ? p.getSerie()      : "T001";
             String correl  = p.getCorrelativo()!= null ? p.getCorrelativo() : String.format("%08d", p.getId());
-            String hash    = computeHash(cb, p.getPrecioFinal().toPlainString(), clienteDni, emitido);
+            String hash    = PdfUtils.sha256Short(cb, p.getPrecioFinal().toPlainString(), clienteDni, emitido);
 
-            float pageH = 610f + (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f);
+            boolean hasLogo     = logoB64 != null && !logoB64.isBlank();
+            boolean hasDiscount = p.getMontoDescuento() != null
+                               && p.getMontoDescuento().compareTo(BigDecimal.ZERO) > 0;
+
+            // ── Altura dinámica según contenido real (~120-155 mm) ────────────
+            // Base calculada midiendo cada bloque de dibujo:
+            //   header(45) + boleta-title(23) + QR(QR_SZ+11.5) + trip(55) +
+            //   pasajero(38.5) + precio(39) + agencia(34.5) + ctrl(58) + footer(27)
+            // + márgenes top+bottom (2×MARGIN)
+            float baseH = 45f + 23f + QR_SZ + 11.5f + 55f + 38.5f + 39f + 34.5f + 58f + 27f
+                        + (MARGIN * 2);
+            float pageH = baseH
+                        + (hasLogo ? 40f : 0f)
+                        + (hasDiscount ? 10f : 0f);
+
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
@@ -124,7 +137,8 @@ public class TicketPdfService {
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
 
-                    PDImageXObject logoImg = buildLogoImage(doc, LOGO_B64);
+                // Logo
+                PDImageXObject logoImg = PdfUtils.buildLogoImage(doc, logoB64);
                 if (logoImg != null) {
                     float maxLogoH = 34f;
                     float ratio    = (float) logoImg.getWidth() / logoImg.getHeight();
@@ -133,60 +147,70 @@ public class TicketPdfService {
                     cs.drawImage(logoImg, (PAGE_W - logoW) / 2f, y - logoH, logoW, logoH);
                     y -= (logoH + 4);
                 }
-                y = ctext(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
-                y = ctext(cs, fontNorm, 7f, RUC,      y);  y -= 1;
-                y = ctext(cs, fontNorm, 6f, DIR,      y);  y -= 1;
-                y = ctext(cs, fontNorm, 6f, CIUDAD,   y);  y -= 3;
-                y = dashes(cs, y); y -= 3;
 
-                    y = ctext(cs, fontBold, 9f, "BOLETA DE VIAJE", y); y -= 2;
-                y = ctext(cs, fontNorm, 7f, cb, y); y -= 3;
+                // Encabezado empresa
+                y = ctext(cs, fontBold, 9f, empresa, y);  y -= 2;
+                y = ctext(cs, fontNorm, 7f, ruc,      y);  y -= 1;
+                y = ctext(cs, fontNorm, 6f, dir,      y);  y -= 1;
+                y = ctext(cs, fontNorm, 6f, ciudad,   y);  y -= 3;
+                y = dashes(cs, y);                          y -= 3;
 
-                    PDImageXObject qr = buildQr(doc, qrUrl);
-                float qrSz = 80f;
-                cs.drawImage(qr, (PAGE_W - qrSz) / 2f, y - qrSz, qrSz, qrSz);
-                y -= (qrSz + 3);
+                // Título boleta
+                y = ctext(cs, fontBold, 9f, "BOLETA DE VIAJE", y); y -= 2;
+                y = ctext(cs, fontNorm, 7f, cb, y);                 y -= 3;
+
+                // QR
+                PDImageXObject qr = PdfUtils.buildQrImage(doc, qrUrl, 200);
+                cs.drawImage(qr, (PAGE_W - QR_SZ) / 2f, y - QR_SZ, QR_SZ, QR_SZ);
+                y -= (QR_SZ + 3);
                 y = ctext(cs, fontNorm, 5.5f, "Escanea para verificar validez", y); y -= 2;
-
                 y = dashes(cs, y); y -= 3;
 
-                    y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",     ascii(origen) + " > " + ascii(destino), y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",    fechaViaje, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:", horaViaje, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:", ascii(tipoVeh) + " - " + ascii(placa), y); y -= 1;
+                // Datos del viaje
+                y = lbl(cs, fontBold, fontNorm, 7f, "RUTA:",     origen + " > " + destino, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",    fechaViaje, y);                y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:", horaViaje, y);                 y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:", tipoVeh + " - " + placa, y);  y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 8f, "ASIENTO N°:",
                         String.valueOf(p.getAsientoNumero() != null ? p.getAsientoNumero() : "?"), y);
                 y -= 4;
 
-                    y = dashes(cs, y); y -= 3;
+                // Datos pasajero
+                y = dashes(cs, y); y -= 3;
                 y = ctext(cs, fontBold, 7.5f, "DATOS DEL PASAJERO", y); y -= 3;
-                y = lbl(cs, fontBold, fontNorm, 7f, "Pasajero:", ascii(clienteApellidos) + " " + ascii(clienteNombres), y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 7f, "Pasajero:",
+                        PdfUtils.truncate(clienteApellidos + " " + clienteNombres, 28), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "DNI:", clienteDni, y); y -= 4;
 
-                    y = dashes(cs, y); y -= 3;
+                // Precio
+                y = dashes(cs, y); y -= 3;
                 y = lbl(cs, fontBold, fontNorm, 8f, "PRECIO:", "S/ " + p.getPrecioBase().toPlainString(), y); y -= 1;
-                if (p.getMontoDescuento() != null && p.getMontoDescuento().compareTo(java.math.BigDecimal.ZERO) > 0) {
-                    y = lbl(cs, fontBold, fontNorm, 7f, "DESCUENTO:", "- S/ " + p.getMontoDescuento().toPlainString(), y); y -= 1;
+                if (hasDiscount) {
+                    y = lbl(cs, fontBold, fontNorm, 7f, "DESCUENTO:",
+                            "- S/ " + p.getMontoDescuento().toPlainString(), y); y -= 1;
                 }
                 y = lbl(cs, fontBold, fontNorm, 9f, "TOTAL:", "S/ " + p.getPrecioFinal().toPlainString(), y); y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "FORMA PAGO:", p.getFormaPago(), y); y -= 4;
 
-                    y = dashes(cs, y); y -= 3;
+                // Agencia / operador
+                y = dashes(cs, y); y -= 3;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Atendido por:", operadorNombre, y);  y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Agencia:", agenciaNombre, y);         y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Emitido:", emitido, y);               y -= 4;
 
-                    y = dashes(cs, y); y -= 2;
+                // Control interno
+                y = dashes(cs, y); y -= 2;
                 y = ctext(cs, fontBold, 7f, "[ CONTROL INTERNO ]", y); y -= 3;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Serie/Correl.:", serie + "-" + correl, y);  y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Estado:", p.getEstado(), y);                 y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Verificacion:", qrUrl, y);                   y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Hash:",         hash, y);                    y -= 3;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Serie/Correl.:", serie + "-" + correl, y); y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Estado:", p.getEstado(), y);                y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Verificacion:", qrUrl, y);                  y -= 1;
+                y = lbl(cs, fontBold, fontNorm, 6.5f, "Hash:", hash, y);                           y -= 3;
                 y = dashes(cs, y); y -= 3;
 
-                    y = ctext(cs, fontBold, 8f, "Buen viaje!", y);                                    y -= 2;
+                // Footer
+                y = ctext(cs, fontBold, 8f, "Buen viaje!", y); y -= 2;
                 y = ctext(cs, fontNorm, 6.5f, "Conserve este voucher durante todo el trayecto", y); y -= 1;
-                ctext(cs, fontNorm, 6.5f, EMPRESA, y);
+                ctext(cs, fontNorm, 6.5f, empresa, y);
             }
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -201,7 +225,7 @@ public class TicketPdfService {
     // ── Draw helpers ──────────────────────────────────────────────────────────
 
     private float ctext(PDPageContentStream cs, PDType1Font font, float sz, String t, float y) throws Exception {
-        String s = ascii(t);
+        String s = PdfUtils.ascii(t);
         float tw = font.getStringWidth(s) / 1000f * sz;
         cs.beginText(); cs.setFont(font, sz);
         cs.newLineAtOffset((PAGE_W - tw) / 2f, y - sz); cs.showText(s); cs.endText();
@@ -210,13 +234,14 @@ public class TicketPdfService {
 
     private float lbl(PDPageContentStream cs, PDType1Font fB, PDType1Font fN,
                       float sz, String label, String val, float y) throws Exception {
+        String safeLabel = PdfUtils.ascii(label) + " ";
         cs.beginText(); cs.setFont(fB, sz);
-        cs.newLineAtOffset(MARGIN, y - sz); cs.showText(label + " "); cs.endText();
-        float lw = fB.getStringWidth(label + " ") / 1000f * sz;
-        String display = ascii(val);
+        cs.newLineAtOffset(MARGIN, y - sz); cs.showText(safeLabel); cs.endText();
+        float lw = fB.getStringWidth(safeLabel) / 1000f * sz;
+        String display = PdfUtils.ascii(val);
         float maxW = PAGE_W - MARGIN - lw - MARGIN;
-        if (fN.getStringWidth(display) / 1000f * sz > maxW && display.length() > 25)
-            display = display.substring(0, 25) + "...";
+        if (fN.getStringWidth(display) / 1000f * sz > maxW)
+            display = PdfUtils.truncate(display, 28);
         cs.beginText(); cs.setFont(fN, sz);
         cs.newLineAtOffset(MARGIN + lw, y - sz); cs.showText(display); cs.endText();
         return y - sz - 1;
@@ -226,65 +251,5 @@ public class TicketPdfService {
         cs.setLineWidth(0.5f);
         cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
         return y - 3;
-    }
-
-    private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
-        if (logoBase64 == null || logoBase64.isBlank()) return null;
-        try {
-            String b64 = logoBase64.contains(",") ? logoBase64.split(",", 2)[1] : logoBase64;
-            byte[] bytes = Base64.getDecoder().decode(b64);
-            BufferedImage src = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (src == null) return null;
-            BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = rgb.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.setColor(Color.WHITE);
-            g.fillRect(0, 0, src.getWidth(), src.getHeight());
-            g.drawImage(src, 0, 0, null);
-            g.dispose();
-            return LosslessFactory.createFromImage(doc, rgb);
-        } catch (Exception e) { return null; }
-    }
-
-    private PDImageXObject buildQr(PDDocument doc, String text) throws Exception {
-        QRCodeWriter w = new QRCodeWriter();
-        Map<EncodeHintType, Object> h = new EnumMap<>(EncodeHintType.class);
-        h.put(EncodeHintType.MARGIN, 1);
-        BitMatrix m = w.encode(text, BarcodeFormat.QR_CODE, 200, 200, h);
-        BufferedImage img = MatrixToImageWriter.toBufferedImage(m);
-        return LosslessFactory.createFromImage(doc, img);
-    }
-
-    /** SHA-256 de los campos clave, primeros 8 caracteres hex en mayúsculas. */
-    private String computeHash(String... parts) {
-        try {
-            String input = String.join("|", parts);
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02X", b & 0xFF));
-            return sb.substring(0, 8);
-        } catch (Exception e) { return "00000000"; }
-    }
-
-    private String ascii(String s) {
-        if (s == null) return "";
-        return s
-            .replace('á','a').replace('à','a').replace('ä','a').replace('â','a')
-            .replace('é','e').replace('è','e').replace('ë','e').replace('ê','e')
-            .replace('í','i').replace('ì','i').replace('ï','i').replace('î','i')
-            .replace('ó','o').replace('ò','o').replace('ö','o').replace('ô','o')
-            .replace('ú','u').replace('ù','u').replace('ü','u').replace('û','u')
-            .replace('ñ','n').replace('ç','c')
-            .replace('Á','A').replace('À','A').replace('Ä','A').replace('Â','A')
-            .replace('É','E').replace('È','E').replace('Ë','E').replace('Ê','E')
-            .replace('Í','I').replace('Ì','I').replace('Ï','I').replace('Î','I')
-            .replace('Ó','O').replace('Ò','O').replace('Ö','O').replace('Ô','O')
-            .replace('Ú','U').replace('Ù','U').replace('Ü','U').replace('Û','U')
-            .replace('Ñ','N').replace('Ç','C')
-            .replace('→','>').replace('←','<').replace('—','-').replace('–','-')
-            .replace('…','.').replace('"','"').replace('"','"')
-            .replace('¡','!').replace('¿','?')
-            .replaceAll("[^\\x00-\\x7E]", "?");
     }
 }

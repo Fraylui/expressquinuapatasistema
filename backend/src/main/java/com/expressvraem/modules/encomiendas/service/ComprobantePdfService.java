@@ -5,11 +5,7 @@ import com.expressvraem.modules.clientes.repository.ClienteRepository;
 import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.expressvraem.shared.utils.PdfUtils;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -18,24 +14,13 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import javax.imageio.ImageIO;
-import java.security.MessageDigest;
 import java.time.format.DateTimeFormatter;
-import java.util.EnumMap;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -45,9 +30,11 @@ public class ComprobantePdfService {
     private final EntityManager entityManager;
     private final EmpresaConfigService empresaConfigService;
 
-    private static final float  PAGE_W    = 226.77f; // 80 mm
-    private static final float  MARGIN    = 10f;
-    private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
+    @Value("${app.tracking.url:https://expressvraem.pe/tracking/}")
+    private String trackUrl;
+
+    private static final float PAGE_W = 226.77f; // 80 mm
+    private static final float MARGIN = 10f;
 
     @Transactional(readOnly = true)
     public byte[] generarComprobante(Encomienda enc, String operadorNombre) {
@@ -106,7 +93,7 @@ public class ComprobantePdfService {
             String fechaStr = enc.getFechaRegistro() != null ? enc.getFechaRegistro().format(dtf) : "—";
 
             boolean esPorCobrar = "POR_COBRAR".equals(enc.getFormaCobro());
-            String qrContent    = TRACK_URL + enc.getCodigoTracking();
+            String qrContent    = trackUrl + enc.getCodigoTracking();
             String montoStr     = enc.getMonto() != null
                     ? "S/ " + enc.getMonto().toPlainString()
                     : enc.getPrecioEnvio() != null ? "S/ " + enc.getPrecioEnvio().toPlainString() : "—";
@@ -114,7 +101,7 @@ public class ComprobantePdfService {
             String monto4hash   = enc.getMonto() != null
                     ? enc.getMonto().toPlainString()
                     : enc.getPrecioEnvio() != null ? enc.getPrecioEnvio().toPlainString() : "0";
-            String hash = computeHash(enc.getCodigoTracking(), monto4hash, remDoc, fechaStr);
+            String hash = PdfUtils.sha256Short(enc.getCodigoTracking(), monto4hash, remDoc, fechaStr);
 
             // ── Estimar altura total ───────────────────────────────────────────
             // Sección CONTROL INTERNO (arriba): ~9 filas
@@ -137,7 +124,9 @@ public class ComprobantePdfService {
                       + 8 * 2            // footer
                       + MARGIN * 2;
 
-            float pageH = Math.max(ciH + cortH + cpH, 520f);
+            // Mínimo 330pt (~116mm) — suficiente para el contenido más compacto.
+            // Spec comprobante: 150-180mm. El cálculo dinámico domina para contenido normal.
+            float pageH = Math.max(ciH + cortH + cpH, 330f);
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
@@ -313,52 +302,16 @@ public class ComprobantePdfService {
         return y - 3;
     }
 
-    private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
-        if (logoBase64 == null || logoBase64.isBlank()) return null;
-        try {
-            String b64 = logoBase64.contains(",") ? logoBase64.split(",", 2)[1] : logoBase64;
-            byte[] bytes = Base64.getDecoder().decode(b64);
-            BufferedImage src = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (src == null) return null;
-            // Convertir a RGB opaco — PDFBox maneja este tipo sin problemas
-            BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = rgb.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.setColor(Color.WHITE);
-            g.fillRect(0, 0, src.getWidth(), src.getHeight());
-            g.drawImage(src, 0, 0, null);
-            g.dispose();
-            return LosslessFactory.createFromImage(doc, rgb);
-        } catch (Exception e) { return null; }
+    // Métodos delegados a PdfUtils (eliminación de código duplicado — DRY)
+    private PDImageXObject buildLogoImage(PDDocument doc, String b64) {
+        return PdfUtils.buildLogoImage(doc, b64);
     }
 
     private PDImageXObject buildQrImage(PDDocument doc, String text) throws Exception {
-        QRCodeWriter writer = new QRCodeWriter();
-        Map<EncodeHintType, Object> hints = new EnumMap<>(EncodeHintType.class);
-        hints.put(EncodeHintType.MARGIN, 1);
-        BitMatrix matrix = writer.encode(text, BarcodeFormat.QR_CODE, 200, 200, hints);
-        BufferedImage img = MatrixToImageWriter.toBufferedImage(matrix);
-        return LosslessFactory.createFromImage(doc, img);
-    }
-
-    private String computeHash(String... parts) {
-        try {
-            String input = String.join("|", parts);
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02X", b & 0xFF));
-            return sb.substring(0, 8);
-        } catch (Exception e) { return "00000000"; }
+        return PdfUtils.buildQrImage(doc, text, 200);
     }
 
     private String ascii(String s) {
-        if (s == null) return "";
-        return s.replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u')
-                .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
-                .replace('ñ','n').replace('Ñ','N').replace('ü','u').replace('Ü','U')
-                .replace('→','>').replace('—','-').replace('–','-').replace('…','.')
-                .replace('¡','!').replace('¿','?').replaceAll("[\\r\\n\\t]", " ")
-                .replaceAll("[^\\x20-\\x7E]", "?");
+        return PdfUtils.ascii(s);
     }
 }

@@ -5,34 +5,22 @@ import com.expressvraem.modules.clientes.repository.ClienteRepository;
 import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.expressvraem.shared.utils.PdfUtils;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.util.Base64;
-import java.util.EnumMap;
-import javax.imageio.ImageIO;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -47,7 +35,8 @@ public class EtiquetaPdfService {
     private static final float H = 425.19f;
     private static final float M = 8f;   // margen
 
-    private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
+    @Value("${app.tracking.url:https://expressvraem.pe/tracking/}")
+    private String trackUrl;
 
     @Transactional(readOnly = true)
     public byte[] generarEtiqueta(Encomienda enc, String operadorNombre) {
@@ -126,7 +115,7 @@ public class EtiquetaPdfService {
 
             // ── QR + tracking ────────────────────────────────────────────────────
             float qrSize = 90f;
-            String qrContent = TRACK_URL + enc.getCodigoTracking();
+            String qrContent = trackUrl + enc.getCodigoTracking();
             PDImageXObject qrImg = buildQrImage(doc, qrContent);
             float qrX = (W - qrSize) / 2f;
             cs.drawImage(qrImg, qrX, y - qrSize, qrSize, qrSize);
@@ -204,7 +193,7 @@ public class EtiquetaPdfService {
             if (bultoNum == 1) {
                 y = drawCenteredText(cs, fNorm, 5.5f, "Escanee el codigo QR para rastrear este paquete", y, 0.4f, 0.4f, 0.4f);
             }
-            drawCenteredText(cs, fObliq, 5.5f, "expressvraem.pe/tracking/" + enc.getCodigoTracking(), y - 1, 0.3f, 0.3f, 0.3f);
+            drawCenteredText(cs, fObliq, 5.5f, trackUrl + enc.getCodigoTracking(), y - 1, 0.3f, 0.3f, 0.3f);
         }
     }
 
@@ -279,40 +268,17 @@ public class EtiquetaPdfService {
         cs.setNonStrokingColor(0f, 0f, 0f);
     }
 
-    private PDImageXObject buildLogoImage(PDDocument doc, String logoBase64) {
-        if (logoBase64 == null || logoBase64.isBlank()) return null;
-        try {
-            String b64 = logoBase64.contains(",") ? logoBase64.split(",", 2)[1] : logoBase64;
-            byte[] bytes = Base64.getDecoder().decode(b64);
-            BufferedImage src = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (src == null) return null;
-            BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = rgb.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.setColor(new Color(0x06, 0x4e, 0x3b)); // fondo verde igual que la franja
-            g.fillRect(0, 0, src.getWidth(), src.getHeight());
-            g.drawImage(src, 0, 0, null);
-            g.dispose();
-            return LosslessFactory.createFromImage(doc, rgb);
-        } catch (Exception e) { return null; }
+    // Métodos delegados a PdfUtils (DRY)
+    private PDImageXObject buildLogoImage(PDDocument doc, String b64) {
+        // La etiqueta tiene franja verde — el logo se renderiza sobre ese fondo
+        return PdfUtils.buildLogoImage(doc, b64, new Color(0x06, 0x4e, 0x3b));
     }
 
     private PDImageXObject buildQrImage(PDDocument doc, String text) throws Exception {
-        QRCodeWriter writer = new QRCodeWriter();
-        Map<EncodeHintType, Object> hints = new EnumMap<>(EncodeHintType.class);
-        hints.put(EncodeHintType.MARGIN, 1);
-        BitMatrix matrix = writer.encode(text, BarcodeFormat.QR_CODE, 300, 300, hints);
-        BufferedImage img = MatrixToImageWriter.toBufferedImage(matrix);
-        return LosslessFactory.createFromImage(doc, img);
+        return PdfUtils.buildQrImage(doc, text, 300);
     }
 
     private String ascii(String s) {
-        if (s == null) return "";
-        return s.replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u')
-                .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
-                .replace('ñ','n').replace('Ñ','N').replace('ü','u')
-                .replace('→','>').replace('—','-').replace('⚠','!')
-                .replaceAll("[\\r\\n\\t]", " ")
-                .replaceAll("[^\\x20-\\x7E]", "?");
+        return PdfUtils.ascii(s);
     }
 }
