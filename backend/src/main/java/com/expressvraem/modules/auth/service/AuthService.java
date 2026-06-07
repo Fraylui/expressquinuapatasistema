@@ -182,6 +182,9 @@ public class AuthService {
         if (!jwtTokenProvider.validateToken(token)) {
             throw new BusinessException("Token de refresco inválido o expirado", "TOKEN_INVALID");
         }
+        if (!"refresh".equals(jwtTokenProvider.getTypeFromToken(token))) {
+            throw new BusinessException("El token proporcionado no es un token de refresco", "TOKEN_TYPE_INVALID");
+        }
         String email = jwtTokenProvider.getUsernameFromToken(token);
         var usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
@@ -197,6 +200,21 @@ public class AuthService {
         String newToken        = jwtTokenProvider.generateToken(userDetails, agenciaIdJwt, modulosActivos);
         String newRefreshToken = jwtTokenProvider.generateRefreshToken(userDetails, agenciaIdJwt);
         return buildResponse(newToken, newRefreshToken, usuario, modulosActivos);
+    }
+
+    public LoginResponseDTO.UsuarioInfo getMeInfo(String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
+        List<String> modulos = buildModulosActivos(usuario);
+        return new LoginResponseDTO.UsuarioInfo(
+                usuario.getId(),
+                usuario.getNombres() + " " + usuario.getApellidos(),
+                usuario.getEmail(),
+                usuario.getRol(),
+                usuario.getAgenciaId(),
+                modulos,
+                modulos
+        );
     }
 
     private List<String> buildModulosActivos(Usuario usuario) {

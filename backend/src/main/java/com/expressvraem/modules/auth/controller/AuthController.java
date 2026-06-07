@@ -2,7 +2,6 @@ package com.expressvraem.modules.auth.controller;
 
 import com.expressvraem.modules.auth.dto.LoginRequestDTO;
 import com.expressvraem.modules.auth.dto.LoginResponseDTO;
-import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.auth.service.AuthService;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
-    private final UsuarioRepository usuarioRepository;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponseDTO>> login(
@@ -48,11 +46,8 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<ApiResponse<Object>> me() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String email = auth.getName();
-        var usuario = usuarioRepository.findByEmail(email);
-        return ResponseEntity.ok(ApiResponse.ok(usuario.orElse(null)));
+    public ResponseEntity<ApiResponse<LoginResponseDTO.UsuarioInfo>> me(Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.getMeInfo(auth.getName())));
     }
 
     /** Solo SUPER_ADMIN puede desbloquear manualmente una cuenta bloqueada. */

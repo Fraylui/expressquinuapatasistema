@@ -1,5 +1,6 @@
 package com.expressvraem.modules.pasajes.controller;
 
+import com.expressvraem.modules.auth.entity.Usuario;
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import com.expressvraem.modules.pasajes.dto.PasajeResponseDTO;
 import com.expressvraem.modules.pasajes.dto.VentaPasajeDTO;
@@ -32,16 +33,9 @@ public class PasajeController {
     private final TicketPdfService ticketPdfService;
     private final UsuarioRepository usuarioRepository;
 
-    private Long resolveUserId(Authentication auth) {
+    private Usuario resolveUser(Authentication auth) {
         return usuarioRepository.findByEmail(auth.getName())
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"))
-                .getId();
-    }
-
-    private String resolveNombre(Authentication auth) {
-        return usuarioRepository.findByEmail(auth.getName())
-                .map(u -> u.getNombres() + " " + u.getApellidos())
-                .orElse(auth.getName());
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
     }
 
     private String extraerIp(HttpServletRequest request) {
@@ -55,8 +49,9 @@ public class PasajeController {
             @Valid @RequestBody VentaPasajeDTO dto,
             Authentication auth,
             HttpServletRequest request) {
+        var u = resolveUser(auth);
         PasajeResponseDTO result = pasajeService.venderPasaje(
-                dto, resolveUserId(auth), extraerIp(request), resolveNombre(auth));
+                dto, u.getId(), extraerIp(request), u.getNombres() + " " + u.getApellidos());
         return ResponseEntity.ok(ApiResponse.ok("Pasaje vendido", result));
     }
 
@@ -87,8 +82,9 @@ public class PasajeController {
             Authentication auth,
             HttpServletRequest request) {
         String formaPago = body.getOrDefault("formaPago", "EFECTIVO");
+        var u = resolveUser(auth);
         PasajeResponseDTO result = pasajeService.confirmarReserva(
-                id, formaPago, resolveUserId(auth), extraerIp(request), resolveNombre(auth));
+                id, formaPago, u.getId(), extraerIp(request), u.getNombres() + " " + u.getApellidos());
         return ResponseEntity.ok(ApiResponse.ok("Reserva confirmada y pagada", result));
     }
 
@@ -100,7 +96,8 @@ public class PasajeController {
             Authentication auth,
             HttpServletRequest request) {
         String motivo = body.getOrDefault("motivoAnulacion", "");
-        pasajeService.anularPasaje(id, motivo, resolveUserId(auth), extraerIp(request), resolveNombre(auth));
+        var u = resolveUser(auth);
+        pasajeService.anularPasaje(id, motivo, u.getId(), extraerIp(request), u.getNombres() + " " + u.getApellidos());
         return ResponseEntity.ok(ApiResponse.ok("Pasaje anulado", null));
     }
 

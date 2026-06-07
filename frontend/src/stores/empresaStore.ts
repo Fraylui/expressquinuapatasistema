@@ -40,8 +40,8 @@ export const useEmpresaStore = create<EmpresaState>()(
 
       fetchFromApi: async () => {
         try {
-          const res = await api.get('/api/empresa-config')
-          const d = res.data?.data ?? res.data
+          const res: any = await api.get('/api/empresa-config')
+          const d = res?.data
           if (d) {
             set({
               nombre:     d.nombre     ?? get().nombre,
@@ -67,8 +67,8 @@ export const useEmpresaStore = create<EmpresaState>()(
           ...data,
         }
         set(current)
-        const res = await api.put('/api/empresa-config', current)
-        const saved = res.data?.data ?? res.data
+        const res: any = await api.put('/api/empresa-config', current)
+        const saved = res?.data
         if (saved) set({ ...saved, loaded: true })
       },
     }),

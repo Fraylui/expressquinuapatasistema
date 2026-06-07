@@ -98,6 +98,11 @@ public class JwtTokenProvider {
         return List.of();
     }
 
+    public String getTypeFromToken(String token) {
+        Object type = getClaims(token).get("type");
+        return type != null ? type.toString() : "";
+    }
+
     private Claims getClaims(String token) {
         return Jwts.parserBuilder().setSigningKey(key).build()
                 .parseClaimsJws(token).getBody();
