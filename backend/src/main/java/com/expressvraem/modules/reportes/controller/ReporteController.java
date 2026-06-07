@@ -19,7 +19,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/reportes")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_REPORTES') or hasAnyRole('GERENTE','SUPER_ADMIN','SUPERVISOR')")
+@PreAuthorize("hasAnyRole('GERENTE','SUPER_ADMIN')")
 public class ReporteController {
 
     private final ReporteService reporteService;
