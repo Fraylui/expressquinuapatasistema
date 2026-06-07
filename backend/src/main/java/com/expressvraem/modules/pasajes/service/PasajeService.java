@@ -302,7 +302,7 @@ public class PasajeService {
                     clienteList = clienteRepository.findByAgenciaIdAndApellidosContainingIgnoreCaseOrAgenciaIdAndNombresContainingIgnoreCase(
                             agenciaId, busq, agenciaId, busq);
                 } else {
-                    clienteList = List.of();
+                    clienteList = clienteRepository.findByApellidosContainingIgnoreCaseOrNombresContainingIgnoreCase(busq, busq);
                 }
             }
             List<Long> clienteIds = clienteList.stream().map(Cliente::getId).toList();
