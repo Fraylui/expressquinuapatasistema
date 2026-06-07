@@ -19,7 +19,7 @@ public class ExcelReportGenerator {
             CellStyle headerStyle = crearEstiloHeader(wb);
             CellStyle monedaStyle = crearEstiloMoneda(wb);
 
-            String[] headers = {"Código", "Fecha", "Pasajero", "DNI", "Ruta", "Asiento", "Precio S/"};
+            String[] headers = {"Código", "Fecha", "Pasajero", "Documento", "Ruta", "Asiento", "Precio S/"};
             crearFila(sheet, 0, headers, headerStyle);
 
             BigDecimal total = BigDecimal.ZERO;
