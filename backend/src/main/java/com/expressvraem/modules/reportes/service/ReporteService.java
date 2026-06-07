@@ -1,7 +1,6 @@
 package com.expressvraem.modules.reportes.service;
 
 import com.expressvraem.modules.auditoria.repository.AuditoriaRepository;
-import com.expressvraem.modules.caja.entity.Caja;
 import com.expressvraem.modules.caja.repository.CajaRepository;
 import com.expressvraem.modules.encomiendas.repository.EncomiendaRepository;
 import com.expressvraem.modules.encomiendas.service.EncomiendaService;
@@ -20,8 +19,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,29 +46,39 @@ public class ReporteService {
         LocalDateTime inicioDia = LocalDate.now().atStartOfDay();
         LocalDateTime finDia    = LocalDate.now().atTime(23, 59, 59);
 
-        // Pasajes vendidos hoy
-        long pasajesHoy = pasajeRepository
-                .findByAgenciaIdAndFechaEmisionBetween(agenciaId, inicioDia, finDia).size();
+        long pasajesHoy = 0;
+        try {
+            Object cnt = entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM pasajes WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
+                "AND estado != 'ANULADO' AND fecha_emision BETWEEN :ini AND :fin")
+                .setParameter("ag", agenciaId).setParameter("ini", inicioDia).setParameter("fin", finDia).getSingleResult();
+            pasajesHoy = cnt != null ? ((Number) cnt).longValue() : 0;
+        } catch (Exception ignored) {}
 
-        // Ingresos hoy (COSO: actividades de control financiero)
         BigDecimal ingresosHoy = movimientoRepository
                 .findByAgenciaIdOptionalAndTipoAndCreatedAtBetween(agenciaId, "INGRESO", inicioDia, finDia)
-                .stream()
-                .map(m -> m.getMonto())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .stream().map(m -> m.getMonto()).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Encomiendas activas hoy (EN_TRANSITO)
-        long encomiendaActivas = encomiendaRepository
-                .findByAgenciaIdAndEstado(agenciaId, "EN_TRANSITO").size();
+        long encomiendaActivas = 0;
+        try {
+            Object cnt = entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM encomiendas WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
+                "AND estado = 'EN_TRANSITO'")
+                .setParameter("ag", agenciaId).getSingleResult();
+            encomiendaActivas = cnt != null ? ((Number) cnt).longValue() : 0;
+        } catch (Exception ignored) {}
 
-        // Cajas abiertas (COSO: evaluación de riesgos financieros)
-        List<Caja> cajasAbiertas = cajaRepository.findByAgenciaIdAndEstado(agenciaId, "ABIERTA");
-        long cajasSinDiferencia = cajasAbiertas.size();
+        long cajasAbiertas = 0;
+        try {
+            Object cnt = entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM caja WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
+                "AND estado = 'ABIERTA'")
+                .setParameter("ag", agenciaId).getSingleResult();
+            cajasAbiertas = cnt != null ? ((Number) cnt).longValue() : 0;
+        } catch (Exception ignored) {}
 
-        // Auditoría hoy (COBIT MEA01 + COBIT MEA02)
         long auditoriaHoy = auditoriaRepository.countByAgenciaIdAndFechaAfter(agenciaId, inicioDia);
 
-        // Viajes activos hoy (PROGRAMADO + EN_RUTA con salida hoy)
         long viajesActivosHoy = 0;
         try {
             Object cnt = entityManager.createNativeQuery(
@@ -77,7 +88,6 @@ public class ReporteService {
             viajesActivosHoy = cnt != null ? ((Number) cnt).longValue() : 0;
         } catch (Exception ignored) {}
 
-        // Diferencias de caja detectadas hoy (COSO: actividades de control)
         long diferenciasHoy = 0;
         try {
             Object cnt = entityManager.createNativeQuery(
@@ -92,7 +102,7 @@ public class ReporteService {
         kpis.put("pasajesHoy",        pasajesHoy);
         kpis.put("ingresosHoy",       ingresosHoy);
         kpis.put("encomiendaActivas", encomiendaActivas);
-        kpis.put("cajasAbiertas",     cajasSinDiferencia);
+        kpis.put("cajasAbiertas",     cajasAbiertas);
         kpis.put("auditoriaHoy",      auditoriaHoy);
         kpis.put("viajesActivosHoy",  viajesActivosHoy);
         kpis.put("diferenciasHoy",    diferenciasHoy);
@@ -275,7 +285,7 @@ public class ReporteService {
         m.put("ingresosDelta",   delta(ingresosHoy, ingresosAyer));
         m.put("encomiendasHoy",  encHoy);
         m.put("encomiendasAyer", encAyer);
-        m.put("encomiendas Delta", delta(encHoy, encAyer));
+        m.put("encomiendasDelta", delta(encHoy, encAyer));
         return m;
     }
 
@@ -365,45 +375,73 @@ public class ReporteService {
 
     private String str(Object o) { return o != null ? String.valueOf(o) : "—"; }
 
+    @SuppressWarnings("unchecked")
     @Transactional(readOnly = true)
     public byte[] generarReporteVentas(LocalDateTime desde, LocalDateTime hasta, Long agenciaId) throws IOException {
         Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
         var pasajes = ag != null
                 ? pasajeRepository.findByAgenciaIdAndFechaEmisionBetween(ag, desde, hasta)
                 : pasajeRepository.findByFechaEmisionBetween(desde, hasta);
+
+        // Batch-load cliente data (evita N+1)
+        List<Long> clienteIds = pasajes.stream().map(p -> p.getClienteId())
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String[]> clienteMap = new HashMap<>();
+        if (!clienteIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, apellidos || ', ' || nombres, tipo_doc, num_doc FROM clientes WHERE id IN :ids")
+                    .setParameter("ids", clienteIds).getResultList();
+                for (Object[] r : rows) {
+                    Long id = ((Number) r[0]).longValue();
+                    clienteMap.put(id, new String[]{ str(r[1]), r[2] != null ? r[2].toString() : "", str(r[3]) });
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Batch-load ruta data via viaje (evita N+1)
+        List<Long> viajeIds = pasajes.stream().map(p -> p.getViajeId())
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> rutaMap = new HashMap<>();
+        if (!viajeIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT v.id, r.origen, r.destino FROM viajes v JOIN rutas r ON r.id = v.ruta_id WHERE v.id IN :ids")
+                    .setParameter("ids", viajeIds).getResultList();
+                for (Object[] r : rows) {
+                    Long id = ((Number) r[0]).longValue();
+                    rutaMap.put(id, str(r[1]) + " → " + str(r[2]));
+                }
+            } catch (Exception ignored) {}
+        }
+
         DateTimeFormatter fmtFecha = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
         List<Map<String, Object>> datos = pasajes.stream().map(p -> {
-            String pasajero = "—", dni = "—", ruta = "—";
-            try {
-                Object[] cl = (Object[]) entityManager
-                        .createNativeQuery("SELECT apellidos || ', ' || nombres, tipo_doc, num_doc FROM clientes WHERE id = :id")
-                        .setParameter("id", p.getClienteId()).getSingleResult();
-                pasajero       = cl[0] != null ? String.valueOf(cl[0]) : "—";
-                String tipoDoc = cl[1] != null ? String.valueOf(cl[1]) : "";
-                String numDoc  = cl[2] != null ? String.valueOf(cl[2]) : "—";
-                dni = tipoDoc.isBlank() ? numDoc : tipoDoc + ": " + numDoc;
-            } catch (Exception ignored) {}
-            try {
-                Object[] r = (Object[]) entityManager
-                        .createNativeQuery("SELECT r.origen, r.destino FROM viajes v JOIN rutas r ON r.id = v.ruta_id WHERE v.id = :id")
-                        .setParameter("id", p.getViajeId()).getSingleResult();
-                ruta = str(r[0]) + " → " + str(r[1]);
-            } catch (Exception ignored) {}
-            String fecha = p.getFechaEmision() != null ? p.getFechaEmision().format(fmtFecha) : "—";
-            String asiento = p.getAsientoNumero() != null ? String.valueOf(p.getAsientoNumero()) : "—";
+            String[] cl = p.getClienteId() != null ? clienteMap.get(p.getClienteId()) : null;
+            String pasajero = cl != null ? cl[0] : "—";
+            String tipoDoc  = cl != null ? cl[1] : "";
+            String numDoc   = cl != null ? cl[2] : "—";
+            String dni      = tipoDoc.isBlank() ? numDoc : tipoDoc + ": " + numDoc;
+            String ruta     = p.getViajeId() != null ? rutaMap.getOrDefault(p.getViajeId(), "—") : "—";
+            String fecha    = p.getFechaEmision() != null ? p.getFechaEmision().format(fmtFecha) : "—";
+            String asiento  = p.getAsientoNumero() != null ? String.valueOf(p.getAsientoNumero()) : "—";
             java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-            row.put("codigo",  p.getCorrelativo() != null ? p.getCorrelativo() : p.getId().toString());
-            row.put("fecha",   fecha);
-            row.put("pasajero", pasajero);
-            row.put("dni",     dni);
-            row.put("ruta",    ruta);
-            row.put("asiento", asiento);
-            row.put("precio",  p.getPrecioFinal() != null ? p.getPrecioFinal().toString() : "0");
+            row.put("codigo",     p.getCorrelativo() != null ? p.getCorrelativo() : p.getId().toString());
+            row.put("fecha",      fecha);
+            row.put("pasajero",   pasajero);
+            row.put("dni",        dni);
+            row.put("ruta",       ruta);
+            row.put("asiento",    asiento);
+            row.put("precio",     p.getPrecioFinal()    != null ? p.getPrecioFinal().toString()    : "0");
+            row.put("descuento",  p.getMontoDescuento() != null ? p.getMontoDescuento().toString() : "0");
+            row.put("formaPago",  p.getFormaPago() != null ? p.getFormaPago() : "EFECTIVO");
+            row.put("estado",     p.getEstado()    != null ? p.getEstado()    : "—");
             return row;
         }).collect(Collectors.toList());
         return excelGenerator.generarReporteVentas(datos);
     }
 
+    @SuppressWarnings("unchecked")
     @Transactional(readOnly = true)
     public byte[] generarReporteEncomiendas(Long agenciaId, String estado, String desde, String hasta) throws IOException {
         Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
@@ -412,30 +450,62 @@ public class ReporteService {
         java.time.LocalDateTime hastaDate = hasta != null && !hasta.isBlank()
                 ? java.time.LocalDateTime.parse(hasta.replace(" ", "T").substring(0, 19)) : null;
         var encomiendas = encomiendaService.buscarConFiltros(ag, estado, null, desdeDate, hastaDate, null);
+
+        // Batch-load nombres de clientes (remitente + destinatario) para evitar N+1
+        List<Long> personaIds = encomiendas.stream()
+                .flatMap(e -> java.util.stream.Stream.of(e.getRemitenteId(), e.getDestinatarioId()))
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> nombreMap = new HashMap<>();
+        if (!personaIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, apellidos || ', ' || nombres FROM clientes WHERE id IN :ids")
+                    .setParameter("ids", personaIds).getResultList();
+                for (Object[] r : rows) {
+                    Long id = ((Number) r[0]).longValue();
+                    nombreMap.put(id, str(r[1]));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Batch-load nombres de agencias (origen + destino)
+        List<Long> agenciaIds = encomiendas.stream()
+                .flatMap(e -> java.util.stream.Stream.of(e.getAgenciaOrigenId(), e.getAgenciaDestinoId()))
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> agenciaMap = new HashMap<>();
+        if (!agenciaIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, nombre FROM agencias WHERE id IN :ids")
+                    .setParameter("ids", agenciaIds).getResultList();
+                for (Object[] r : rows) {
+                    Long id = ((Number) r[0]).longValue();
+                    agenciaMap.put(id, str(r[1]));
+                }
+            } catch (Exception ignored) {}
+        }
+
         DateTimeFormatter fmtFecha = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
         List<Map<String, Object>> datos = encomiendas.stream().map(e -> {
-            String remitente = "—", destinatario = "—";
-            try {
-                Object r = entityManager
-                        .createNativeQuery("SELECT apellidos || ', ' || nombres FROM clientes WHERE id = :id")
-                        .setParameter("id", e.getRemitenteId()).getSingleResult();
-                remitente = r != null ? String.valueOf(r) : "—";
-            } catch (Exception ignored) {}
-            try {
-                Object r = entityManager
-                        .createNativeQuery("SELECT apellidos || ', ' || nombres FROM clientes WHERE id = :id")
-                        .setParameter("id", e.getDestinatarioId()).getSingleResult();
-                destinatario = r != null ? String.valueOf(r) : "—";
-            } catch (Exception ignored) {}
-            String fecha = e.getFechaRegistro() != null ? e.getFechaRegistro().format(fmtFecha) : "—";
+            String remitente    = e.getRemitenteId()    != null ? nombreMap.getOrDefault(e.getRemitenteId(),    "—") : "—";
+            String destinatario = e.getDestinatarioId() != null ? nombreMap.getOrDefault(e.getDestinatarioId(), "—") : "—";
+            String agOrigen     = e.getAgenciaOrigenId()  != null ? agenciaMap.getOrDefault(e.getAgenciaOrigenId(),  "—") : "—";
+            String agDestino    = e.getAgenciaDestinoId() != null ? agenciaMap.getOrDefault(e.getAgenciaDestinoId(), "—") : "—";
+            String fecha        = e.getFechaRegistro() != null ? e.getFechaRegistro().format(fmtFecha) : "—";
             java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-            row.put("codigo",      e.getCodigoTracking());
-            row.put("fecha",       fecha);
-            row.put("remitente",   remitente);
+            row.put("codigo",       e.getCodigoTracking());
+            row.put("fecha",        fecha);
+            row.put("estado",       e.getEstado() != null ? e.getEstado() : "—");
+            row.put("remitente",    remitente);
             row.put("destinatario", destinatario);
-            row.put("descripcion", e.getDescripcion());
-            row.put("peso",        e.getPesoKg() != null ? e.getPesoKg().toString() : "0");
-            row.put("precio",      e.getPrecioEnvio() != null ? e.getPrecioEnvio().toString() : "0");
+            row.put("agenciaOrigen",  agOrigen);
+            row.put("agenciaDestino", agDestino);
+            row.put("descripcion",  e.getDescripcion());
+            row.put("peso",         e.getPesoKg() != null ? e.getPesoKg().toString() : "0");
+            row.put("numBultos",    e.getNumBultos() != null ? e.getNumBultos().toString() : "1");
+            row.put("esFragil",     e.isEsFragil() ? "Sí" : "No");
+            row.put("formaCobro",   e.getFormaCobro() != null ? e.getFormaCobro() : "EFECTIVO");
+            row.put("precio",       e.getPrecioEnvio() != null ? e.getPrecioEnvio().toString() : "0");
             return row;
         }).collect(Collectors.toList());
         return excelGenerator.generarReporteEncomiendas(datos);
