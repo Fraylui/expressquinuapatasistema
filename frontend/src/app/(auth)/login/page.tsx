@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, LogIn, Bus } from 'lucide-react'
+import { Eye, EyeOff, LogIn, Bus, MapPin, Shield, Zap } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useEmpresaStore } from '@/stores/empresaStore'
 
@@ -15,6 +15,26 @@ const schema = z.object({
 })
 
 type FormData = z.infer<typeof schema>
+
+/* ── Puntos flotantes decorativos ── */
+const DOTS = [
+  { top: '12%',  left: '8%',  size: 6,  delay: '0s',    dur: '6s'  },
+  { top: '28%',  left: '22%', size: 4,  delay: '1.2s',  dur: '8s'  },
+  { top: '55%',  left: '14%', size: 8,  delay: '0.5s',  dur: '7s'  },
+  { top: '70%',  left: '30%', size: 5,  delay: '2s',    dur: '9s'  },
+  { top: '85%',  left: '10%', size: 3,  delay: '0.8s',  dur: '5s'  },
+  { top: '40%',  left: '40%', size: 6,  delay: '1.8s',  dur: '10s' },
+  { top: '18%',  left: '50%', size: 4,  delay: '0.3s',  dur: '7s'  },
+  { top: '62%',  left: '48%', size: 5,  delay: '1s',    dur: '8s'  },
+  { top: '90%',  left: '42%', size: 3,  delay: '2.5s',  dur: '6s'  },
+]
+
+const FEATURES = [
+  { icon: Bus,     label: 'Gestión de viajes'     },
+  { icon: MapPin,  label: 'Red de agencias'        },
+  { icon: Shield,  label: 'Acceso seguro'          },
+  { icon: Zap,     label: 'Tiempo real'            },
+]
 
 export default function LoginPage() {
   const router = useRouter()
@@ -44,57 +64,179 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#020617]">
+    <div className="flex min-h-screen w-full overflow-hidden bg-[#020b14]">
 
-      {/* ── Fondo animado ── */}
-      <div className="pointer-events-none absolute inset-0">
-        {/* Orbs de color */}
-        <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-primary-700/20 blur-[120px]" />
-        <div className="absolute -bottom-40 -right-40 h-[500px] w-[500px] rounded-full bg-primary-500/15 blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/10 blur-[80px]" />
-        {/* Grid pattern */}
+      {/* ════════════════════════════════════════════════════
+          PANEL IZQUIERDO — Branding animado (oculto en móvil)
+      ════════════════════════════════════════════════════ */}
+      <div className="relative hidden lg:flex lg:w-[52%] xl:w-[55%] flex-col overflow-hidden">
+
+        {/* Gradiente de fondo del panel */}
         <div
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0"
           style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)`,
-            backgroundSize: '60px 60px',
+            background: 'linear-gradient(135deg, #011a0f 0%, #022d1a 35%, #064e3b 70%, #047857 100%)',
           }}
         />
-      </div>
 
-      {/* ── Card glassmorphism ── */}
-      <div className="relative z-10 w-full max-w-md px-4">
+        {/* Orbs profundos */}
+        <div className="absolute -top-20 -left-20 h-[500px] w-[500px] rounded-full bg-emerald-400/10 blur-[120px]" />
+        <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-teal-500/15 blur-[100px]" />
+        <div className="absolute top-1/2 left-1/3 h-[250px] w-[250px] -translate-y-1/2 rounded-full bg-emerald-600/20 blur-[80px]" />
+
+        {/* Grid hexagonal sutil */}
         <div
-          className="rounded-2xl border border-white/10 p-8 shadow-2xl"
+          className="absolute inset-0 opacity-[0.04]"
           style={{
-            background: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
+            backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)`,
+            backgroundSize: '40px 40px',
           }}
-        >
-          {/* Logo */}
-          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+        />
+
+        {/* Líneas diagonales decorativas */}
+        <div className="absolute inset-0 opacity-[0.06]">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute h-px w-full"
+              style={{
+                top: `${15 + i * 14}%`,
+                background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 40%, rgba(255,255,255,0.6) 60%, transparent 100%)',
+                transform: `rotate(-${8 + i * 2}deg)`,
+                transformOrigin: 'left center',
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Puntos flotantes con animación */}
+        {DOTS.map((d, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full bg-emerald-300/40"
+            style={{
+              top: d.top, left: d.left,
+              width: d.size, height: d.size,
+              animation: `floatDot ${d.dur} ${d.delay} ease-in-out infinite alternate`,
+            }}
+          />
+        ))}
+
+        {/* Contenido central del panel */}
+        <div className="relative z-10 flex h-full flex-col items-center justify-center px-12 xl:px-16">
+
+          {/* Logo o ícono de empresa */}
+          <div className="mb-8 flex flex-col items-center gap-4 text-center">
             {logoBase64 ? (
-              <img
-                src={logoBase64}
-                alt={nombre}
-                className="max-h-20 max-w-[200px] w-auto object-contain drop-shadow-lg"
-              />
+              <div
+                className="rounded-2xl p-3"
+                style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)' }}
+              >
+                <img
+                  src={logoBase64}
+                  alt={nombre}
+                  className="max-h-20 max-w-[180px] w-auto object-contain"
+                />
+              </div>
             ) : (
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-600 shadow-lg shadow-primary-900/40">
-                <Bus size={26} className="text-white" />
+              <div
+                className="flex h-20 w-20 items-center justify-center rounded-3xl shadow-2xl"
+                style={{
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  boxShadow: '0 20px 60px rgba(16,185,129,0.4)',
+                }}
+              >
+                <Bus size={36} className="text-white" />
               </div>
             )}
+
             <div>
-              <h1 className="text-lg font-bold leading-tight text-white">{nombre}</h1>
+              <h1 className="text-2xl xl:text-3xl font-bold leading-tight text-white tracking-tight">
+                {nombre}
+              </h1>
+              <p className="mt-1 text-sm text-emerald-300/70 font-medium tracking-widest uppercase">
+                Sistema de Gestión
+              </p>
             </div>
           </div>
 
-          {/* Título */}
-          <div className="mb-7 text-center">
-            <h2 className="text-2xl font-bold text-white">Iniciar sesión</h2>
-            <p className="mt-1 text-sm text-white/50">Accede al panel de gestión</p>
+          {/* Divider decorativo */}
+          <div className="mb-8 flex items-center gap-4 w-full max-w-xs">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-emerald-400/40" />
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
+            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-emerald-400/40" />
+          </div>
+
+          {/* Feature pills */}
+          <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+            {FEATURES.map(({ icon: Icon, label }) => (
+              <div
+                key={label}
+                className="flex items-center gap-2.5 rounded-xl px-4 py-3 transition-all duration-200"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                <Icon size={14} className="shrink-0 text-emerald-400" />
+                <span className="text-xs font-medium text-white/70">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Ruta animada decorativa */}
+          <div className="mt-10 flex items-center gap-2 text-emerald-400/50">
+            <MapPin size={12} />
+            <div className="flex items-center gap-1">
+              {['Quinuapata', 'Pichari', 'Kimbiri', 'Mazamari'].map((city, i) => (
+                <React.Fragment key={city}>
+                  <span className="text-[10px] font-medium">{city}</span>
+                  {i < 3 && <span className="text-emerald-600 text-[10px]">—</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Badge inferior */}
+        <div className="relative z-10 pb-8 text-center">
+          <p className="text-[11px] text-white/25 tracking-wide">
+            VRAEM · Cusco · Junín
+          </p>
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════════════════
+          PANEL DERECHO — Formulario
+      ════════════════════════════════════════════════════ */}
+      <div className="relative flex flex-1 flex-col items-center justify-center px-6 sm:px-10 lg:px-12 xl:px-16">
+
+        {/* Fondo del panel derecho */}
+        <div className="absolute inset-0 bg-[#060d16]" />
+        <div className="absolute top-0 right-0 h-[300px] w-[300px] rounded-full bg-emerald-900/15 blur-[80px]" />
+        <div className="absolute bottom-0 left-0 h-[200px] w-[200px] rounded-full bg-teal-900/10 blur-[60px]" />
+
+        {/* Logo móvil (solo visible en sm/md cuando el panel izquierdo está oculto) */}
+        <div className="relative z-10 mb-8 flex flex-col items-center gap-3 lg:hidden">
+          {logoBase64 ? (
+            <img src={logoBase64} alt={nombre}
+              className="max-h-16 max-w-[160px] w-auto object-contain" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600 shadow-lg">
+              <Bus size={24} className="text-white" />
+            </div>
+          )}
+          <h1 className="text-base font-bold text-white">{nombre}</h1>
+        </div>
+
+        {/* Card del formulario */}
+        <div className="relative z-10 w-full max-w-sm">
+
+          {/* Encabezado */}
+          <div className="mb-8">
+            <h2 className="text-[28px] font-bold leading-tight text-white tracking-tight">
+              Iniciar sesión
+            </h2>
+            <p className="mt-2 text-sm text-white/40">
+              Accede al panel de gestión interno
+            </p>
           </div>
 
           {/* Formulario */}
@@ -102,19 +244,44 @@ export default function LoginPage() {
 
             {/* Email */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-white/70">
+              <label className="block text-[13px] font-semibold text-white/60 tracking-wide uppercase">
                 Correo electrónico
               </label>
-              <input
-                type="email"
-                placeholder="usuario@quinuapata.com"
-                autoComplete="email"
-                {...register('email')}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/25 outline-none transition-all duration-200 focus:border-primary-500/60 focus:bg-white/8 focus:ring-2 focus:ring-primary-500/20"
-              />
+              <div className="relative">
+                <input
+                  type="email"
+                  placeholder="usuario@expressvraem.com"
+                  autoComplete="email"
+                  {...register('email')}
+                  className="
+                    w-full rounded-xl px-4 py-3.5 text-sm text-white
+                    outline-none transition-all duration-200
+                    placeholder-white/20
+                    focus:ring-2
+                  "
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    border: errors.email
+                      ? '1px solid rgba(248,113,113,0.6)'
+                      : '1px solid rgba(255,255,255,0.08)',
+                  }}
+                  onFocus={e => {
+                    if (!errors.email) {
+                      e.currentTarget.style.border = '1px solid rgba(16,185,129,0.5)'
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+                    }
+                  }}
+                  onBlur={e => {
+                    if (!errors.email) {
+                      e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)'
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                    }
+                  }}
+                />
+              </div>
               {errors.email && (
-                <p className="flex items-center gap-1 text-xs text-red-400">
-                  <span className="inline-block h-1 w-1 rounded-full bg-red-400" />
+                <p className="flex items-center gap-1.5 text-xs text-red-400">
+                  <span className="inline-block h-1 w-1 shrink-0 rounded-full bg-red-400" />
                   {errors.email.message}
                 </p>
               )}
@@ -122,7 +289,7 @@ export default function LoginPage() {
 
             {/* Contraseña */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-white/70">
+              <label className="block text-[13px] font-semibold text-white/60 tracking-wide uppercase">
                 Contraseña
               </label>
               <div className="relative">
@@ -131,54 +298,105 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   {...register('password')}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-11 text-sm text-white placeholder-white/25 outline-none transition-all duration-200 focus:border-primary-500/60 focus:bg-white/8 focus:ring-2 focus:ring-primary-500/20"
+                  className="
+                    w-full rounded-xl px-4 py-3.5 pr-12 text-sm text-white
+                    outline-none transition-all duration-200
+                    placeholder-white/20
+                  "
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    border: errors.password
+                      ? '1px solid rgba(248,113,113,0.6)'
+                      : '1px solid rgba(255,255,255,0.08)',
+                  }}
+                  onFocus={e => {
+                    if (!errors.password) {
+                      e.currentTarget.style.border = '1px solid rgba(16,185,129,0.5)'
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+                    }
+                  }}
+                  onBlur={e => {
+                    if (!errors.password) {
+                      e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)'
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                    }
+                  }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-white/30 transition-colors duration-150 hover:text-white/70"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-lg p-1 text-white/25 transition-all duration-150 hover:bg-white/5 hover:text-white/70"
                   aria-label="Mostrar/ocultar contraseña"
                 >
-                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
               {errors.password && (
-                <p className="flex items-center gap-1 text-xs text-red-400">
-                  <span className="inline-block h-1 w-1 rounded-full bg-red-400" />
+                <p className="flex items-center gap-1.5 text-xs text-red-400">
+                  <span className="inline-block h-1 w-1 shrink-0 rounded-full bg-red-400" />
                   {errors.password.message}
                 </p>
               )}
             </div>
 
             {/* Botón submit */}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="group relative mt-2 flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary-900/40 transition-all duration-200 hover:bg-primary-500 hover:shadow-primary-800/50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmitting ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  <span>Verificando...</span>
-                </>
-              ) : (
-                <>
-                  <LogIn size={16} />
-                  <span>Ingresar al sistema</span>
-                </>
-              )}
-              {/* Shimmer on hover */}
-              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
-            </button>
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="group relative w-full cursor-pointer overflow-hidden rounded-xl py-3.5 text-sm font-semibold text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  background: isSubmitting
+                    ? 'rgba(5,150,105,0.7)'
+                    : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  boxShadow: isSubmitting ? 'none' : '0 8px 32px rgba(5,150,105,0.35)',
+                }}
+              >
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  {isSubmitting ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Verificando...
+                    </>
+                  ) : (
+                    <>
+                      <LogIn size={15} />
+                      Ingresar al sistema
+                    </>
+                  )}
+                </span>
+                {/* Shimmer effect */}
+                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+              </button>
+            </div>
           </form>
 
+          {/* Divisor con seguridad */}
+          <div className="mt-8 flex items-center gap-3">
+            <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            <div className="flex items-center gap-1.5 text-[11px] text-white/20">
+              <Shield size={10} />
+              <span>Conexión cifrada</span>
+            </div>
+            <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          </div>
+
           {/* Footer */}
-          <p className="mt-7 text-center text-xs text-white/25">
-            Solo personal autorizado · Express Quinuapata VRAEM SAC &copy; {new Date().getFullYear()}
+          <p className="mt-6 text-center text-[11px] text-white/20 leading-relaxed">
+            Solo personal autorizado
+            <br />
+            Express Quinuapata VRAEM SAC &copy; {new Date().getFullYear()}
           </p>
         </div>
-
       </div>
+
+      {/* ── Animación de los puntos flotantes ── */}
+      <style jsx>{`
+        @keyframes floatDot {
+          from { transform: translate(0, 0) scale(1); opacity: 0.3; }
+          to   { transform: translate(8px, -12px) scale(1.3); opacity: 0.6; }
+        }
+      `}</style>
     </div>
   )
 }
