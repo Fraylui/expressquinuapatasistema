@@ -23,6 +23,10 @@ export interface TurnoActual {
   montoEncomiendas: number
   cantPagoDestino: number
   montoPagoDestino: number
+  cantExternas: number
+  montoExternas: number
+  cantCuotasCombi: number
+  montoCuotasCombi: number
 }
 
 export const cajaService = {

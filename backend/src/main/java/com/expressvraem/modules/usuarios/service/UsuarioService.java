@@ -101,7 +101,9 @@ public class UsuarioService {
         map.put("id",           u.getId());
         map.put("nombres",      u.getNombres());
         map.put("apellidos",    u.getApellidos());
-        map.put("nombre",       u.getNombres() + " " + u.getApellidos());
+        String n = u.getNombres() != null ? u.getNombres() : "";
+        String a = u.getApellidos() != null ? u.getApellidos() : "";
+        map.put("nombre",       (n + " " + a).trim());
         map.put("email",        u.getEmail());
         map.put("dni",          u.getDni());
         map.put("telefono",     u.getTelefono());

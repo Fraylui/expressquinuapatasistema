@@ -7,6 +7,7 @@ import com.expressvraem.shared.exceptions.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -62,6 +63,7 @@ public class ClienteController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
     public ResponseEntity<ApiResponse<Void>> eliminar(@PathVariable Long id) {
         clienteService.eliminar(id);
         return ResponseEntity.ok(ApiResponse.ok("Cliente eliminado", null));

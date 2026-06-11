@@ -41,6 +41,7 @@ public record RegistrarEncomiendaExternaDTO(
 
         /** "PENDIENTE" = cobrar al destinatario al recoger | "PAGADO" = conductor ya pagó */
         @NotBlank(message = "Estado de pago es obligatorio")
+        @Pattern(regexp = "^(PENDIENTE|PAGADO)$", message = "Estado de pago inválido. Use PENDIENTE o PAGADO")
         String estadoPago,
 
         /** Requerido si estadoPago = "PAGADO" */

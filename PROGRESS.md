@@ -1,5 +1,5 @@
 # Sistema Express Quinuapata VRAEM — Estado del Proyecto v2.0
-> Última actualización: 2026-06-03 | Estado: **LISTO PARA PRODUCCIÓN** ✅
+> Última actualización: 2026-06-11 | Estado: **EN MEJORA CONTINUA** 🔧
 
 ---
 
@@ -82,7 +82,9 @@
 - [x] **Rutas** — CRUD
 - [x] **Vehículos** — CRUD
 - [x] **Conductores** — CRUD (módulo nuevo)
-- [x] **Configuración** — tabs Rutas/Vehículos/Conductores
+- [x] **Tarifas** — CRUD completo con solapamiento por temporada, safety check pasajes
+- [x] **Temporadas** — CRUD completo con validación de rangos solapados
+- [x] **Configuración** — tabs Empresa/Rutas/Tarifas/Temporadas/Vehículos/Conductores
 - [x] **Viajes** — programar, confirmar salida/llegada, cancelar, editar, validar conflictos ±4h
 - [x] **Asientos** — JPA + mapa en tiempo real
 - [x] **Clientes** — CRUD + búsqueda DNI/RUC, soporte empresa con representante
@@ -137,7 +139,7 @@
 - [x] `/auditoria` — Bitácora + filtros + actividad + PDF/Excel
 - [x] `/usuarios` — CRUD con formulario + asignación de módulos
 - [x] `/agencias` — Jerarquía principal/sucursal
-- [x] `/configuracion` — Tabs Rutas/Vehículos/Conductores
+- [x] `/configuracion` — Tabs Empresa/Rutas/Tarifas/Temporadas/Vehículos/Conductores
 
 ### Portal público (sin login)
 - [x] `/tracking` — Rastrear encomienda
@@ -208,6 +210,152 @@
 | ISO 27001 A.9.2 | Módulos granulares por usuario | ✅ |
 | ISO 27001 A.12.4 | Log con IP, timestamp, antes/después | ✅ |
 | Ley 29733 (Perú) | Datos censurados en tracking público | ✅ |
+
+---
+
+## Sesión 2026-06-11 — Auditoría y correcciones CRUD configuración
+
+### Bugs corregidos (backend)
+- `ViajeController` — 9 bugs: N+1 en confirmarSalida/confirmarLlegada, `agenciaId=1L` hardcoded, null concat en enrich, `validarConflictos` cargaba todos los viajes
+- `ConfiguracionVehiculoController` — `@PreAuthorize` + `@Transactional` faltaban, `agenciaId=null`
+- `ConfiguracionConductorController` — reescrito completo (CRUD full, alertas licencia, `diasVencLic`)
+- `ConfiguracionRutaController` — reescrito completo (CRUD full, safety checks viajes activos)
+- `ConfiguracionTarifaController` — reescrito completo (CRUD full, duplicado por agencia, `GET /{id}`, `DELETE`)
+- `ConfiguracionTemporadaController` — creado desde cero (CRUD full, solapamiento de fechas, safety check tarifas)
+- `ViajeScheduler` + `LiquidacionViajeService` — null concat en nombres de conductores
+
+### Migraciones aplicadas
+- `V1` — `intentos_fallidos`, `bloqueado_hasta` a `usuarios` (bug pre-existente)
+- `V2` — `updated_at` a `conductores`
+- `V3` — `updated_at` a `rutas`
+- `V4` — `updated_at` a `temporadas`
+
+### Nuevos archivos backend
+- `Temporada.java` — entidad con `@PrePersist`/`@PreUpdate`
+- `TemporadaRepository.java` — incluye `findSolapes()` para detectar rangos superpuestos
+- `ConfiguracionTemporadaController.java`
+
+### Frontend actualizado
+- `configuracion/page.tsx` — tab Temporadas agregado, `TarifasTab` con selector de temporada, `TIPOS_TARIFA` vs `TIPOS_FLOTA` separados, PATCH con body explícito en todos los toggles
+
+---
+
+## Sesión 2026-06-11 (parte 2) — Control financiero y separación de ingresos
+
+### Bugs críticos corregidos
+- **Encomiendas al contado nunca entraban a caja** — `EncomiendaService.crear` solo registraba POR_COBRAR; ahora exige turno abierto (CAJA_REQUERIDA) y registra el ingreso real
+- **Promociones sin validar vigencia** — nuevo `PromocionService.findVigenteById(id, aplicaA)`; aplicado en PasajeService (+ código muerto eliminado) y EncomiendaService
+- **Comprobante de encomienda mostraba precio SIN descuento** — `ComprobantePdfService` usaba `monto` (base) en vez de `precioEnvio` (final); ahora muestra Precio/Descuento/Monto
+- **`tarifaId` siempre quedaba en 1** — cast `Object[]` sobre query de una columna en PasajeService fallaba silenciosamente; corregido a escalar
+- **`GET /caja/movimientos/{cajaId}` sin ownership** — cualquier operador leía cualquier caja; nuevo `CajaService.verificarAcceso(cajaId, userId, rol, agenciaId)` aplicado también a `/{id}/reporte`
+
+### Funcionalidades nuevas
+- **Migración V5**: `categoria_ingreso`, `viaje_id`, `vehiculo_id`, `tipo_vehiculo`, `conductor_id` en `movimientos_caja` + backfill histórico + índices (aplicada en dev)
+- **Migración V6**: `cuota_salida_combi` en `empresa_config` (aplicada en dev)
+- **Cuota fija de combi**: al `confirmarSalida()` de viaje COMBI se registra ingreso `CUOTA_SALIDA_COMBI` en la caja del operador (cuota configurable en Configuración → Empresa, 0 = deshabilitado)
+- **CajaService.registrarMovimiento** sobrecargado con dimensiones; deriva categoría automáticamente (PASAJE_COMBI/PASAJE_CAMIONETA/ENCOMIENDA/ENC_PAGO_DESTINO/ENC_EXTERNA/OTRO)
+- **GERENTE puede asignar módulos** (`GET /api/modulos` + `PUT /api/usuarios/{id}/modulos`) con guardas: no a SUPER_ADMIN/GERENTE, AUDITORIA sigue bloqueado
+- **Ticket encomienda externa**: leyenda explícita "ENCOMIENDA DE CONDUCTOR EXTERNO / PERTENECE AL CONDUCTOR"
+- **Frontend**: input "Cuota fija por salida de combi" en Configuración → Empresa (store + tab)
+
+### Decisiones de negocio confirmadas
+- La empresa vende pasajes de combi por ventanilla Y cobra la cuota fija por salida
+- La cuota de combi es un monto único por empresa (en `empresa_config`)
+- **La flota es SOLO COMBI y CAMIONETA** — eliminados BUS/MINIVAN/MINIBUS/SEDAN/SUV/CAMION de:
+  - `ConfiguracionVehiculoController` (antes ni siquiera aceptaba COMBI/CAMIONETA — bug)
+  - `ConfiguracionTarifaController`, `TipoVehiculo` enum, `SeatMap`, `TIPOS_TARIFA`/`TIPOS_FLOTA`, filtro de reportes
+  - Migración **V7**: CHECK constraints de `vehiculos.tipo` y `tarifas.tipo_vehiculo` (aplicada en dev)
+
+### Auditoría módulos Promociones y Clientes
+- **Promociones — guard de eliminación**: borrar una promo ya usada rompía la referencia histórica de las boletas (`descuento_id`/`promocion_id`); ahora `PROMO_CON_USOS` bloquea y sugiere desactivar (probado en vivo con "Envio Gratis Sabado", 1 uso)
+- Pluralización "1 usos" → "1 uso" en la tabla
+- **Clientes — verificado sólido**: FKs en BD protegen contra borrado con pasajes/encomiendas asociados + mensaje claro `CLIENTE_CON_REFERENCIAS`; KPIs, filtros persona/empresa, búsqueda y CRUD completos
+- Formulario de promos correcto: 3 tipos (%, monto fijo, ida y vuelta), aplica-a, fechas, límite de usos — sin selector de agencia (promos globales por diseño, coherente con el flujo de venta)
+
+### Auditoría módulo Manifiestos
+- Selector de viajes: ahora ordena EN_RUTA → PROGRAMADO → COMPLETADO (recientes primero) y muestra **fecha + hora** ("13 may · 11:00") — antes los completados de hace un mes aparecían primero mostrando solo la hora
+- Verificado OK: detalle con conductor/licencia/totales (probado por API: 4 pasajeros S/134.50 + 2 encomiendas S/40), empty state, historial con flujo BORRADOR→EMITIDO→ENVIADO, PDFs de pasajeros/encomiendas y ticket por pasaje
+
+### Auditoría módulo Encomiendas Externas
+- Modelo de negocio confirmado y ya implementado: el conductor externo deja la encomienda solo para entrega; la empresa cobra su servicio **al conductor al dejarla** ("Ahora — conductor ya pagó") o **al destinatario al recoger** ("Al recoger — destinatario paga", badge "Cobrar S/ X" en la lista)
+- **Fix financiero**: registrar con "conductor ya pagó" sin caja abierta solo dejaba un `log.warn` y el dinero del conductor no se registraba en ningún lado; ahora lanza `CAJA_REQUERIDA` (transacción revierte, probado en vivo: rechazo + rollback verificado en BD)
+- Aviso rojo preventivo en el modal de registro cuando se elige "Ahora" sin turno de caja abierto (espejo del aviso ámbar existente para "Al recoger")
+
+### Auditoría módulo Encomiendas (foco: flujo de registro confuso)
+- **"Buscar para registrar" rediseñado** en `BuscadorCliente` (remitente y destinatario):
+  - Auto-búsqueda al completar el documento (DNI 8 dígitos / RUC 11) — ya no hay que pulsar "Buscar"
+  - Si el cliente no existe, el mini-formulario de registro **se abre solo** con el documento pre-llenado (antes: franja amarilla con link pequeño "+ Registrar aquí" que nadie veía)
+  - Texto de ayuda bajo el buscador explicando el comportamiento
+- **Aviso de caja en el paso Cobro**: si la forma de cobro es al contado y el operador no tiene turno abierto, alerta roja ANTES de confirmar (el backend ahora exige caja — cambio de hoy); para POR_COBRAR ya existía el aviso del operador destino
+- Verificado: promos del flujo filtran por `aplicaA=ENCOMIENDAS`; venta probada con Playwright (auto-search carga panel verde con Siguiente habilitado)
+
+### Auditoría módulo Pasajes (flujo de venta)
+- **`/api/viajes/disponibles` vendía asientos de viajes fantasma**: EN_RUTA sin límite de tiempo (aparecían los 4 viajes del 13 de mayo). Ahora excluye EN_RUTA con salida > 24 h (el abordaje en paraderos del mismo día sigue funcionando). Esto también corrige el badge "N viajes hoy" del Tablero
+- **Tarifas ahora respetan temporada** (pendiente conocido de Opción A): nueva query `findVigenteEnTemporada` — prioriza la tarifa cuya temporada activa cubre hoy, cae a la general; usada en `/api/tarifas/buscar` (precio que ve el cajero) y en `PasajeService` (tarifaId registrado)
+- Subtítulo "en 3 pasos" corregido (el stepper tiene 4) y "Boletas del día" → "Boletas emitidas" (lista boletas de fechas pasadas)
+- Verificado: promos del flujo ya filtran por `aplicaA=PASAJES` (selector y código), compatible con la validación de vigencia nueva
+
+### Auditoría módulo Viajes (capturas como OPERADOR y GERENTE)
+- **Llegadas sin confirmar**: viajes EN_RUTA por más de 24 h (había 4 con 29 días) ahora muestran franja roja "X días en ruta — confirma la llegada" + banner de alerta explicando el impacto (encomiendas no disponibles, reportes desactualizados)
+- **Ingresos por viaje en tarjeta**: chip "S/ X recaudado" alimentado por `ingresosViaje` — nuevo campo en `ViajeResponseDTO` calculado en `batchEnrich` con una query batch sobre `movimientos_caja.viaje_id` (dimensión V5)
+- Helpers `horasEnRuta`/`llegadaPendiente`/`labelEnRuta` en viajes/page.tsx
+- Observación de datos: hay un viaje con conductor "Super Admin Sistema" (conductor_id apunta a un usuario admin del seed)
+
+### Auditoría módulo Caja (capturas como OPERADOR con turno y GERENTE)
+- **Tarjetas del turno ciegas a Externas/Cuotas combi**: "Total ingresos S/23.50 — 0 cobros" cuando el dinero era de externas; ahora 6 tarjetas (Total, Pasajes, Encomiendas, Externas, Cuotas combi, Saldo) y el contador suma todas las categorías
+- Chips de filtro nuevos: "Externas" y "Cuota combi"; `TipoBadge` muestra EXTERNA / CUOTA COMBI (antes caían en "INGRESO" genérico)
+- GERENTE/SUPER_ADMIN aterrizan en la pestaña **Consolidado** (antes veían "Abra su turno para comenzar a operar")
+- Consolidado por agencia (backend + frontend) ahora desglosa Externas y Cuotas combi
+- **PDF de cierre de turno** incluye filas "Enc. externas" y "Cuotas combi"
+- Dark mode: overrides para matices `green` e `indigo` (las tarjetas Total/Saldo quedaban claras en modo oscuro)
+- `TurnoActual` (caja.service.ts) y `ConsolidadoAgencia` tipados con los campos nuevos
+
+### Rediseño UX Tablero (auditado con capturas como GERENTE y OPERADOR)
+- **Bug**: KPI "Encomiendas" estaba hardcodeado en "—" — conectado a `/api/encomiendas/stats` (registradas hoy + por entregar)
+- KPI "Ingresos turno" ahora desglosa Pasajes · Encomiendas · Externas · Cuotas combi (backend: `buildMap` expone `montoExternas`/`montoCuotasCombi` — antes el desglose ignoraba esos tipos)
+- Banner muestra el nombre real de la agencia (catálogo `/api/agencias` → `turno.agenciaNombre` → fallback `Agencia #id`)
+- Eliminado panel "Sistema" (BD/API hardcodeados `ok: true`, teatro) y tarjeta "Tu agencia" (mostraba el ID numérico)
+- Eliminada sección GESTIÓN del grid de módulos (duplicaba el sidebar); OPERACIÓN se mantiene como lanzador
+- Promociones vigentes ahora en tarjeta propia junto a Viajes del día
+- Script `frontend/screenshot-tablero.js` para auditar como ambos roles
+
+### Rediseño UX gerencial/reportes (auditado con capturas Playwright)
+- `/gerente`: eliminados paneles de relleno "Controles activos" y "Bitácora hoy" (jerga COBIT sin valor para el negocio) y el KPI "Eventos hoy"; tile "Log auditoría" duplicado removido
+- `/gerente`: strip "Ingresos de hoy por servicio" SIEMPRE visible con las 6 categorías (S/ 0.00 atenuado cuando no hay) + link a reporte completo
+- `/gerente`: panel "Cajas de operadores" siempre visible en columna derecha (antes solo aparecía al filtrar agencia) — muestra saldo y hora de apertura, badge "N sin caja"
+- `/reportes`: eliminados KPIs duplicados del gerencial y tabla "Encomiendas sin movimiento" duplicada; la sección Ingresos ahora abre la página
+- `/reportes`: presets de rango rápido (Hoy/7/30/90 días), default 30 días para que nunca abra vacío
+- Dark mode: overrides para chips/badges de color (pasteles → translúcidos) y grises muted legibles (`text-gray-400` era #475569, ilegible) en `globals.css`
+- Script `frontend/screenshot-audit.js` (Playwright) para auditar capturas de ambas páginas en claro/oscuro
+
+### Reportes de ingresos (completado)
+- [x] `GET /api/reportes/ingresos?desde&hasta&agenciaId&usuarioId&tipoVehiculo&categoria&groupBy=categoria|dia|agencia|usuario|vehiculo|conductor|viaje` — totales por categoría + desglose agrupado (whitelist anti SQL-injection, LIMIT 200)
+- [x] `getKpisGerente` ahora incluye `ingresosPorCategoria` (desglose de hoy)
+- [x] `/reportes` — nueva sección "Ingresos por servicio y vehículo": barra de filtros (fechas/agencia/usuario/tipoVehiculo/categoría), chips por categoría, selector de agrupación, gráfico horizontal + tabla
+- [x] `/gerente` — strip "Ingresos de hoy por servicio" con tarjetas separadas (camioneta/combi/cuotas/encomiendas/externas)
+- [x] Probado en vivo contra backend dev: agrupaciones por categoría, conductor y usuario+COMBI responden con datos reales
+
+---
+
+## Próximos pasos sugeridos (continuar aquí)
+
+### Opción A — Módulos operativos (mayor impacto)
+1. **Viajes** — revisar flujo completo programar→salida→llegada desde el frontend, probar con datos reales
+2. **Pasajes** — validar que el selector de tarifa respeta `temporada_id` del viaje activo
+3. **Caja** — verificar que el cierre de turno genera el PDF correctamente
+
+### Opción B — Calidad y robustez
+1. **Tests de integración** — al menos para Auth, Viajes y Pasajes (los más críticos)
+2. **Rate limiting** — revisar que el bloqueo por `intentos_fallidos` funciona (columna recién agregada)
+3. **Manifiestos** — probar generación de PDF con pasajeros y encomiendas reales
+
+### Opción C — Funcionalidades nuevas
+1. **Conductor portal** — vista `/conductor` que muestre los viajes asignados al conductor logueado
+2. **Notificaciones en tiempo real** — WebSocket para alertar al operador cuando llega un pasaje reservado
+3. **Tracking QR** — UI del tracking público para escanear QR de encomienda
+
+### Para continuar en la próxima sesión, decirle al asistente:
+> "Continúa desde PROGRESS.md — sesión 2026-06-11. Quiero trabajar en [Opción A/B/C]."
 
 ---
 

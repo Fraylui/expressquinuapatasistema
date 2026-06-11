@@ -27,6 +27,8 @@ public record CrearUsuarioDTO(
         String password,
 
         @NotBlank(message = "Rol obligatorio")
+        @Pattern(regexp = "^(SUPER_ADMIN|GERENTE|ADMIN_AGENCIA|OPERADOR|CONDUCTOR)$",
+                message = "Rol inválido")
         String rol,
 
         @NotNull(message = "Agencia obligatoria")

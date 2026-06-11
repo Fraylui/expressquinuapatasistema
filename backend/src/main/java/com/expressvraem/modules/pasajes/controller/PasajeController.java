@@ -38,6 +38,12 @@ public class PasajeController {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
     }
 
+    private String resolveNombre(Usuario u) {
+        String n = u.getNombres() != null ? u.getNombres() : "";
+        String a = u.getApellidos() != null ? u.getApellidos() : "";
+        return (n + " " + a).trim();
+    }
+
     private String extraerIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         return (xff != null && !xff.isBlank()) ? xff.split(",")[0].trim() : request.getRemoteAddr();
@@ -51,7 +57,7 @@ public class PasajeController {
             HttpServletRequest request) {
         var u = resolveUser(auth);
         PasajeResponseDTO result = pasajeService.venderPasaje(
-                dto, u.getId(), extraerIp(request), u.getNombres() + " " + u.getApellidos());
+                dto, u.getId(), extraerIp(request), resolveNombre(u));
         return ResponseEntity.ok(ApiResponse.ok("Pasaje vendido", result));
     }
 
@@ -84,7 +90,7 @@ public class PasajeController {
         String formaPago = body.getOrDefault("formaPago", "EFECTIVO");
         var u = resolveUser(auth);
         PasajeResponseDTO result = pasajeService.confirmarReserva(
-                id, formaPago, u.getId(), extraerIp(request), u.getNombres() + " " + u.getApellidos());
+                id, formaPago, u.getId(), extraerIp(request), resolveNombre(u));
         return ResponseEntity.ok(ApiResponse.ok("Reserva confirmada y pagada", result));
     }
 
@@ -97,7 +103,7 @@ public class PasajeController {
             HttpServletRequest request) {
         String motivo = body.getOrDefault("motivoAnulacion", "");
         var u = resolveUser(auth);
-        pasajeService.anularPasaje(id, motivo, u.getId(), extraerIp(request), u.getNombres() + " " + u.getApellidos());
+        pasajeService.anularPasaje(id, motivo, u.getId(), extraerIp(request), resolveNombre(u));
         return ResponseEntity.ok(ApiResponse.ok("Pasaje anulado", null));
     }
 

@@ -17,4 +17,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByDniAndIdNot(String dni, Long id);
     List<Usuario> findByAgenciaId(Long agenciaId);
     List<Usuario> findByAgenciaIdOrderByNombresAsc(Long agenciaId);
+    List<Usuario> findByIntentosFallidosGreaterThan(int intentos);
 }

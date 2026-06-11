@@ -2,8 +2,8 @@
 import React, { useState } from 'react'
 import useSWR from 'swr'
 import {
-  FileSpreadsheet, TrendingUp, Users, Package,
-  Wallet, AlertTriangle, Clock, Activity, Bus,
+  FileSpreadsheet, TrendingUp, Package,
+  Wallet, Clock, Bus,
   Download, BarChart2, ChevronRight, DollarSign,
   Ticket,
 } from 'lucide-react'
@@ -17,38 +17,13 @@ import toast from 'react-hot-toast'
 type TabType     = 'ventas' | 'encomiendas' | 'caja'
 type PeriodoType = '7' | '14' | '30'
 
-interface KpisGerente {
-  pasajesHoy: number; ingresosHoy: number; encomiendaActivas: number
-  cajasAbiertas: number; auditoriaHoy: number; viajesActivosHoy: number
-  diferenciasHoy: number; fechaHora: string
-}
 interface TendenciaDia { fecha: string; pasajes: number; encomiendas: number; ingresos: number }
 interface VentaHora    { hora: string; pasajes: number; ingresos: number }
 interface ViajesDia    { viajeId: number; estado: string; hora: string; origen: string; destino: string; placa: string; tipo: string; totalAsientos: number; pasajerosVendidos: number }
-interface EncPendiente { id: number; codigoTracking: string; estado: string; descripcion: string; horas: number; remitente: string; destinatario: string }
 interface CajaItem     { id: number; fechaApertura: string; fechaCierre: string | null; estado: string; operadorNombre: string }
 
 function fmtMoney(n: number) {
   return `S/ ${Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2 })}`
-}
-
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, icon: Icon, accent, alert }: {
-  label: string; value: string | number; sub?: string
-  icon: React.ElementType; accent: string; alert?: boolean
-}) {
-  return (
-    <div className={`bg-white rounded-2xl border p-4 flex gap-3 items-start ${alert ? 'border-red-200' : 'border-gray-100'} shadow-sm`}>
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${accent}`}>
-        <Icon size={16} className="text-white" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">{label}</p>
-        <p className={`text-xl font-bold tabular-nums leading-tight mt-0.5 ${alert ? 'text-red-600' : 'text-gray-900'}`}>{value}</p>
-        {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  )
 }
 
 // ── Resumen stat ──────────────────────────────────────────────────────────────
@@ -74,10 +49,241 @@ function ChartTooltip({ active, payload, label }: any) {
             {p.name}
           </span>
           <span className="font-bold text-gray-900">
-            {p.dataKey === 'ingresos' ? fmtMoney(p.value) : p.value}
+            {p.dataKey === 'ingresos' || p.dataKey === 'total' ? fmtMoney(p.value) : p.value}
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Ingresos filtrables ───────────────────────────────────────────────────────
+
+interface IngresosResp {
+  totalGeneral: number
+  operacionesTotal: number
+  porCategoria: Record<string, { total: number; operaciones: number }>
+  groupBy: string
+  desglose: { clave: string | null; etiqueta: string; operaciones: number; total: number }[]
+}
+
+const CATEGORIA_META: Record<string, { label: string; chip: string }> = {
+  PASAJE_CAMIONETA:   { label: 'Pasajes camioneta', chip: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
+  PASAJE_COMBI:       { label: 'Pasajes combi',     chip: 'bg-teal-50 border-teal-100 text-teal-700' },
+  CUOTA_SALIDA_COMBI: { label: 'Cuotas combi',      chip: 'bg-cyan-50 border-cyan-100 text-cyan-700' },
+  ENCOMIENDA:         { label: 'Encomiendas',       chip: 'bg-violet-50 border-violet-100 text-violet-700' },
+  ENC_PAGO_DESTINO:   { label: 'Enc. pago destino', chip: 'bg-purple-50 border-purple-100 text-purple-700' },
+  ENC_EXTERNA:        { label: 'Enc. externas',     chip: 'bg-amber-50 border-amber-100 text-amber-700' },
+  PASAJE:             { label: 'Pasajes',           chip: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
+  OTRO:               { label: 'Otros ingresos',    chip: 'bg-gray-50 border-gray-200 text-gray-600' },
+}
+
+const GROUP_OPTIONS = [
+  { key: 'categoria', label: 'Categoría' },
+  { key: 'dia',       label: 'Día' },
+  { key: 'agencia',   label: 'Agencia' },
+  { key: 'usuario',   label: 'Usuario' },
+  { key: 'vehiculo',  label: 'Vehículo' },
+  { key: 'conductor', label: 'Conductor' },
+  { key: 'viaje',     label: 'Viaje' },
+]
+
+const TIPOS_VEHICULO_FILTRO = ['COMBI', 'CAMIONETA']
+
+const selectCls = 'px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors'
+
+function hoyISO(offsetDias = 0) {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDias)
+  return d.toISOString().slice(0, 10)
+}
+
+const RANGOS_RAPIDOS: { label: string; dias: number }[] = [
+  { label: 'Hoy',     dias: 0 },
+  { label: '7 días',  dias: 6 },
+  { label: '30 días', dias: 29 },
+  { label: '90 días', dias: 89 },
+]
+
+function IngresosSection() {
+  const [desde, setDesde]               = useState(hoyISO(-29))
+  const [hasta, setHasta]               = useState(hoyISO())
+  const [agenciaId, setAgenciaId]       = useState('')
+  const [usuarioId, setUsuarioId]       = useState('')
+  const [tipoVehiculo, setTipoVehiculo] = useState('')
+  const [categoria, setCategoria]       = useState('')
+  const [groupBy, setGroupBy]           = useState('categoria')
+
+  const { data: agencias } = useSWR<any[]>('/api/agencias')
+  const { data: usuarios } = useSWR<any[]>('/api/usuarios')
+
+  const qs = new URLSearchParams({ desde, hasta, groupBy })
+  if (agenciaId)    qs.set('agenciaId', agenciaId)
+  if (usuarioId)    qs.set('usuarioId', usuarioId)
+  if (tipoVehiculo) qs.set('tipoVehiculo', tipoVehiculo)
+  if (categoria)    qs.set('categoria', categoria)
+
+  const { data, isLoading } = useSWR<IngresosResp>(
+    desde && hasta ? `/api/reportes/ingresos?${qs.toString()}` : null)
+
+  const cats     = data?.porCategoria ?? {}
+  const desglose = data?.desglose ?? []
+  const chartData = desglose.slice(0, 12).map(d => ({
+    etiqueta: d.etiqueta.length > 18 ? d.etiqueta.slice(0, 17) + '…' : d.etiqueta,
+    total: Number(d.total),
+  }))
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <DollarSign size={16} className="text-[#064e3b]" />
+        <h2 className="text-sm font-semibold text-gray-900">Ingresos por servicio y vehículo</h2>
+      </div>
+
+      {/* Barra de filtros */}
+      <div className="flex flex-wrap items-end gap-2.5 pb-3 border-b border-gray-100">
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Rango rápido</label>
+          <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-xl">
+            {RANGOS_RAPIDOS.map(r => {
+              const activo = desde === hoyISO(-r.dias) && hasta === hoyISO()
+              return (
+                <button key={r.label}
+                  onClick={() => { setDesde(hoyISO(-r.dias)); setHasta(hoyISO()) }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    activo ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  }`}>
+                  {r.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Desde</label>
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className={selectCls} />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Hasta</label>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={selectCls} />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Agencia</label>
+          <select value={agenciaId} onChange={e => setAgenciaId(e.target.value)} className={selectCls}>
+            <option value="">Todas</option>
+            {(agencias ?? []).map((a: any) => (
+              <option key={a.id} value={a.id}>{a.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Usuario</label>
+          <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)} className={selectCls}>
+            <option value="">Todos</option>
+            {(usuarios ?? []).map((u: any) => (
+              <option key={u.id} value={u.id}>{`${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim() || u.email}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Tipo vehículo</label>
+          <select value={tipoVehiculo} onChange={e => setTipoVehiculo(e.target.value)} className={selectCls}>
+            <option value="">Todos</option>
+            {TIPOS_VEHICULO_FILTRO.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Categoría</label>
+          <select value={categoria} onChange={e => setCategoria(e.target.value)} className={selectCls}>
+            <option value="">Todas</option>
+            {Object.entries(CATEGORIA_META).map(([k, m]) => (
+              <option key={k} value={k}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Total + chips por categoría */}
+      <div className="flex flex-wrap gap-3">
+        <div className="rounded-xl px-4 py-3 bg-[#064e3b] text-white min-w-[150px]">
+          <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">Total del período</p>
+          <p className="text-2xl font-black tabular-nums">{data ? fmtMoney(Number(data.totalGeneral)) : '—'}</p>
+          <p className="text-[10px] opacity-60">{data?.operacionesTotal ?? 0} operaciones</p>
+        </div>
+        {Object.entries(cats).map(([key, v]) => {
+          const meta = CATEGORIA_META[key] ?? { label: key, chip: 'bg-gray-50 border-gray-200 text-gray-600' }
+          return (
+            <div key={key} className={`rounded-xl px-4 py-3 border min-w-[140px] ${meta.chip}`}>
+              <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">{meta.label}</p>
+              <p className="text-lg font-bold tabular-nums">{fmtMoney(Number(v.total))}</p>
+              <p className="text-[10px] opacity-60">{v.operaciones} op.</p>
+            </div>
+          )
+        })}
+        {!isLoading && data && Object.keys(cats).length === 0 && (
+          <p className="text-sm text-gray-400 self-center">Sin ingresos en el período seleccionado</p>
+        )}
+      </div>
+
+      {/* Selector de agrupación */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Desglose por:</span>
+        <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-xl flex-wrap">
+          {GROUP_OPTIONS.map(g => (
+            <button key={g.key} onClick={() => setGroupBy(g.key)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                groupBy === g.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}>
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Gráfico + tabla del desglose */}
+      {desglose.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 28)}>
+            <ComposedChart data={chartData} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                tickFormatter={v => `S/${v}`} />
+              <YAxis type="category" dataKey="etiqueta" tick={{ fontSize: 10, fill: '#6b7280' }}
+                axisLine={false} tickLine={false} width={120} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="total" name="Ingresos" fill="#059669" radius={[0, 4, 4, 0]} barSize={16} />
+            </ComposedChart>
+          </ResponsiveContainer>
+
+          <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr className="border-b border-gray-100">
+                  {[GROUP_OPTIONS.find(g => g.key === groupBy)?.label ?? 'Grupo', 'Operaciones', 'Total'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {desglose.map((d, i) => (
+                  <tr key={`${d.clave}-${i}`} className="hover:bg-gray-50/60 transition-colors">
+                    <td className="px-3 py-2 text-xs text-gray-700">
+                      {groupBy === 'categoria' ? (CATEGORIA_META[d.etiqueta]?.label ?? d.etiqueta) : d.etiqueta}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 tabular-nums">{d.operaciones}</td>
+                    <td className="px-3 py-2 text-xs font-bold text-gray-900 tabular-nums">{fmtMoney(Number(d.total))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="py-8 text-center">
+          <DollarSign size={26} className="mx-auto mb-2 text-gray-200" />
+          <p className="text-sm text-gray-400">{isLoading ? 'Cargando…' : 'Sin datos para los filtros seleccionados'}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -90,14 +296,6 @@ const ESTADO_VIAJE: Record<string, string> = {
   CANCELADO:  'bg-red-100 text-red-600',
 }
 
-const ENC_ESTADO: Record<string, string> = {
-  EN_TRANSITO:     'bg-purple-100 text-purple-700',
-  LLEGADO_AGENCIA: 'bg-cyan-100 text-cyan-700',
-  DISPONIBLE:      'bg-teal-100 text-teal-700',
-  REGISTRADO:      'bg-blue-100 text-blue-700',
-  ALMACENADO:      'bg-amber-100 text-amber-700',
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ReportesPage() {
@@ -108,17 +306,14 @@ export default function ReportesPage() {
   const [periodo, setPeriodo]       = useState<PeriodoType>('7')
   const [cajaId, setCajaId]         = useState<string>('')
 
-  const { data: kpis }        = useSWR<KpisGerente>('/api/reportes/kpis', { refreshInterval: 300_000 })
   const { data: tendenciaRaw }= useSWR<TendenciaDia[]>(`/api/reportes/tendencia?dias=${periodo}`)
   const { data: horaRaw }     = useSWR<VentaHora[]>('/api/reportes/ventas-hora', { refreshInterval: 300_000 })
   const { data: viajesRaw }   = useSWR<ViajesDia[]>('/api/reportes/viajes-dia', { refreshInterval: 300_000 })
-  const { data: encPendRaw }  = useSWR<EncPendiente[]>('/api/reportes/encomiendas-pendientes')
   const { data: cajasRaw }    = useSWR<CajaItem[]>('/api/caja/historial')
 
   const tendencia  = tendenciaRaw ?? []
   const ventasHora = horaRaw ?? []
   const viajes     = viajesRaw ?? []
-  const encPend    = encPendRaw ?? []
   const cajas      = cajasRaw ?? []
 
   const totalPasajes     = tendencia.reduce((s, d) => s + d.pasajes, 0)
@@ -177,27 +372,8 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard label="Viajes hoy"       value={kpis?.viajesActivosHoy ?? '—'}
-          sub="activos"         icon={Bus}           accent="bg-[#064e3b]" />
-        <KpiCard label="Pasajes hoy"      value={kpis?.pasajesHoy ?? '—'}
-          sub="emitidos"        icon={Ticket}        accent="bg-blue-500" />
-        <KpiCard label="Ingresos hoy"     value={kpis ? fmtMoney(Number(kpis.ingresosHoy)) : '—'}
-          sub="en caja"         icon={Wallet}        accent="bg-emerald-600" />
-        <KpiCard label="Enc. en tránsito" value={kpis?.encomiendaActivas ?? '—'}
-          sub="activas"         icon={Package}       accent="bg-violet-600" />
-        <KpiCard label="Cajas abiertas"   value={kpis?.cajasAbiertas ?? '—'}
-          sub="turnos en curso" icon={Activity}      accent="bg-amber-500" />
-        <KpiCard
-          label="Descuadres hoy"
-          value={kpis?.diferenciasHoy ?? '—'}
-          sub="cierres con dif."
-          icon={AlertTriangle}
-          accent={(kpis?.diferenciasHoy ?? 0) > 0 ? 'bg-red-500' : 'bg-gray-400'}
-          alert={(kpis?.diferenciasHoy ?? 0) > 0}
-        />
-      </div>
+      {/* ── Ingresos por servicio y vehículo ── */}
+      <IngresosSection />
 
       {/* ── Tendencia operativa ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
@@ -341,52 +517,6 @@ export default function ReportesPage() {
           )}
         </div>
       </div>
-
-      {/* ── Encomiendas pendientes >24h ── */}
-      {encPend.length > 0 && (
-        <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-3.5 bg-amber-50/60 border-b border-amber-100 flex items-center gap-2">
-            <AlertTriangle size={14} className="text-amber-500" />
-            <h2 className="text-sm font-semibold text-gray-900">
-              Encomiendas sin movimiento +24h
-            </h2>
-            <span className="ml-1 text-[11px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-              {encPend.length} alerta{encPend.length > 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  {['Tracking', 'Descripción', 'Estado', 'Remitente', 'Destinatario', 'Sin cambio'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {encPend.map(e => (
-                  <tr key={e.id} className="hover:bg-amber-50/40 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-[#064e3b]">{e.codigoTracking}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs max-w-[160px] truncate">{e.descripcion}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${ENC_ESTADO[e.estado] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {e.estado}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{e.remitente}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{e.destinatario}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`text-xs font-bold tabular-nums ${e.horas > 72 ? 'text-red-600' : 'text-amber-600'}`}>
-                        {e.horas}h
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* ── Exportar ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-5">

@@ -15,4 +15,6 @@ public interface ManifiestoRepository extends JpaRepository<Manifiesto, Long> {
     List<Manifiesto> findByAgenciaIdOrderByCreatedAtDesc(Long agenciaId);
 
     List<Manifiesto> findAllByOrderByCreatedAtDesc();
+
+    long countByAgenciaId(Long agenciaId);
 }

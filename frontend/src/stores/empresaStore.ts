@@ -9,6 +9,7 @@ interface EmpresaState {
   ciudad: string
   telefono: string
   logoBase64: string | null
+  cuotaSalidaCombi: string
   loaded: boolean
   setNombre:     (v: string) => void
   setRuc:        (v: string) => void
@@ -16,6 +17,7 @@ interface EmpresaState {
   setCiudad:     (v: string) => void
   setTelefono:   (v: string) => void
   setLogoBase64: (v: string | null) => void
+  setCuotaSalidaCombi: (v: string) => void
   fetchFromApi:  () => Promise<void>
   saveToApi:     (data: Partial<EmpresaState>) => Promise<void>
 }
@@ -29,6 +31,7 @@ export const useEmpresaStore = create<EmpresaState>()(
       ciudad:      '',
       telefono:    '',
       logoBase64:  null,
+      cuotaSalidaCombi: '0',
       loaded:      false,
 
       setNombre:     (nombre)     => set({ nombre }),
@@ -37,6 +40,7 @@ export const useEmpresaStore = create<EmpresaState>()(
       setCiudad:     (ciudad)     => set({ ciudad }),
       setTelefono:   (telefono)   => set({ telefono }),
       setLogoBase64: (logoBase64) => set({ logoBase64 }),
+      setCuotaSalidaCombi: (cuotaSalidaCombi) => set({ cuotaSalidaCombi }),
 
       fetchFromApi: async () => {
         try {
@@ -50,6 +54,7 @@ export const useEmpresaStore = create<EmpresaState>()(
               ciudad:     d.ciudad     ?? '',
               telefono:   d.telefono   ?? '',
               logoBase64: d.logoBase64 ?? null,
+              cuotaSalidaCombi: d.cuotaSalidaCombi != null ? String(d.cuotaSalidaCombi) : '0',
               loaded:     true,
             })
           }
@@ -64,12 +69,18 @@ export const useEmpresaStore = create<EmpresaState>()(
           ciudad:     get().ciudad,
           telefono:   get().telefono,
           logoBase64: get().logoBase64,
+          cuotaSalidaCombi: get().cuotaSalidaCombi,
           ...data,
         }
         set(current)
-        const res: any = await api.put('/api/empresa-config', current)
+        const payload = { ...current, cuotaSalidaCombi: parseFloat(String(current.cuotaSalidaCombi)) || 0 }
+        const res: any = await api.put('/api/empresa-config', payload)
         const saved = res?.data
-        if (saved) set({ ...saved, loaded: true })
+        if (saved) set({
+          ...saved,
+          cuotaSalidaCombi: saved.cuotaSalidaCombi != null ? String(saved.cuotaSalidaCombi) : '0',
+          loaded: true,
+        })
       },
     }),
     { name: 'empresa-config' }

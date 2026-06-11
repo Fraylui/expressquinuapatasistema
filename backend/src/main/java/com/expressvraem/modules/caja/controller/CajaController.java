@@ -57,6 +57,16 @@ public class CajaController {
         return (xff != null && !xff.isBlank()) ? xff.split(",")[0].trim() : request.getRemoteAddr();
     }
 
+    private BigDecimal parseMonto(Object val, String campo) {
+        if (val == null) throw new BusinessException(campo + " es obligatorio", "CAMPO_REQUERIDO");
+        try {
+            BigDecimal bd = new BigDecimal(String.valueOf(val));
+            return bd;
+        } catch (NumberFormatException e) {
+            throw new BusinessException(campo + " debe ser un número válido", "CAMPO_INVALIDO");
+        }
+    }
+
     @GetMapping("/consolidado-agencias")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> consolidadoAgencias() {
@@ -85,9 +95,7 @@ public class CajaController {
             @RequestBody Map<String, Object> body,
             Authentication auth,
             HttpServletRequest request) {
-        Object raw = body.get("montoInicial");
-        if (raw == null) throw new BusinessException("montoInicial es obligatorio", "CAMPO_REQUERIDO");
-        BigDecimal monto = new BigDecimal(String.valueOf(raw));
+        BigDecimal monto = parseMonto(body.get("montoInicial"), "montoInicial");
         Usuario usr = resolveUsuario(auth);
         Caja caja = cajaService.abrirCaja(
                 usr.getId(), monto, resolveAgenciaId(auth),
@@ -102,7 +110,7 @@ public class CajaController {
             HttpServletRequest request) {
         String concepto = String.valueOf(body.getOrDefault("concepto", "")).trim();
         if (concepto.isEmpty()) throw new BusinessException("El concepto es obligatorio", "CAMPO_REQUERIDO");
-        BigDecimal monto = new BigDecimal(String.valueOf(body.get("monto")));
+        BigDecimal monto = parseMonto(body.get("monto"), "monto");
         Usuario usr = resolveUsuario(auth);
         MovimientoCaja mov = cajaService.registrarEgreso(
                 usr.getId(), concepto, monto,
@@ -117,7 +125,7 @@ public class CajaController {
             HttpServletRequest request) {
         String concepto = String.valueOf(body.getOrDefault("concepto", "")).trim();
         if (concepto.isEmpty()) throw new BusinessException("El concepto es obligatorio", "CAMPO_REQUERIDO");
-        BigDecimal monto = new BigDecimal(String.valueOf(body.get("monto")));
+        BigDecimal monto = parseMonto(body.get("monto"), "monto");
         Usuario usr = resolveUsuario(auth);
         MovimientoCaja mov = cajaService.registrarIngreso(
                 usr.getId(), concepto, monto,
@@ -139,7 +147,7 @@ public class CajaController {
 
         String tipo = String.valueOf(body.get("tipo"));
         String concepto = String.valueOf(body.get("concepto"));
-        BigDecimal monto = new BigDecimal(String.valueOf(body.get("monto")));
+        BigDecimal monto = parseMonto(body.get("monto"), "monto");
         String refTipo = body.containsKey("referenciaTipo") ? String.valueOf(body.get("referenciaTipo")) : null;
         Long refId = body.containsKey("referenciaId") && body.get("referenciaId") != null
                 ? Long.valueOf(String.valueOf(body.get("referenciaId"))) : null;
@@ -159,7 +167,9 @@ public class CajaController {
     }
 
     @GetMapping("/movimientos/{cajaId}")
-    public ResponseEntity<ApiResponse<List<MovimientoCaja>>> movimientosByCaja(@PathVariable Long cajaId) {
+    public ResponseEntity<ApiResponse<List<MovimientoCaja>>> movimientosByCaja(
+            @PathVariable Long cajaId, Authentication auth) {
+        cajaService.verificarAcceso(cajaId, resolveUserId(auth), resolveRol(auth), resolveAgenciaId(auth));
         return ResponseEntity.ok(ApiResponse.ok(cajaService.getMovimientos(cajaId)));
     }
 
@@ -168,9 +178,7 @@ public class CajaController {
             @RequestBody Map<String, Object> body,
             Authentication auth,
             HttpServletRequest request) {
-        Object rawMonto = body.get("montoFisico");
-        if (rawMonto == null) throw new BusinessException("montoFisico es obligatorio", "CAMPO_REQUERIDO");
-        BigDecimal montoFisico = new BigDecimal(String.valueOf(rawMonto));
+        BigDecimal montoFisico = parseMonto(body.get("montoFisico"), "montoFisico");
         String obs = body.containsKey("observacion") ? String.valueOf(body.get("observacion")) : null;
         Usuario usr = resolveUsuario(auth);
         Caja caja = cajaService.cerrarTurno(
@@ -195,6 +203,7 @@ public class CajaController {
 
     @GetMapping(value = "/{id}/reporte", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> reporte(@PathVariable Long id, Authentication auth) {
+        cajaService.verificarAcceso(id, resolveUserId(auth), resolveRol(auth), resolveAgenciaId(auth));
         Map<String, Object> datos = cajaService.getResumenTurno(id);
         List<MovimientoCaja> movs = cajaService.getMovimientos(id);
         byte[] pdf = pdfService.generarReporte(datos, movs);

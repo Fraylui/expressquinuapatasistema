@@ -1411,6 +1411,8 @@ export default function EncomiendaPage() {
   const { data: agencias = [] } = useSWR<Agencia[]>('/api/agencias')
   const { data: viajes  = [] } = useSWR<ViajeSimple[]>('/api/viajes/disponibles')
   const { data: statsData }    = useSWR<Record<string, number>>('/api/encomiendas/stats')
+  const { data: turnoCaja }    = useSWR<any>('/api/caja/turno-actual')
+  const cajaAbierta = (turnoCaja as any)?.estado === 'ABIERTA'
 
   // Subscribe to WS notifications for this agency's incoming packages
   useEffect(() => {
@@ -1743,6 +1745,13 @@ export default function EncomiendaPage() {
                     <p className="font-semibold text-amber-900">Pago en destino</p>
                     <p>El monto <strong>S/ {parseFloat(form.monto || '0').toFixed(2)}</strong> será cobrado al destinatario por el operador de la agencia de destino al momento de entregar el paquete.</p>
                     <p>El operador destino <strong>debe tener caja abierta</strong> para completar la entrega.</p>
+                  </div>
+                )}
+                {form.formaCobro !== 'POR_COBRAR' && !cajaAbierta && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 space-y-1">
+                    <p className="font-semibold text-red-900">Necesitas un turno de caja abierto</p>
+                    <p>El cobro al contado se registra en tu caja. Abre tu turno en <strong>Caja</strong> antes
+                    de confirmar, o cambia la forma de cobro a <strong>Pago en destino</strong>.</p>
                   </div>
                 )}
 

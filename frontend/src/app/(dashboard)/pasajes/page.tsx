@@ -706,7 +706,7 @@ export default function PasajesPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Venta de Pasajes</h1>
-            <p className="text-xs text-gray-500">Selecciona viaje, asiento y pasajero en 3 pasos</p>
+            <p className="text-xs text-gray-500">Selecciona viaje, asiento y pasajero — imprime el ticket al final</p>
           </div>
         </div>
         {step > 1 && step < 4 && (
@@ -1182,7 +1182,7 @@ export default function PasajesPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <FileText size={14} className="text-gray-400" /> Boletas del día
+                <FileText size={14} className="text-gray-400" /> Boletas emitidas
               </h3>
               {pasajes.length > 0 && (
                 <div className="flex gap-2">

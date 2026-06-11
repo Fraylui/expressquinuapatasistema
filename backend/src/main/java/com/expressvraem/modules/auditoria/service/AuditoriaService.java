@@ -152,7 +152,7 @@ public class AuditoriaService {
     }
 
     public byte[] exportarExcel(Long agenciaId, LocalDateTime desde, LocalDateTime hasta) throws IOException {
-        List<Auditoria> logs = auditoriaRepository.findByAgenciaIdAndFechaBetweenOrderByFechaDesc(agenciaId, desde, hasta);
+        List<Auditoria> logs = auditoriaRepository.findForExport(agenciaId, desde, hasta);
         logs.forEach(a -> a.setDetalle(generarDetalle(a)));
         List<Map<String, Object>> datos = logs.stream().map(a -> Map.<String, Object>of(
                 "fecha",    a.getFecha().toString(),
@@ -168,13 +168,13 @@ public class AuditoriaService {
     }
 
     public byte[] exportarPdf(Long agenciaId, LocalDateTime desde, LocalDateTime hasta) {
-        List<Auditoria> logs = auditoriaRepository.findByAgenciaIdAndFechaBetweenOrderByFechaDesc(agenciaId, desde, hasta);
+        List<Auditoria> logs = auditoriaRepository.findForExport(agenciaId, desde, hasta);
         logs.forEach(a -> a.setDetalle(generarDetalle(a)));
-        long total   = auditoriaRepository.countByAgenciaIdAndFechaBetween(agenciaId, desde, hasta);
-        long inserts = auditoriaRepository.countByAgenciaIdAndFechaBetweenAndAccion(agenciaId, desde, hasta, "INSERT");
-        long updates = auditoriaRepository.countByAgenciaIdAndFechaBetweenAndAccion(agenciaId, desde, hasta, "UPDATE");
-        long deletes = auditoriaRepository.countByAgenciaIdAndFechaBetweenAndAccion(agenciaId, desde, hasta, "DELETE");
-        long logins  = auditoriaRepository.countByAgenciaIdAndFechaBetweenAndAccion(agenciaId, desde, hasta, "LOGIN");
+        long total   = auditoriaRepository.countForExport(agenciaId, desde, hasta);
+        long inserts = auditoriaRepository.countForExportByAccion(agenciaId, desde, hasta, "INSERT");
+        long updates = auditoriaRepository.countForExportByAccion(agenciaId, desde, hasta, "UPDATE");
+        long deletes = auditoriaRepository.countForExportByAccion(agenciaId, desde, hasta, "DELETE");
+        long logins  = auditoriaRepository.countForExportByAccion(agenciaId, desde, hasta, "LOGIN");
         Map<String, Object> resumen = Map.of(
                 "total", total, "inserts", inserts, "updates", updates, "deletes", deletes, "logins", logins);
         return pdfService.generarReporte(logs, resumen, desde, hasta);

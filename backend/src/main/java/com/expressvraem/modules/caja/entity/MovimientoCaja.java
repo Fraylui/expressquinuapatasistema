@@ -42,6 +42,22 @@ public class MovimientoCaja {
     @Column(name = "referencia_id")
     private Long referenciaId;
 
+    /** PASAJE_COMBI | PASAJE_CAMIONETA | CUOTA_SALIDA_COMBI | ENCOMIENDA | ENC_PAGO_DESTINO | ENC_EXTERNA | OTRO */
+    @Column(name = "categoria_ingreso", length = 30)
+    private String categoriaIngreso;
+
+    @Column(name = "viaje_id")
+    private Long viajeId;
+
+    @Column(name = "vehiculo_id")
+    private Long vehiculoId;
+
+    @Column(name = "tipo_vehiculo", length = 20)
+    private String tipoVehiculo;
+
+    @Column(name = "conductor_id")
+    private Long conductorId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

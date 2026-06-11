@@ -27,6 +27,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -54,17 +55,24 @@ public class ViajeController {
     private final LogService              logService;
     private final WebSocketEventPublisher wsPublisher;
     private final LiquidacionViajeService liquidacionViajeService;
+    private final com.expressvraem.modules.caja.repository.CajaRepository cajaRepository;
+    private final com.expressvraem.modules.caja.service.CajaService cajaService;
+    private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
+    private final com.expressvraem.modules.auth.repository.UsuarioRepository usuarioRepository;
 
     /**
      * Programa un nuevo viaje y genera los asientos según la capacidad del vehículo.
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> programar(
             @Valid @RequestBody ProgramarViajeDTO dto, Authentication auth) {
 
         Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) agenciaId = 1L;
+        if (agenciaId == null) {
+            throw new BusinessException("No se pudo determinar la agencia del usuario", "AGENCIA_REQUERIDA");
+        }
 
         Object[] vehRow = (Object[]) entityManager
                 .createNativeQuery("SELECT id, placa, tipo, num_asientos FROM vehiculos WHERE id = :vid")
@@ -143,12 +151,18 @@ public class ViajeController {
                 .forEach(r -> libresCnt.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
 
         OffsetDateTime limite = OffsetDateTime.now().minusMinutes(30);
+        OffsetDateTime limiteRuta = OffsetDateTime.now().minusHours(24);
         List<Viaje> conLibres = todos.stream()
                 .filter(v -> libresCnt.getOrDefault(v.getId(), 0L) > 0)
                 // Excluir viajes PROGRAMADO cuya salida fue hace más de 30 min
                 .filter(v -> !"PROGRAMADO".equals(v.getEstado())
                         || v.getFechaHoraSal() == null
                         || !v.getFechaHoraSal().isBefore(limite))
+                // Excluir EN_RUTA con salida hace más de 24 h: son llegadas sin confirmar,
+                // no tiene sentido vender asientos de un viaje que partió hace días
+                .filter(v -> !"EN_RUTA".equals(v.getEstado())
+                        || v.getFechaHoraSal() == null
+                        || !v.getFechaHoraSal().isBefore(limiteRuta))
                 .filter(v -> fechaFinal == null || v.getFechaHoraSal() == null
                         || v.getFechaHoraSal().toLocalDate().equals(fechaFinal))
                 .toList();
@@ -245,7 +259,7 @@ public class ViajeController {
         Map<Long, String> conds = new HashMap<>();
         if (!condIds.isEmpty())
             ((List<Object[]>) entityManager.createNativeQuery(
-                    "SELECT id, nombres || ' ' || apellidos FROM usuarios WHERE id IN :ids")
+                    "SELECT id, COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM usuarios WHERE id IN :ids")
                     .setParameter("ids", condIds).getResultList())
                     .forEach(r -> conds.put(((Number) r[0]).longValue(), String.valueOf(r[1])));
 
@@ -373,6 +387,7 @@ public class ViajeController {
      */
     @PostMapping("/{id}/confirmar-salida")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> confirmarSalida(
             @PathVariable Long id, Authentication auth) {
         Viaje viaje = viajeRepository.findById(id)
@@ -387,16 +402,45 @@ public class ViajeController {
         viaje.setEstado("EN_RUTA");
         viajeRepository.save(viaje);
 
+        // Cuota fija por salida de COMBI → ingreso en la caja del operador que confirma
+        Object vehTipoObj = null;
+        try {
+            vehTipoObj = entityManager
+                    .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
+                    .setParameter("vid", viaje.getVehiculoId())
+                    .getSingleResult();
+        } catch (Exception ignored) {}
+        if ("COMBI".equals(String.valueOf(vehTipoObj))) {
+            java.math.BigDecimal cuota = empresaConfigService.get().getCuotaSalidaCombi();
+            if (cuota != null && cuota.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                Long operadorId = usuarioRepository.findByEmail(auth.getName())
+                        .map(u -> u.getId()).orElse(null);
+                var turno = operadorId == null
+                        ? java.util.Optional.<com.expressvraem.modules.caja.entity.Caja>empty()
+                        : cajaRepository.findByUsuarioIdAndEstado(operadorId, "ABIERTA");
+                if (turno.isEmpty()) {
+                    throw new BusinessException(
+                            "Debe tener un turno de caja abierto para registrar la cuota de salida de la combi (S/ "
+                                    + cuota.toPlainString() + "). Abra su caja primero.",
+                            "CAJA_REQUERIDA");
+                }
+                cajaService.registrarMovimiento(
+                        turno.get().getId(), "INGRESO",
+                        "Cuota salida combi — viaje " + id,
+                        cuota, operadorId, "CUOTA_SALIDA_COMBI", id,
+                        "CUOTA_SALIDA_COMBI", id, viaje.getVehiculoId(), "COMBI", viaje.getConductorId());
+            }
+        }
+
         // Cambia todas las encomiendas pre-tránsito asignadas a este viaje
         java.util.Set<String> preTransito = java.util.Set.of(
                 "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
         List<Encomienda> encomiendas = encomiendaRepository.findByViajeId(id);
-        encomiendas.forEach(enc -> {
-            if (preTransito.contains(enc.getEstado())) {
-                enc.setEstado("EN_TRANSITO");
-                encomiendaRepository.save(enc);
-            }
-        });
+        List<Encomienda> aActualizar = encomiendas.stream()
+                .filter(enc -> preTransito.contains(enc.getEstado()))
+                .peek(enc -> enc.setEstado("EN_TRANSITO"))
+                .toList();
+        if (!aActualizar.isEmpty()) encomiendaRepository.saveAll(aActualizar);
 
         logService.logOperacion(auth.getName(), "VIAJES", "CONFIRMAR_SALIDA",
                 Map.of("viajeId", id, "operador", auth.getName()));
@@ -417,6 +461,7 @@ public class ViajeController {
      */
     @PostMapping("/{id}/cancelar")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> cancelar(
             @PathVariable Long id, Authentication auth) {
         Viaje viaje = viajeRepository.findById(id)
@@ -438,6 +483,7 @@ public class ViajeController {
      */
     @PostMapping("/{id}/confirmar-llegada")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> confirmarLlegada(
             @PathVariable Long id, Authentication auth) {
         Viaje viaje = viajeRepository.findById(id)
@@ -452,12 +498,11 @@ public class ViajeController {
         viaje.setEstado("COMPLETADO");
         viajeRepository.save(viaje);
 
-        encomiendaRepository.findByViajeId(id).forEach(enc -> {
-            if ("EN_TRANSITO".equals(enc.getEstado())) {
-                enc.setEstado("LLEGADO_AGENCIA");
-                encomiendaRepository.save(enc);
-            }
-        });
+        List<Encomienda> llegadas = encomiendaRepository.findByViajeId(id).stream()
+                .filter(enc -> "EN_TRANSITO".equals(enc.getEstado()))
+                .peek(enc -> enc.setEstado("LLEGADO_AGENCIA"))
+                .toList();
+        if (!llegadas.isEmpty()) encomiendaRepository.saveAll(llegadas);
 
         logService.logOperacion(auth.getName(), "VIAJES", "CONFIRMAR_LLEGADA",
                 Map.of("viajeId", id, "operador", auth.getName()));
@@ -500,6 +545,7 @@ public class ViajeController {
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<ViajeResponseDTO>> editar(
             @PathVariable Long id,
             @Valid @RequestBody EditarViajeDTO dto,
@@ -589,12 +635,12 @@ public class ViajeController {
     private void validarConflictos(Long vehiculoId, Long conductorId,
                                    OffsetDateTime fechaHoraSal, Long excludeId) {
         List<String> activos = List.of("PROGRAMADO", "EN_RUTA", "ATRASADO");
-        List<Viaje> candidatos = viajeRepository.findByEstadoIn(activos).stream()
-                .filter(v -> !v.getId().equals(excludeId))
-                .filter(v -> v.getVehiculoId().equals(vehiculoId) || v.getConductorId().equals(conductorId))
-                .filter(v -> v.getFechaHoraSal() != null
-                        && Math.abs(ChronoUnit.HOURS.between(v.getFechaHoraSal(), fechaHoraSal)) < 4)
-                .toList();
+        OffsetDateTime desde = fechaHoraSal.minusHours(4);
+        OffsetDateTime hasta = fechaHoraSal.plusHours(4);
+        List<Viaje> candidatos = viajeRepository.findConflictos(
+                activos, vehiculoId, conductorId,
+                excludeId != null ? excludeId : -1L,
+                desde, hasta);
 
         if (!candidatos.isEmpty()) {
             Viaje c = candidatos.get(0);
@@ -632,7 +678,7 @@ public class ViajeController {
         Map<Long, String> conds = new HashMap<>();
         if (!condIds.isEmpty())
             ((List<Object[]>) entityManager.createNativeQuery(
-                    "SELECT id, nombres || ' ' || apellidos FROM usuarios WHERE id IN :ids")
+                    "SELECT id, COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM usuarios WHERE id IN :ids")
                     .setParameter("ids", condIds).getResultList())
                     .forEach(r -> conds.put(((Number) r[0]).longValue(), String.valueOf(r[1])));
 
@@ -651,6 +697,15 @@ public class ViajeController {
                 "SELECT viaje_id, COUNT(*) FROM encomiendas WHERE viaje_id IN :ids GROUP BY viaje_id")
                 .setParameter("ids", viajeIds).getResultList())
                 .forEach(r -> encCnt.put(((Number) r[0]).longValue(), ((Number) r[1]).longValue()));
+
+        // Ingresos en caja por viaje (pasajes + encomiendas + cuota combi) — dimensión V5
+        Map<Long, java.math.BigDecimal> ingresosViaje = new HashMap<>();
+        ((List<Object[]>) entityManager.createNativeQuery(
+                "SELECT viaje_id, SUM(monto) FROM movimientos_caja " +
+                "WHERE tipo = 'INGRESO' AND viaje_id IN :ids GROUP BY viaje_id")
+                .setParameter("ids", viajeIds).getResultList())
+                .forEach(r -> ingresosViaje.put(((Number) r[0]).longValue(),
+                        new java.math.BigDecimal(r[1].toString())));
 
         return viajes.stream().map(v -> {
             Object[] ruta = rutas.get(v.getRutaId());
@@ -671,6 +726,7 @@ public class ViajeController {
             dto.setAsientosLibres(cnt[0]);
             dto.setAsientosOcupados(cnt[1]);
             dto.setCantEncomiendas(encCnt.getOrDefault(v.getId(), 0L));
+            dto.setIngresosViaje(ingresosViaje.getOrDefault(v.getId(), java.math.BigDecimal.ZERO));
             return dto;
         }).filter(Objects::nonNull).toList();
     }
@@ -710,7 +766,9 @@ public class ViajeController {
             Object[] condRow = (Object[]) entityManager
                     .createNativeQuery("SELECT nombres, apellidos FROM usuarios WHERE id = :cid")
                     .setParameter("cid", v.getConductorId()).getSingleResult();
-            dto.setConductorNombre(condRow[0] + " " + condRow[1]);
+            String cn = condRow[0] != null ? condRow[0].toString() : "";
+            String ca = condRow[1] != null ? condRow[1].toString() : "";
+            dto.setConductorNombre((cn + " " + ca).trim());
         } catch (Exception ignored) {
             dto.setConductorNombre("—");
         }

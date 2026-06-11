@@ -4,6 +4,7 @@ import com.expressvraem.modules.agencias.dto.AgenciaRequestDTO;
 import com.expressvraem.modules.agencias.dto.AgenciaResponseDTO;
 import com.expressvraem.modules.agencias.service.AgenciaService;
 import com.expressvraem.shared.exceptions.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,17 +56,17 @@ public class AgenciaController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<AgenciaResponseDTO>> crear(@RequestBody AgenciaRequestDTO dto) {
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
+    public ResponseEntity<ApiResponse<AgenciaResponseDTO>> crear(@Valid @RequestBody AgenciaRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Agencia creada correctamente", agenciaService.crear(dto)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
     public ResponseEntity<ApiResponse<AgenciaResponseDTO>> actualizar(
             @PathVariable Long id,
-            @RequestBody AgenciaRequestDTO dto) {
+            @Valid @RequestBody AgenciaRequestDTO dto) {
         return ResponseEntity.ok(ApiResponse.ok("Agencia actualizada", agenciaService.actualizar(id, dto)));
     }
 

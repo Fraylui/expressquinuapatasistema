@@ -26,5 +26,6 @@ public record ActualizarUsuarioDTO(
         Long agenciaId,
 
         /** Nueva contraseña — null para no cambiarla */
+        @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres")
         String nuevaPassword
 ) {}

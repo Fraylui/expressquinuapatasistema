@@ -22,6 +22,29 @@ public interface AuditoriaRepository extends JpaRepository<Auditoria, Long>, Jpa
     long countByAgenciaIdAndFechaBetweenAndAccion(Long agenciaId, LocalDateTime desde, LocalDateTime hasta, String accion);
     List<Auditoria> findByAgenciaIdAndFechaBetweenOrderByFechaDesc(Long agenciaId, LocalDateTime desde, LocalDateTime hasta);
 
+    /** Null-safe export queries — agenciaId null = todas las agencias (SUPER_ADMIN). */
+    @Query("SELECT a FROM Auditoria a WHERE (:agenciaId IS NULL OR a.agenciaId = :agenciaId) " +
+           "AND a.fecha BETWEEN :desde AND :hasta ORDER BY a.fecha DESC")
+    List<Auditoria> findForExport(
+            @Param("agenciaId") Long agenciaId,
+            @Param("desde") LocalDateTime desde,
+            @Param("hasta") LocalDateTime hasta);
+
+    @Query("SELECT COUNT(a) FROM Auditoria a WHERE (:agenciaId IS NULL OR a.agenciaId = :agenciaId) " +
+           "AND a.fecha BETWEEN :desde AND :hasta")
+    long countForExport(
+            @Param("agenciaId") Long agenciaId,
+            @Param("desde") LocalDateTime desde,
+            @Param("hasta") LocalDateTime hasta);
+
+    @Query("SELECT COUNT(a) FROM Auditoria a WHERE (:agenciaId IS NULL OR a.agenciaId = :agenciaId) " +
+           "AND a.fecha BETWEEN :desde AND :hasta AND a.accion = :accion")
+    long countForExportByAccion(
+            @Param("agenciaId") Long agenciaId,
+            @Param("desde") LocalDateTime desde,
+            @Param("hasta") LocalDateTime hasta,
+            @Param("accion") String accion);
+
     /** Una query GROUP BY en lugar de 5 queries de count. */
     @Query("SELECT a.accion, COUNT(a) FROM Auditoria a " +
            "WHERE (:agenciaId IS NULL OR a.agenciaId = :agenciaId) " +

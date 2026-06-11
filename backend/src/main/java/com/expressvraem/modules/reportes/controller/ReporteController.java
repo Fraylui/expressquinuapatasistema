@@ -35,6 +35,28 @@ public class ReporteController {
         return ResponseEntity.ok(ApiResponse.ok(reporteService.getKpisGerente(ag)));
     }
 
+    /**
+     * Reporte de ingresos filtrable por rango de fechas, agencia, usuario,
+     * tipo de vehículo y categoría, con desglose agrupado (groupBy:
+     * categoria | dia | agencia | usuario | vehiculo | conductor | viaje).
+     */
+    @GetMapping("/ingresos")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> ingresos(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(required = false) Long agenciaId,
+            @RequestParam(required = false) Long usuarioId,
+            @RequestParam(required = false) String tipoVehiculo,
+            @RequestParam(required = false) String categoria,
+            @RequestParam(defaultValue = "categoria") String groupBy) {
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getIngresos(
+                desde.atStartOfDay(), hasta.atTime(23, 59, 59),
+                agenciaId, usuarioId,
+                tipoVehiculo != null && !tipoVehiculo.isBlank() ? tipoVehiculo : null,
+                categoria != null && !categoria.isBlank() ? categoria : null,
+                groupBy)));
+    }
+
     @GetMapping("/ventas/excel")
     public ResponseEntity<byte[]> ventasExcel(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
@@ -68,8 +90,9 @@ public class ReporteController {
     public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> tendencia(
             @RequestParam(defaultValue = "7") int dias,
             @RequestParam(required = false) Long agenciaId) {
+        int diasSeguro = Math.min(Math.max(dias, 1), 90);
         Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
-        return ResponseEntity.ok(ApiResponse.ok(reporteService.getTendencia(ag, dias)));
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getTendencia(ag, diasSeguro)));
     }
 
     @GetMapping("/ventas-hora")
@@ -106,8 +129,9 @@ public class ReporteController {
     public ResponseEntity<ApiResponse<java.util.List<Map<String, Object>>>> topRutas(
             @RequestParam(defaultValue = "7") int dias,
             @RequestParam(required = false) Long agenciaId) {
+        int diasSeguro = Math.min(Math.max(dias, 1), 90);
         Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
-        return ResponseEntity.ok(ApiResponse.ok(reporteService.getTopRutas(ag, dias)));
+        return ResponseEntity.ok(ApiResponse.ok(reporteService.getTopRutas(ag, diasSeguro)));
     }
 
     /** Conductores con viajes activos hoy — para el panel gerencial. */

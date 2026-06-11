@@ -57,6 +57,7 @@ public class EncomiendaExternaTicketPdfService {
                     + 72 + 10        // QR + nota
                     + 6              // sep
                     + 22 + 16        // titulo + correlativo
+                    + 30             // leyenda pertenencia conductor
                     + 6              // sep
                     + 8 * 4 + 6      // conductor
                     + 8 * 3 + 6      // destinatario
@@ -95,6 +96,12 @@ public class EncomiendaExternaTicketPdfService {
                 y = drawCentered(cs, fontBold, 9f,  "TICKET DE CONTROL INTERNO", y);  y -= 2;
                 y = drawCentered(cs, fontBold, 11f, enc.getCorrelativo(), y);          y -= 2;
                 y = drawCentered(cs, fontNorm, 7f,  "Fecha: " + fechaStr, y);         y -= 4;
+                y = drawDashes(cs, y);                                                  y -= 3;
+
+                // ── Pertenencia: leyenda explícita exigida por el cliente ──────
+                y = drawCentered(cs, fontBold, 8f, "*** ENCOMIENDA DE CONDUCTOR EXTERNO ***", y); y -= 1;
+                y = drawCentered(cs, fontBold, 7f, "ESTA ENCOMIENDA PERTENECE AL CONDUCTOR", y);  y -= 1;
+                y = drawCentered(cs, fontNorm, 6.5f, "La empresa actua solo como punto de entrega.", y); y -= 3;
                 y = drawDashes(cs, y);                                                  y -= 3;
 
                 // ── Conductor externo ──────────────────────────────────────────

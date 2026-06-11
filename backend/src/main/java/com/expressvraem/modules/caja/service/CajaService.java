@@ -107,6 +107,17 @@ public class CajaService {
     public MovimientoCaja registrarMovimiento(Long cajaId, String tipo, String concepto,
                                               BigDecimal monto, Long usuarioId,
                                               String referenciaTipo, Long referenciaId) {
+        return registrarMovimiento(cajaId, tipo, concepto, monto, usuarioId,
+                referenciaTipo, referenciaId, null, null, null, null, null);
+    }
+
+    /** Variante con dimensiones de ingreso para la contabilidad separada por servicio/vehículo/conductor. */
+    @Transactional
+    public MovimientoCaja registrarMovimiento(Long cajaId, String tipo, String concepto,
+                                              BigDecimal monto, Long usuarioId,
+                                              String referenciaTipo, Long referenciaId,
+                                              String categoriaIngreso, Long viajeId,
+                                              Long vehiculoId, String tipoVehiculo, Long conductorId) {
         Caja caja = cajaRepository.findByIdForUpdate(cajaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Caja", cajaId));
 
@@ -126,6 +137,17 @@ public class CajaService {
                 .add(caja.getTotalIngresos())
                 .subtract(caja.getTotalEgresos());
 
+        // Derivar la categoría desde la referencia si el llamador no la especifica
+        if (categoriaIngreso == null && esIngreso) {
+            categoriaIngreso = switch (referenciaTipo == null ? "" : referenciaTipo) {
+                case "PASAJE"       -> "PASAJE";
+                case "ENCOMIENDA"   -> "ENCOMIENDA";
+                case "PAGO_DESTINO" -> "ENC_PAGO_DESTINO";
+                case "ENC_EXTERNA"  -> "ENC_EXTERNA";
+                default             -> "OTRO";
+            };
+        }
+
         MovimientoCaja mov = MovimientoCaja.builder()
                 .agenciaId(caja.getAgenciaId())
                 .cajaId(cajaId)
@@ -136,6 +158,11 @@ public class CajaService {
                 .saldoAcumulado(saldo)
                 .referenciaTipo(referenciaTipo)
                 .referenciaId(referenciaId)
+                .categoriaIngreso(categoriaIngreso)
+                .viajeId(viajeId)
+                .vehiculoId(vehiculoId)
+                .tipoVehiculo(tipoVehiculo)
+                .conductorId(conductorId)
                 .build();
 
         MovimientoCaja saved = movimientoRepository.save(mov);
@@ -157,6 +184,25 @@ public class CajaService {
         }
     }
 
+    /**
+     * Scope por rol: SUPER_ADMIN/GERENTE ven todo, ADMIN_AGENCIA solo cajas de su
+     * agencia, el resto solo sus propias cajas.
+     */
+    public void verificarAcceso(Long cajaId, Long usuarioId, String rol, Long agenciaId) {
+        if ("SUPER_ADMIN".equals(rol) || "GERENTE".equals(rol)) return;
+        Caja caja = cajaRepository.findById(cajaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Caja", cajaId));
+        if ("ADMIN_AGENCIA".equals(rol)) {
+            if (agenciaId == null || !agenciaId.equals(caja.getAgenciaId())) {
+                throw new BusinessException("No tiene permiso sobre esta caja", "ACCESO_DENEGADO");
+            }
+            return;
+        }
+        if (!caja.getUsuarioId().equals(usuarioId)) {
+            throw new BusinessException("No tiene permiso sobre esta caja", "ACCESO_DENEGADO");
+        }
+    }
+
 
     @Transactional
     public MovimientoCaja registrarEgreso(Long usuarioId, String concepto, BigDecimal monto,
@@ -165,6 +211,13 @@ public class CajaService {
                 .orElseThrow(() -> new BusinessException("No tiene turno activo", "SIN_TURNO_ACTIVO"));
         if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("El monto del egreso debe ser mayor que cero", "MONTO_INVALIDO");
+        }
+        BigDecimal saldo = caja.getMontoApertura()
+                .add(caja.getTotalIngresos())
+                .subtract(caja.getTotalEgresos());
+        if (monto.compareTo(saldo) > 0) {
+            throw new BusinessException(
+                "Saldo insuficiente. Saldo actual: S/" + saldo.toPlainString(), "SALDO_INSUFICIENTE");
         }
         MovimientoCaja mov = registrarMovimiento(caja.getId(), "EGRESO", concepto, monto, usuarioId, null, null);
 
@@ -365,7 +418,9 @@ public class CajaService {
             BigDecimal sumPasajes   = BigDecimal.ZERO;
             BigDecimal sumEnc       = BigDecimal.ZERO;
             BigDecimal sumDestino   = BigDecimal.ZERO;
-            long       cntPasajes   = 0, cntEnc = 0, cntDestino = 0;
+            BigDecimal sumExternas  = BigDecimal.ZERO;
+            BigDecimal sumCuotas    = BigDecimal.ZERO;
+            long       cntPasajes   = 0, cntEnc = 0, cntDestino = 0, cntExternas = 0, cntCuotas = 0;
 
             for (Caja c : cajas) {
                 sumIngresos = sumIngresos.add(c.getTotalIngresos());
@@ -375,12 +430,18 @@ public class CajaService {
                 TipoStat stP = st.getOrDefault("PASAJE",       TipoStat.ZERO);
                 TipoStat stE = st.getOrDefault("ENCOMIENDA",   TipoStat.ZERO);
                 TipoStat stD = st.getOrDefault("PAGO_DESTINO", TipoStat.ZERO);
+                TipoStat stX = st.getOrDefault("ENC_EXTERNA",  TipoStat.ZERO);
+                TipoStat stC = st.getOrDefault("CUOTA_SALIDA_COMBI", TipoStat.ZERO);
                 sumPasajes  = sumPasajes.add(stP.sum());
                 sumEnc      = sumEnc.add(stE.sum());
                 sumDestino  = sumDestino.add(stD.sum());
+                sumExternas = sumExternas.add(stX.sum());
+                sumCuotas   = sumCuotas.add(stC.sum());
                 cntPasajes += stP.count();
                 cntEnc     += stE.count();
                 cntDestino += stD.count();
+                cntExternas += stX.count();
+                cntCuotas   += stC.count();
             }
 
             BigDecimal saldo = sumApertura.add(sumIngresos).subtract(sumEgresos);
@@ -401,6 +462,10 @@ public class CajaService {
             m.put("cantEncomiendas",  cntEnc);
             m.put("montoPagoDestino", sumDestino);
             m.put("cantPagoDestino",  cntDestino);
+            m.put("montoExternas",    sumExternas);
+            m.put("cantExternas",     cntExternas);
+            m.put("montoCuotasCombi", sumCuotas);
+            m.put("cantCuotasCombi",  cntCuotas);
             resultado.add(m);
         }
 
@@ -475,6 +540,8 @@ public class CajaService {
         TipoStat stPasajes    = stats.getOrDefault("PASAJE",       TipoStat.ZERO);
         TipoStat stEnc        = stats.getOrDefault("ENCOMIENDA",   TipoStat.ZERO);
         TipoStat stPagoDest   = stats.getOrDefault("PAGO_DESTINO", TipoStat.ZERO);
+        TipoStat stExterna    = stats.getOrDefault("ENC_EXTERNA",  TipoStat.ZERO);
+        TipoStat stCuotaCombi = stats.getOrDefault("CUOTA_SALIDA_COMBI", TipoStat.ZERO);
 
         BigDecimal saldo = caja.getMontoApertura()
                 .add(caja.getTotalIngresos())
@@ -502,6 +569,10 @@ public class CajaService {
         m.put("montoEncomiendas",  stEnc.sum());
         m.put("cantPagoDestino",   stPagoDest.count());
         m.put("montoPagoDestino",  stPagoDest.sum());
+        m.put("cantExternas",      stExterna.count());
+        m.put("montoExternas",     stExterna.sum());
+        m.put("cantCuotasCombi",   stCuotaCombi.count());
+        m.put("montoCuotasCombi",  stCuotaCombi.sum());
         return m;
     }
 

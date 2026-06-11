@@ -22,7 +22,6 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
 
     const [docInput, setDocInput]         = useState('')
     const [buscando, setBuscando]         = useState(false)
-    const [noEncontrado, setNoEncontrado] = useState(false)
     const [registrando, setRegistrando]   = useState(false)
     const [form, setForm]                 = useState<Partial<ClienteDTO>>({
       tipoDoc,
@@ -81,36 +80,38 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
       const doc = docInput.trim()
       if (!doc) return
       setBuscando(true)
-      setNoEncontrado(false)
       try {
         const cliente = await clientesService.buscarPorDoc(tipoDoc, doc)
         setEditData({ ...cliente })
         onChange(cliente)
       } catch {
-        setNoEncontrado(true)
+        // No existe → abrir el formulario de registro de inmediato con el doc pre-llenado
         onChange(null)
+        setForm({
+          tipoDoc,
+          tipo: esEmpresa ? 'EMPRESA' : 'PERSONA',
+          numDoc: doc,
+        })
+        setRegistrando(true)
       } finally {
         setBuscando(false)
       }
     }
 
+    // Auto-buscar al completar la longitud exacta del documento (DNI 8 / RUC 11)
+    useEffect(() => {
+      const lenOk = (tipoDoc === 'DNI' && docInput.length === 8)
+                 || (tipoDoc === 'RUC' && docInput.length === 11)
+      if (lenOk && !value && !registrando && !buscando) buscar()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docInput])
+
     const limpiar = () => {
       onChange(null)
       setDocInput('')
-      setNoEncontrado(false)
       setRegistrando(false)
       setEditData(null)
       setForm({ tipoDoc, tipo: esEmpresa ? 'EMPRESA' : 'PERSONA' })
-    }
-
-    const iniciarRegistro = () => {
-      setForm({
-        tipoDoc,
-        tipo: esEmpresa ? 'EMPRESA' : 'PERSONA',
-        numDoc: docInput,
-      })
-      setRegistrando(true)
-      setNoEncontrado(false)
     }
 
     const guardarNuevo = async (): Promise<boolean> => {
@@ -381,7 +382,6 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
                 ? e.target.value.replace(/\D/g, '').slice(0, maxLen)
                 : e.target.value.slice(0, maxLen)
               setDocInput(v)
-              setNoEncontrado(false)
             }}
             onKeyDown={e => e.key === 'Enter' && buscar()}
             placeholder={
@@ -400,17 +400,9 @@ export const BuscadorCliente = forwardRef<BuscadorClienteRef, Props>(
             Buscar
           </button>
         </div>
-        {noEncontrado && (
-          <div className="mt-1.5 flex items-center justify-between bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
-            <span className="text-xs text-yellow-700">
-              No encontrado: {docLabel} {docInput}
-            </span>
-            <button type="button" onClick={iniciarRegistro}
-              className="text-xs text-[#0070C0] font-semibold hover:underline ml-2 shrink-0">
-              + Registrar aquí
-            </button>
-          </div>
-        )}
+        <p className="mt-1 text-[11px] text-gray-400">
+          Escribe el documento: si el cliente no existe, el formulario de registro se abre solo.
+        </p>
       </div>
     )
   }

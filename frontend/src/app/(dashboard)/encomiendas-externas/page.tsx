@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
+import useSWR from 'swr'
 import toast from 'react-hot-toast'
 import {
   PackageSearch, Plus, Search, X, Check, Loader2, Printer,
@@ -198,6 +199,9 @@ function ModalRegistrar({ onClose, onSuccess }: {
   })
   const [guardando, setGuardando] = useState(false)
 
+  const { data: turnoCaja } = useSWR<any>('/api/caja/turno-actual')
+  const cajaAbierta = (turnoCaja as any)?.estado === 'ABIERTA'
+
   const sf = (k: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(v => ({ ...v, [k]: e.target.value }))
@@ -368,6 +372,12 @@ function ModalRegistrar({ onClose, onSuccess }: {
               <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
                 Se cobrará <strong>S/ {parseFloat(form.monto).toFixed(2)}</strong> al destinatario cuando venga a recoger.
                 El operador que entregue debe tener caja abierta.
+              </p>
+            )}
+            {form.estadoPago === 'PAGADO' && !cajaAbierta && (
+              <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
+                <strong>Necesitas un turno de caja abierto</strong> para cobrar al conductor: el dinero se
+                registra en tu caja. Abre tu turno primero o elige &quot;Al recoger&quot;.
               </p>
             )}
           </div>

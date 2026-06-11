@@ -25,6 +25,7 @@ interface ViajeDTO {
   fechaHoraSal: string; fechaHoraArr?: string; observaciones?: string
   conductorId?: number; conductorNombre?: string
   asientosLibres?: number; asientosOcupados?: number; cantEncomiendas?: number
+  ingresosViaje?: number
   ruta?:    { origen: string; destino: string; distanciaKm?: number }
   vehiculo?: { id?: number; placa: string; tipo: string; numAsientos: number }
 }
@@ -399,6 +400,18 @@ function minutosAtraso(fechaHoraSal: string): number {
 function estaAtrasado(v: ViajeDTO): boolean {
   return v.estado === 'ATRASADO' || (v.estado === 'PROGRAMADO' && minutosAtraso(v.fechaHoraSal) > 0)
 }
+/** Horas transcurridas desde la salida de un viaje EN_RUTA. */
+function horasEnRuta(v: ViajeDTO): number {
+  return Math.floor((Date.now() - new Date(v.fechaHoraSal).getTime()) / 3_600_000)
+}
+/** EN_RUTA hace más de 24 h ⇒ alguien olvidó confirmar la llegada. */
+function llegadaPendiente(v: ViajeDTO): boolean {
+  return v.estado === 'EN_RUTA' && horasEnRuta(v) > 24
+}
+function labelEnRuta(horas: number): string {
+  return horas < 48 ? `${horas}h en ruta` : `${Math.floor(horas / 24)} días en ruta`
+}
+
 function labelAtraso(mins: number): string {
   if (mins < 60) return `${mins} min atrasado`
   const h = Math.floor(mins / 60), m = mins % 60
@@ -610,6 +623,14 @@ export default function ViajesPage() {
             </div>
           </div>
 
+          {/* ── Llegada sin confirmar (EN_RUTA vencido) ── */}
+          {llegadaPendiente(v) && (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/40">
+              <AlertTriangle size={11} className="shrink-0" />
+              {labelEnRuta(horasEnRuta(v))} — confirma la llegada
+            </div>
+          )}
+
           {/* ── Fecha / Hora / Vehículo ── */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 dark:bg-[#0f172a] rounded-lg border border-gray-100 dark:border-[#293548] flex-1">
@@ -660,8 +681,13 @@ export default function ViajesPage() {
           )}
 
           {/* ── Chips extra ── */}
-          {((v.cantEncomiendas ?? 0) > 0 || v.observaciones || (v.estado === 'COMPLETADO' && v.fechaHoraArr)) && (
+          {((v.cantEncomiendas ?? 0) > 0 || (v.ingresosViaje ?? 0) > 0 || v.observaciones || (v.estado === 'COMPLETADO' && v.fechaHoraArr)) && (
             <div className="flex flex-wrap gap-1.5">
+              {(v.ingresosViaje ?? 0) > 0 && (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-900/40">
+                  S/ {Number(v.ingresosViaje).toFixed(2)} recaudado
+                </span>
+              )}
               {(v.cantEncomiendas ?? 0) > 0 && (
                 <span className="flex items-center gap-1 text-[11px] text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full border border-orange-100 dark:border-orange-900/40">
                   <Package size={10} /> {v.cantEncomiendas} encomienda{(v.cantEncomiendas ?? 0) !== 1 ? 's' : ''}
@@ -847,6 +873,26 @@ export default function ViajesPage() {
                 <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5">
                   Confirma la salida o cancela los viajes marcados como <strong>ATRASADO</strong>.
                   Se cancelarán automáticamente a las 4 horas de su hora programada.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Alerta llegadas sin confirmar (EN_RUTA hace más de 24 h) ── */}
+          {enRuta.filter(llegadaPendiente).length > 0 && (
+            <div className="flex items-start gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-2xl px-4 py-3.5">
+              <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle size={16} className="text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-800 dark:text-red-300">
+                  {enRuta.filter(llegadaPendiente).length === 1
+                    ? '1 viaje lleva más de 24 h "en ruta" sin confirmar llegada'
+                    : `${enRuta.filter(llegadaPendiente).length} viajes llevan más de 24 h "en ruta" sin confirmar llegada`}
+                </p>
+                <p className="text-xs text-red-700/80 dark:text-red-400/80 mt-0.5">
+                  Mientras no confirmes la llegada, sus encomiendas no pasan a disponibles para entrega
+                  y los reportes del día quedan desactualizados. Usa <strong>Confirmar llegada</strong> en cada tarjeta.
                 </p>
               </div>
             </div>

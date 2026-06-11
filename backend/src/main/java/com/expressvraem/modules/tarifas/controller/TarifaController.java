@@ -11,7 +11,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -26,22 +28,20 @@ public class TarifaController {
     @GetMapping("/publico")
     public ResponseEntity<ApiResponse<List<TarifaResponseDTO>>> listarPublico() {
         List<Tarifa> tarifas = tarifaRepository.findByVigenteTrue();
-        return ResponseEntity.ok(ApiResponse.ok(tarifas.stream()
-                .map(this::enrich)
-                .collect(Collectors.toList())));
+        return ResponseEntity.ok(ApiResponse.ok(enrichAll(tarifas)));
     }
 
-    /** Busca tarifa vigente por rutaId y tipoVehiculo */
+    /** Busca tarifa vigente por rutaId y tipoVehiculo, priorizando la temporada activa */
     @GetMapping("/buscar")
     public ResponseEntity<ApiResponse<TarifaResponseDTO>> buscarPorRutaYTipo(
             @RequestParam Long rutaId,
             @RequestParam String tipoVehiculo) {
-        List<Tarifa> resultados = tarifaRepository.findVigenteByRutaAndTipo(rutaId, tipoVehiculo);
+        List<Tarifa> resultados = tarifaRepository.findVigenteEnTemporada(rutaId, tipoVehiculo);
         if (resultados.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(ApiResponse.error("No hay tarifa vigente para esta ruta y tipo de vehículo"));
         }
-        return ResponseEntity.ok(ApiResponse.ok(enrich(resultados.get(0))));
+        return ResponseEntity.ok(ApiResponse.ok(enrichAll(resultados).get(0)));
     }
 
     /** Endpoint autenticado — lista de la agencia del usuario */
@@ -51,28 +51,40 @@ public class TarifaController {
         List<Tarifa> tarifas = agenciaId != null
                 ? tarifaRepository.findByAgenciaIdAndVigenteTrue(agenciaId)
                 : tarifaRepository.findByVigenteTrue();
-        return ResponseEntity.ok(ApiResponse.ok(tarifas.stream()
-                .map(this::enrich)
-                .collect(Collectors.toList())));
+        return ResponseEntity.ok(ApiResponse.ok(enrichAll(tarifas)));
     }
 
-    private TarifaResponseDTO enrich(Tarifa t) {
+    /** Batch-enriches a list of tarifas with ruta names in a single query. */
+    @SuppressWarnings("unchecked")
+    private List<TarifaResponseDTO> enrichAll(List<Tarifa> tarifas) {
+        List<Long> rutaIds = tarifas.stream().map(Tarifa::getRutaId).distinct().collect(Collectors.toList());
+        Map<Long, String[]> rutaMap = new HashMap<>();
+        if (!rutaIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager
+                        .createNativeQuery("SELECT id, origen, destino FROM rutas WHERE id IN :ids")
+                        .setParameter("ids", rutaIds)
+                        .getResultList();
+                rows.forEach(r -> rutaMap.put(
+                        ((Number) r[0]).longValue(),
+                        new String[]{ String.valueOf(r[1]), String.valueOf(r[2]) }));
+            } catch (Exception ignored) {}
+        }
+        return tarifas.stream().map(t -> enrichFromMap(t, rutaMap)).collect(Collectors.toList());
+    }
+
+    private TarifaResponseDTO enrichFromMap(Tarifa t, Map<Long, String[]> rutaMap) {
         TarifaResponseDTO dto = new TarifaResponseDTO();
         dto.setId(t.getId());
         dto.setRutaId(t.getRutaId());
         dto.setTipoVehiculo(t.getTipoVehiculo());
         dto.setPrecio(t.getPrecio());
         dto.setVigente(t.getVigente());
-
-        try {
-            Object[] ruta = (Object[]) entityManager
-                    .createNativeQuery("SELECT origen, destino FROM rutas WHERE id = :id")
-                    .setParameter("id", t.getRutaId())
-                    .getSingleResult();
-            dto.setRutaOrigen(String.valueOf(ruta[0]));
-            dto.setRutaDestino(String.valueOf(ruta[1]));
-        } catch (Exception ignored) {}
-
+        String[] rutaData = rutaMap.get(t.getRutaId());
+        if (rutaData != null) {
+            dto.setRutaOrigen(rutaData[0]);
+            dto.setRutaDestino(rutaData[1]);
+        }
         return dto;
     }
 }

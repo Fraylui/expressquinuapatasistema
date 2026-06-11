@@ -14,6 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.format.annotation.DateTimeFormat;
+
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -34,15 +36,15 @@ public class AuditoriaController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String modulo,
             @RequestParam(required = false) String accion,
-            @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
             @RequestParam(required = false) String ip,
             @RequestParam(required = false) Long registroId,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "25") int size) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        LocalDateTime d = desde != null ? LocalDate.parse(desde).atStartOfDay()     : null;
-        LocalDateTime h = hasta != null ? LocalDate.parse(hasta).atTime(23, 59, 59) : null;
+        LocalDateTime d = desde != null ? desde.atStartOfDay()     : null;
+        LocalDateTime h = hasta != null ? hasta.atTime(23, 59, 59) : null;
         Page<Auditoria> result = auditoriaService.buscar(
                 usuarioId, q, modulo, accion, agenciaId, d, h, ip, registroId,
                 PageRequest.of(page, size, Sort.by("fecha").descending()));
@@ -64,11 +66,11 @@ public class AuditoriaController {
 
     @GetMapping("/exportar")
     public ResponseEntity<byte[]> exportarExcel(
-            @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta) throws IOException {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) throws IOException {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        LocalDateTime d = desde != null ? LocalDate.parse(desde).atStartOfDay()      : LocalDateTime.now().minusDays(30);
-        LocalDateTime h = hasta != null ? LocalDate.parse(hasta).atTime(23, 59, 59) : LocalDateTime.now();
+        LocalDateTime d = desde != null ? desde.atStartOfDay()      : LocalDateTime.now().minusDays(30);
+        LocalDateTime h = hasta != null ? hasta.atTime(23, 59, 59)  : LocalDateTime.now();
         byte[] excel = auditoriaService.exportarExcel(agenciaId, d, h);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=auditoria.xlsx")
@@ -78,11 +80,11 @@ public class AuditoriaController {
 
     @GetMapping(value = "/exportar-pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> exportarPdf(
-            @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        LocalDateTime d = desde != null ? LocalDate.parse(desde).atStartOfDay()      : LocalDateTime.now().minusDays(30);
-        LocalDateTime h = hasta != null ? LocalDate.parse(hasta).atTime(23, 59, 59) : LocalDateTime.now();
+        LocalDateTime d = desde != null ? desde.atStartOfDay()      : LocalDateTime.now().minusDays(30);
+        LocalDateTime h = hasta != null ? hasta.atTime(23, 59, 59)  : LocalDateTime.now();
         byte[] pdf = auditoriaService.exportarPdf(agenciaId, d, h);
         String filename = "auditoria-" + LocalDate.now() + ".pdf";
         return ResponseEntity.ok()

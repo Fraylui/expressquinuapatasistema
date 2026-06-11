@@ -87,11 +87,13 @@ CREATE TABLE usuarios (
     password_hash    TEXT         NOT NULL,
     rol              VARCHAR(20)  NOT NULL DEFAULT 'OPERADOR'
                          CHECK (rol IN ('SUPER_ADMIN','GERENTE','OPERADOR','CONDUCTOR')),
-    activo           BOOLEAN      NOT NULL DEFAULT TRUE,
-    ultimo_acceso    TIMESTAMPTZ,
-    ip_ultimo_acceso VARCHAR(45),
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    activo              BOOLEAN      NOT NULL DEFAULT TRUE,
+    ultimo_acceso       TIMESTAMPTZ,
+    ip_ultimo_acceso    VARCHAR(45),
+    intentos_fallidos   INT          NOT NULL DEFAULT 0,
+    bloqueado_hasta     TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================
@@ -159,7 +161,7 @@ CREATE TABLE vehiculos (
     id              BIGSERIAL PRIMARY KEY,
     agencia_id      BIGINT       NOT NULL REFERENCES agencias(id),
     placa           VARCHAR(10)  NOT NULL UNIQUE,
-    tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('COMBI','CAMIONETA','BUS','MINIVAN')),
+    tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('COMBI','CAMIONETA')),
     marca           VARCHAR(50),
     modelo          VARCHAR(50),
     anio            INT,
@@ -187,7 +189,8 @@ CREATE TABLE conductores (
     email           VARCHAR(100),
     fecha_venc_lic  DATE,
     activo          BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
 );
 
 -- ============================================================
@@ -202,7 +205,8 @@ CREATE TABLE rutas (
     distancia_km    NUMERIC(8,2),
     duracion_min    INT,
     activo          BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
 );
 
 -- ============================================================
@@ -215,7 +219,8 @@ CREATE TABLE temporadas (
     fecha_ini   DATE         NOT NULL,
     fecha_fin   DATE         NOT NULL,
     activo      BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ
 );
 
 -- ============================================================
@@ -226,7 +231,7 @@ CREATE TABLE tarifas (
     agencia_id      BIGINT          NOT NULL REFERENCES agencias(id),
     ruta_id         BIGINT          NOT NULL REFERENCES rutas(id),
     temporada_id    BIGINT          REFERENCES temporadas(id),
-    tipo_vehiculo   VARCHAR(20)     NOT NULL CHECK (tipo_vehiculo IN ('COMBI','CAMIONETA','BUS','MINIVAN')),
+    tipo_vehiculo   VARCHAR(20)     NOT NULL CHECK (tipo_vehiculo IN ('COMBI','CAMIONETA')),
     precio          NUMERIC(8,2)    NOT NULL,
     vigente         BOOLEAN         NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),

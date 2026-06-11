@@ -9,6 +9,7 @@ import com.expressvraem.modules.modulos.entity.UsuarioModulo;
 import com.expressvraem.modules.modulos.repository.ModuloRepository;
 import com.expressvraem.modules.modulos.repository.UsuarioModuloRepository;
 import com.expressvraem.shared.exceptions.ApiResponse;
+import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +34,7 @@ public class ModuloController {
 
     /** Lista todos los módulos del sistema */
     @GetMapping("/api/modulos")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
     public ResponseEntity<ApiResponse<List<Modulo>>> listarModulos() {
         return ResponseEntity.ok(ApiResponse.ok(moduloRepository.findByActivoTrue()));
     }
@@ -45,25 +46,27 @@ public class ModuloController {
         List<Modulo> todos = moduloRepository.findByActivoTrue();
         List<UsuarioModulo> asignados = usuarioModuloRepository.findByUsuarioId(id);
 
-        List<Map<String, Object>> resultado = todos.stream().map(m -> {
-            boolean activo = asignados.stream()
-                    .anyMatch(um -> um.getModulo().getId().equals(m.getId()) && Boolean.TRUE.equals(um.getActivo()));
-            return Map.<String, Object>of(
-                    "moduloId",    m.getId(),
-                    "codigo",      m.getCodigo(),
-                    "nombre",      m.getNombre(),
-                    "descripcion", m.getDescripcion() != null ? m.getDescripcion() : "",
-                    "icono",       m.getIcono() != null ? m.getIcono() : "",
-                    "activo",      activo
-            );
-        }).collect(Collectors.toList());
+        // Build O(1) lookup set instead of O(N×M) anyMatch per module
+        java.util.Set<Long> activosIds = asignados.stream()
+                .filter(um -> Boolean.TRUE.equals(um.getActivo()))
+                .map(um -> um.getModulo().getId())
+                .collect(Collectors.toSet());
+
+        List<Map<String, Object>> resultado = todos.stream().map(m -> Map.<String, Object>of(
+                "moduloId",    m.getId(),
+                "codigo",      m.getCodigo(),
+                "nombre",      m.getNombre(),
+                "descripcion", m.getDescripcion() != null ? m.getDescripcion() : "",
+                "icono",       m.getIcono() != null ? m.getIcono() : "",
+                "activo",      activosIds.contains(m.getId())
+        )).collect(Collectors.toList());
 
         return ResponseEntity.ok(ApiResponse.ok(resultado));
     }
 
     /** Actualiza módulos activos de un usuario (reemplaza todos) */
     @PutMapping("/api/usuarios/{id}/modulos")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
     @Transactional
     public ResponseEntity<ApiResponse<Void>> actualizarModulos(
             @PathVariable Long id,
@@ -78,39 +81,53 @@ public class ModuloController {
             return ResponseEntity.ok(ApiResponse.ok("SUPER_ADMIN siempre tiene todos los módulos", null));
         }
 
+        // GERENTE solo puede modificar módulos de ADMIN_AGENCIA y OPERADOR (no de pares ni superiores)
+        boolean esGerente = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_GERENTE".equals(a.getAuthority()));
+        if (esGerente && ("GERENTE".equals(usuario.getRol()) || "SUPER_ADMIN".equals(usuario.getRol()))) {
+            throw new BusinessException(
+                    "Un GERENTE solo puede asignar módulos a usuarios ADMIN_AGENCIA y OPERADOR",
+                    "PERMISO_DENEGADO");
+        }
+
         @SuppressWarnings("unchecked")
         List<Integer> moduloIds = (List<Integer>) body.get("moduloIds");
 
         // Obtiene el ID del admin que hace el cambio
         Long adminId = usuarioRepository.findByEmail(auth.getName()).map(Usuario::getId).orElse(null);
 
+        // Batch-load all requested modules in a single query — avoids N+1 in the assignment and audit loops
+        Map<Long, Modulo> moduloMap = moduloIds == null ? Map.of() :
+                moduloRepository.findAllById(moduloIds.stream().map(Long::valueOf).collect(Collectors.toList()))
+                        .stream().collect(Collectors.toMap(Modulo::getId, m -> m));
+
         // Borra asignaciones existentes
         usuarioModuloRepository.deleteByUsuarioId(id);
 
         // Inserta las nuevas
+        List<UsuarioModulo> nuevas = new java.util.ArrayList<>();
         if (moduloIds != null) {
             moduloIds.forEach(mid -> {
-                moduloRepository.findById(mid.longValue()).ifPresent(modulo -> {
-                    // AUDITORIA solo para SUPER_ADMIN
-                    if ("AUDITORIA".equals(modulo.getCodigo())) return;
-
-                    UsuarioModulo um = new UsuarioModulo();
-                    um.setUsuarioId(id);
-                    um.setModulo(modulo);
-                    um.setActivo(true);
-                    um.setFechaAsignacion(OffsetDateTime.now());
-                    um.setAsignadoPor(adminId);
-                    usuarioModuloRepository.save(um);
-                });
+                Modulo modulo = moduloMap.get(mid.longValue());
+                if (modulo == null || "AUDITORIA".equals(modulo.getCodigo())) return;
+                UsuarioModulo um = new UsuarioModulo();
+                um.setUsuarioId(id);
+                um.setModulo(modulo);
+                um.setActivo(true);
+                um.setFechaAsignacion(OffsetDateTime.now());
+                um.setAsignadoPor(adminId);
+                nuevas.add(um);
             });
         }
+        usuarioModuloRepository.saveAll(nuevas);
 
-        // Audit: registrar qué módulos se asignaron y a quién
+        // Audit: usar la misma caché en lugar de re-fetchear por ID
         List<String> codigos = moduloIds == null ? List.of() :
                 moduloIds.stream()
                         .map(Long::valueOf)
-                        .map(mid -> moduloRepository.findById(mid)
-                                .map(Modulo::getCodigo).orElse("?" + mid))
+                        .map(mid -> moduloMap.containsKey(mid)
+                                ? moduloMap.get(mid).getCodigo()
+                                : "?" + mid)
                         .collect(Collectors.toList());
         try {
             auditoriaService.registrar(Auditoria.builder()

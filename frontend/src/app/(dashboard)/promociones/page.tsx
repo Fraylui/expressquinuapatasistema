@@ -174,7 +174,7 @@ export default function PromocionesPage() {
                     <td className="px-4 py-3 text-gray-600">
                       {p.limiteUsos
                         ? <>{p.usosActuales} / {p.limiteUsos}</>
-                        : <span className="text-gray-400">{p.usosActuales} usos</span>}
+                        : <span className="text-gray-400">{p.usosActuales} uso{p.usosActuales !== 1 ? 's' : ''}</span>}
                     </td>
                     <td className="px-4 py-3">
                       {p.vigente ? (

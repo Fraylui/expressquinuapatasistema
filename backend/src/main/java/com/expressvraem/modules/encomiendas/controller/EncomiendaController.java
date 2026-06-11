@@ -8,11 +8,8 @@ import com.expressvraem.modules.clientes.repository.ClienteRepository;
 import com.expressvraem.modules.encomiendas.dto.EntregarEncomiendaDTO;
 import com.expressvraem.modules.encomiendas.dto.RecepcionItemDTO;
 import com.expressvraem.modules.encomiendas.dto.RegistrarEncomiendaDTO;
-import com.expressvraem.modules.rutas.entity.Ruta;
 import com.expressvraem.modules.rutas.repository.RutaRepository;
-import com.expressvraem.modules.vehiculos.entity.Vehiculo;
 import com.expressvraem.modules.vehiculos.repository.VehiculoRepository;
-import com.expressvraem.modules.viajes.entity.Viaje;
 import com.expressvraem.modules.viajes.repository.ViajeRepository;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.entity.HistorialEncomienda;
@@ -30,6 +27,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -70,14 +68,18 @@ public class EncomiendaController {
         if (fromContext != null) return fromContext;
         return usuarioRepository.findByEmail(auth.getName())
                 .map(Usuario::getAgenciaId)
-                .orElse(1L);
+                .orElse(null);
     }
 
     private String resolveNombreOperador(Authentication auth) {
         String email = auth != null ? auth.getName() : "—";
         try {
             var u = usuarioRepository.findByEmail(email).orElse(null);
-            if (u != null) return u.getNombres() + " " + u.getApellidos();
+            if (u != null) {
+                String n = u.getNombres() != null ? u.getNombres() : "";
+                String a = u.getApellidos() != null ? u.getApellidos() : "";
+                return (n + " " + a).trim();
+            }
         } catch (Exception ignored) {}
         return email;
     }
@@ -160,6 +162,7 @@ public class EncomiendaController {
     // ─── Cambiar estado genérico ────────────────────────────────────────────────
 
     @PatchMapping("/api/encomiendas/{id}/estado")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Encomienda>> cambiarEstado(
             @PathVariable Long id,
             @RequestBody Map<String, String> body,
@@ -173,6 +176,7 @@ public class EncomiendaController {
     // ─── Marcar llegada a agencia destino ──────────────────────────────────────
 
     @PostMapping("/api/encomiendas/{id}/marcar-llegada")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Encomienda>> marcarLlegada(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,
@@ -186,6 +190,7 @@ public class EncomiendaController {
     // ─── Marcar disponible ──────────────────────────────────────────────────────
 
     @PostMapping("/api/encomiendas/{id}/disponible")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Encomienda>> marcarDisponible(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,
@@ -198,6 +203,7 @@ public class EncomiendaController {
     // ─── Entregar ───────────────────────────────────────────────────────────────
 
     @PostMapping("/api/encomiendas/{id}/entregar")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> entregar(
             @PathVariable Long id,
             @Valid @RequestBody EntregarEncomiendaDTO dto,
@@ -213,6 +219,7 @@ public class EncomiendaController {
     // ─── Asignar / cambiar viaje ────────────────────────────────────────────────
 
     @PatchMapping("/api/encomiendas/{id}/asignar-viaje")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Encomienda>> asignarViaje(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body,
@@ -388,6 +395,25 @@ public class EncomiendaController {
         Map<Long, List<Encomienda>> porViaje = encs.stream()
                 .collect(Collectors.groupingBy(Encomienda::getViajeId));
 
+        // Batch-load viajes, rutas, vehículos — avoids N+1 queries per group
+        Set<Long> viajeIds = porViaje.keySet();
+        Map<Long, com.expressvraem.modules.viajes.entity.Viaje> viajeMap = viajeRepository.findAllById(viajeIds)
+                .stream().collect(Collectors.toMap(com.expressvraem.modules.viajes.entity.Viaje::getId, v -> v));
+        Set<Long> rutaIds2 = viajeMap.values().stream()
+                .map(com.expressvraem.modules.viajes.entity.Viaje::getRutaId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> vehiculoIds = viajeMap.values().stream()
+                .map(com.expressvraem.modules.viajes.entity.Viaje::getVehiculoId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, com.expressvraem.modules.rutas.entity.Ruta> rutaMapV = rutaIds2.isEmpty()
+                ? Map.of()
+                : rutaRepository.findAllById(rutaIds2).stream()
+                        .collect(Collectors.toMap(com.expressvraem.modules.rutas.entity.Ruta::getId, r -> r));
+        Map<Long, com.expressvraem.modules.vehiculos.entity.Vehiculo> vehiculoMap = vehiculoIds.isEmpty()
+                ? Map.of()
+                : vehiculoRepository.findAllById(vehiculoIds).stream()
+                        .collect(Collectors.toMap(com.expressvraem.modules.vehiculos.entity.Vehiculo::getId, vh -> vh));
+
         List<Map<String, Object>> resultado = new ArrayList<>();
         for (Map.Entry<Long, List<Encomienda>> entry : porViaje.entrySet()) {
             Long viajeId = entry.getKey();
@@ -396,19 +422,21 @@ public class EncomiendaController {
             Map<String, Object> grupo = new LinkedHashMap<>();
             grupo.put("viajeId", viajeId);
 
-            // Enrich with viaje + ruta + vehiculo info
-            viajeRepository.findById(viajeId).ifPresent(v -> {
+            var v = viajeMap.get(viajeId);
+            if (v != null) {
                 grupo.put("fechaHoraSal", v.getFechaHoraSal());
                 grupo.put("estadoViaje", v.getEstado());
-                rutaRepository.findById(v.getRutaId()).ifPresent(r -> {
+                var r = rutaMapV.get(v.getRutaId());
+                if (r != null) {
                     grupo.put("rutaOrigen", r.getOrigen());
                     grupo.put("rutaDestino", r.getDestino());
-                });
-                vehiculoRepository.findById(v.getVehiculoId()).ifPresent(vh -> {
+                }
+                var vh = vehiculoMap.get(v.getVehiculoId());
+                if (vh != null) {
                     grupo.put("vehiculoPlaca", vh.getPlaca());
                     grupo.put("vehiculoTipo", vh.getTipo());
-                });
-            });
+                }
+            }
 
             grupo.put("totalEncomiendas", lista.size());
             grupo.put("encomiendas", lista.stream()
@@ -442,9 +470,10 @@ public class EncomiendaController {
     // ─── Recepción masiva ───────────────────────────────────────────────────────
 
     @PostMapping("/api/encomiendas/viaje/{viajeId}/recepcionar")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> recepcionar(
             @PathVariable Long viajeId,
-            @RequestBody List<RecepcionItemDTO> items,
+            @Valid @RequestBody List<RecepcionItemDTO> items,
             Authentication auth,
             HttpServletRequest request) {
         Long agenciaId = resolveAgenciaId(auth);
