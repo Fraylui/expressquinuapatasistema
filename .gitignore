@@ -57,3 +57,6 @@ backend;C/
 *.tmp
 *.bak
 *.swp
+
+# Capturas de auditoría visual (regenerables con frontend/screenshot-*.js)
+frontend/audit-*.png
