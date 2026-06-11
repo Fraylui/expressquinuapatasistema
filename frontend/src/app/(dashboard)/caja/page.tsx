@@ -26,6 +26,10 @@ function TipoBadge({ mov }: { mov: MovimientoCaja }) {
     return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">PASAJE</span>
   if (ref === 'ENCOMIENDA')
     return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">ENCOMIENDA</span>
+  if (ref === 'ENC_EXTERNA')
+    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-100 text-cyan-700">EXTERNA</span>
+  if (ref === 'CUOTA_SALIDA_COMBI')
+    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-100 text-teal-700">CUOTA COMBI</span>
   return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">INGRESO</span>
 }
 
@@ -86,7 +90,7 @@ function TablaDenominaciones({ onChange }: { onChange: (total: number) => void }
 // ── Metric card ───────────────────────────────────────────────────────────────
 function MetricCard({ label, value, sub, icon, color }: {
   label: string; value: string; sub?: string
-  icon: React.ReactNode; color: 'green' | 'blue' | 'red' | 'amber' | 'indigo'
+  icon: React.ReactNode; color: 'green' | 'blue' | 'red' | 'amber' | 'indigo' | 'cyan' | 'teal'
 }) {
   const colors = {
     green:  'bg-green-50  text-green-700  border-green-200',
@@ -94,6 +98,8 @@ function MetricCard({ label, value, sub, icon, color }: {
     red:    'bg-red-50    text-red-700    border-red-200',
     amber:  'bg-amber-50  text-amber-700  border-amber-200',
     indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    cyan:   'bg-cyan-50   text-cyan-700   border-cyan-100',
+    teal:   'bg-teal-50   text-teal-700   border-teal-100',
   }
   return (
     <div className={`rounded-xl border p-4 ${colors[color]}`}>
@@ -521,6 +527,10 @@ interface ConsolidadoAgencia {
   cantEncomiendas?:  number
   montoPagoDestino?: number
   cantPagoDestino?:  number
+  montoExternas?:    number
+  cantExternas?:     number
+  montoCuotasCombi?: number
+  cantCuotasCombi?:  number
 }
 
 function ConsolidadoTab() {
@@ -649,6 +659,24 @@ function ConsolidadoTab() {
                 </div>
               )}
 
+              {(ag.cantExternas ?? 0) > 0 && (
+                <div className="flex justify-between px-4 py-2 bg-cyan-50/50">
+                  <span className="flex items-center gap-1.5 text-cyan-600 text-xs">
+                    <Package size={11} /> Enc. externas ({ag.cantExternas})
+                  </span>
+                  <span className="font-mono text-xs text-cyan-700">{fmt(ag.montoExternas)}</span>
+                </div>
+              )}
+
+              {(ag.cantCuotasCombi ?? 0) > 0 && (
+                <div className="flex justify-between px-4 py-2 bg-teal-50/50">
+                  <span className="flex items-center gap-1.5 text-teal-600 text-xs">
+                    <DollarSign size={11} /> Cuotas combi ({ag.cantCuotasCombi})
+                  </span>
+                  <span className="font-mono text-xs text-teal-700">{fmt(ag.montoCuotasCombi)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between px-4 py-2.5">
                 <span className="flex items-center gap-1.5 text-gray-500 text-xs">
                   <TrendingDown size={12} className="text-red-400" /> Egresos
@@ -689,15 +717,17 @@ function ConsolidadoTab() {
 }
 
 // ── Filter pills ──────────────────────────────────────────────────────────────
-type TipoFiltro = 'TODOS' | 'PASAJE' | 'ENCOMIENDA' | 'PAGO_DESTINO' | 'EGRESO' | 'INGRESO'
+type TipoFiltro = 'TODOS' | 'PASAJE' | 'ENCOMIENDA' | 'PAGO_DESTINO' | 'ENC_EXTERNA' | 'CUOTA_SALIDA_COMBI' | 'EGRESO' | 'INGRESO'
 
 const FILTROS: { key: TipoFiltro; label: string; color: string }[] = [
-  { key: 'TODOS',        label: 'Todos',         color: 'bg-gray-100 text-gray-700 hover:bg-gray-200' },
-  { key: 'PASAJE',       label: 'Pasajes',       color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
-  { key: 'ENCOMIENDA',   label: 'Encomiendas',   color: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
-  { key: 'PAGO_DESTINO', label: 'Contraentrega', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
-  { key: 'EGRESO',       label: 'Egresos',       color: 'bg-red-100 text-red-700 hover:bg-red-200' },
-  { key: 'INGRESO',      label: 'Ingresos',      color: 'bg-green-100 text-green-700 hover:bg-green-200' },
+  { key: 'TODOS',              label: 'Todos',         color: 'bg-gray-100 text-gray-700 hover:bg-gray-200' },
+  { key: 'PASAJE',             label: 'Pasajes',       color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
+  { key: 'ENCOMIENDA',         label: 'Encomiendas',   color: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
+  { key: 'PAGO_DESTINO',       label: 'Contraentrega', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
+  { key: 'ENC_EXTERNA',        label: 'Externas',      color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200' },
+  { key: 'CUOTA_SALIDA_COMBI', label: 'Cuota combi',   color: 'bg-teal-100 text-teal-700 hover:bg-teal-200' },
+  { key: 'EGRESO',             label: 'Egresos',       color: 'bg-red-100 text-red-700 hover:bg-red-200' },
+  { key: 'INGRESO',            label: 'Ingresos',      color: 'bg-green-100 text-green-700 hover:bg-green-200' },
 ]
 
 function filtrarMovimientos(movs: MovimientoCaja[], filtro: TipoFiltro): MovimientoCaja[] {
@@ -716,7 +746,17 @@ export default function CajaPage() {
   const { suscribeToCaja, connected } = useWebSocket()
 
   const [tab, setTab] = useState<PageTab>('turno')
+  const [tabInicializado, setTabInicializado] = useState(false)
   const [turno, setTurno] = useState<TurnoActual | null | undefined>(undefined)
+
+  // GERENTE/SUPER_ADMIN no venden: aterrizan en el consolidado, no en "abrir turno"
+  useEffect(() => {
+    if (!tabInicializado && user) {
+      if (user.rol === 'GERENTE' || user.rol === 'SUPER_ADMIN') setTab('consolidado')
+      setTabInicializado(true)
+    }
+  }, [user, tabInicializado])
+
   const [movimientos, setMovimientos] = useState<MovimientoCaja[]>([])
   const [mostrarTodos, setMostrarTodos] = useState(false)
   const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>('TODOS')
@@ -1085,11 +1125,11 @@ export default function CajaPage() {
               </div>
 
               {/* Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
                 <MetricCard
                   label="Total ingresos"
                   value={`S/ ${turno.totalIngresos?.toFixed(2)}`}
-                  sub={`${turno.cantPasajes + turno.cantEncomiendas + (turno.cantPagoDestino ?? 0)} cobros registrados`}
+                  sub={`${turno.cantPasajes + turno.cantEncomiendas + (turno.cantPagoDestino ?? 0) + (turno.cantExternas ?? 0) + (turno.cantCuotasCombi ?? 0)} cobros registrados`}
                   icon={<TrendingUp size={16} />}
                   color="green"
                 />
@@ -1110,6 +1150,20 @@ export default function CajaPage() {
                   }
                   icon={<Package size={16} />}
                   color="amber"
+                />
+                <MetricCard
+                  label="Externas"
+                  value={`S/ ${(turno.montoExternas ?? 0).toFixed(2)}`}
+                  sub={`${turno.cantExternas ?? 0} de conductores`}
+                  icon={<Package size={16} />}
+                  color="cyan"
+                />
+                <MetricCard
+                  label="Cuotas combi"
+                  value={`S/ ${(turno.montoCuotasCombi ?? 0).toFixed(2)}`}
+                  sub={`${turno.cantCuotasCombi ?? 0} salida${(turno.cantCuotasCombi ?? 0) !== 1 ? 's' : ''}`}
+                  icon={<DollarSign size={16} />}
+                  color="teal"
                 />
                 <MetricCard
                   label="Saldo en caja"

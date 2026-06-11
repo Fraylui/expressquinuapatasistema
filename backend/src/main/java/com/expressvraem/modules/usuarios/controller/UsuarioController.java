@@ -22,7 +22,7 @@ public class UsuarioController {
     private final UsuarioService usuarioService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listar() {
         Long agenciaId = AgenciaContext.getAgenciaId();
         return ResponseEntity.ok(ApiResponse.ok(usuarioService.listar(agenciaId)));
@@ -54,7 +54,12 @@ public class UsuarioController {
     public ResponseEntity<ApiResponse<Void>> cambiarEstado(
             @PathVariable Long id,
             @RequestBody Map<String, Boolean> body) {
-        usuarioService.cambiarEstado(id, body.get("activo"));
+        Boolean activo = body.get("activo");
+        if (activo == null) {
+            throw new com.expressvraem.shared.exceptions.BusinessException(
+                    "El campo 'activo' es obligatorio", "ACTIVO_REQUERIDO");
+        }
+        usuarioService.cambiarEstado(id, activo);
         return ResponseEntity.ok(ApiResponse.ok("Estado actualizado", null));
     }
 }

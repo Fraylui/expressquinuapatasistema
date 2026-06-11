@@ -49,6 +49,11 @@ function formatHora(iso?: string | null) {
   try { return format(new Date(iso), 'HH:mm') } catch { return '—' }
 }
 
+function formatFechaCorta(iso?: string | null) {
+  if (!iso) return '—'
+  try { return format(new Date(iso), 'dd MMM · HH:mm', { locale: es }) } catch { return '—' }
+}
+
 function openBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -507,9 +512,15 @@ export default function ManifiestosPage() {
   const [result, setResult] = useState<ManifiestoViaje | null>(null)
   const [cargando, setCargando] = useState(false)
 
-  const viajesActivos = viajes.filter((v: any) =>
-    ['PROGRAMADO', 'EN_RUTA', 'COMPLETADO'].includes(v.estado)
-  )
+  // EN_RUTA primero (el manifiesto se necesita al salir), luego programados y completados recientes
+  const ORDEN_ESTADO: Record<string, number> = { EN_RUTA: 0, PROGRAMADO: 1, COMPLETADO: 2 }
+  const viajesActivos = viajes
+    .filter((v: any) => ['PROGRAMADO', 'EN_RUTA', 'COMPLETADO'].includes(v.estado))
+    .sort((a: any, b: any) => {
+      const e = (ORDEN_ESTADO[a.estado] ?? 9) - (ORDEN_ESTADO[b.estado] ?? 9)
+      if (e !== 0) return e
+      return new Date(b.fechaHoraSal).getTime() - new Date(a.fechaHoraSal).getTime()
+    })
 
   const cargarManifiesto = useCallback(async (viajeId: number) => {
     setViajeSelId(viajeId)
@@ -601,7 +612,7 @@ export default function ManifiestosPage() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1 text-[11px] text-gray-400">
                             <Clock size={10} />
-                            {formatHora(v.fechaHoraSal)}
+                            {formatFechaCorta(v.fechaHoraSal)}
                             {v.vehiculo?.placa && (
                               <span className="ml-1 font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">
                                 {v.vehiculo.placa}

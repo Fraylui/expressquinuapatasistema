@@ -9,6 +9,7 @@ import com.expressvraem.shared.exceptions.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,7 +26,11 @@ public class PromocionController {
 
     private String resolveNombre(Authentication auth) {
         return usuarioRepository.findByEmail(auth.getName())
-                .map(u -> u.getNombres() + " " + u.getApellidos())
+                .map(u -> {
+                    String n = u.getNombres() != null ? u.getNombres() : "";
+                    String a = u.getApellidos() != null ? u.getApellidos() : "";
+                    return (n + " " + a).trim();
+                })
                 .orElse(auth.getName());
     }
 
@@ -54,6 +59,7 @@ public class PromocionController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
     public ResponseEntity<ApiResponse<PromocionResponseDTO>> crear(
             @Valid @RequestBody PromocionRequestDTO dto,
             Authentication auth) {
@@ -61,6 +67,7 @@ public class PromocionController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
     public ResponseEntity<ApiResponse<PromocionResponseDTO>> actualizar(
             @PathVariable Long id,
             @Valid @RequestBody PromocionRequestDTO dto) {
@@ -68,12 +75,14 @@ public class PromocionController {
     }
 
     @PatchMapping("/{id}/toggle")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
     public ResponseEntity<ApiResponse<Void>> toggle(@PathVariable Long id) {
         service.toggleActiva(id);
         return ResponseEntity.ok(ApiResponse.ok("Estado cambiado", null));
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
     public ResponseEntity<ApiResponse<Void>> eliminar(@PathVariable Long id) {
         service.eliminar(id);
         return ResponseEntity.ok(ApiResponse.ok("Promoción eliminada", null));

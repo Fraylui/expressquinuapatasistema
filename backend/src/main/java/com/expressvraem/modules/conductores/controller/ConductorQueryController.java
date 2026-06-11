@@ -18,6 +18,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,8 +56,8 @@ public class ConductorQueryController {
         Long conductorId = resolverConductorId(auth);
 
         List<String> estadosActivos = List.of("PROGRAMADO", "EN_RUTA", "ATRASADO");
-        List<Viaje> viajes = viajeRepository.findByEstadoIn(estadosActivos).stream()
-                .filter(v -> conductorId.equals(v.getConductorId()))
+        List<Viaje> viajes = viajeRepository
+                .findByEstadoInAndConductorId(estadosActivos, conductorId).stream()
                 .sorted(java.util.Comparator.comparing(Viaje::getFechaHoraSal,
                         java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
                 .toList();
@@ -97,7 +99,9 @@ public class ConductorQueryController {
             m.put("boleta",        r[2]);
             m.put("precio",        r[3]);
             m.put("estado",        r[4]);
-            m.put("nombre",        r[5] + " " + r[6]);
+            String nom = r[5] != null ? String.valueOf(r[5]) : "";
+            String ape = r[6] != null ? String.valueOf(r[6]) : "";
+            m.put("nombre",        (nom + " " + ape).trim());
             m.put("dni",           r[7]);
             return m;
         }).toList();
@@ -107,6 +111,7 @@ public class ConductorQueryController {
 
     @PostMapping("/mis-viajes/{viajeId}/confirmar-salida")
     @PreAuthorize("hasAnyRole('CONDUCTOR','SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<Map<String, Object>>> confirmarSalida(
             @PathVariable Long viajeId, Authentication auth) {
         Long conductorId = resolverConductorId(auth);
@@ -128,6 +133,7 @@ public class ConductorQueryController {
 
     @PostMapping("/mis-viajes/{viajeId}/confirmar-llegada")
     @PreAuthorize("hasAnyRole('CONDUCTOR','SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<Map<String, Object>>> confirmarLlegada(
             @PathVariable Long viajeId, Authentication auth) {
         Long conductorId = resolverConductorId(auth);
@@ -152,21 +158,20 @@ public class ConductorQueryController {
 
     /**
      * Resuelve el conductorId a partir del usuario autenticado.
-     * Busca en conductores por DNI del usuario, luego intenta por usuarios.id como fallback.
+     * Busca en conductores por DNI del usuario; fallback al usuario.id si no hay registro.
      */
     private Long resolverConductorId(Authentication auth) {
         Usuario usuario = usuarioRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
 
-        // Buscar en conductores por DNI
-        return conductorRepository.findAll().stream()
-                .filter(c -> c.getDni().equals(usuario.getDni()))
-                .map(Conductor::getId)
-                .findFirst()
-                .orElse(usuario.getId()); // fallback: el conductorId puede ser el userId
+        if (usuario.getDni() != null && !usuario.getDni().isBlank()) {
+            return conductorRepository.findByDni(usuario.getDni())
+                    .map(Conductor::getId)
+                    .orElse(usuario.getId());
+        }
+        return usuario.getId();
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> enriquecerViaje(Viaje v) {
         try {
             Object[] ruta = (Object[]) entityManager

@@ -176,9 +176,6 @@ public class AgenciaService {
         if (agenciaRepository.existsByCodigo(dto.getCodigo())) {
             throw new BusinessException("Ya existe una agencia con ese código", "CODIGO_DUPLICADO");
         }
-        if (dto.getRuc() != null && !dto.getRuc().isBlank() && dto.getRuc().length() != 11) {
-            throw new BusinessException("El RUC debe tener 11 dígitos", "RUC_INVALIDO");
-        }
 
         String tipo = (dto.getTipo() != null && !dto.getTipo().isBlank()) ? dto.getTipo() : "AGENCIA";
 
@@ -222,9 +219,6 @@ public class AgenciaService {
         String antes = toJson(a);
         if (agenciaRepository.existsByCodigoAndIdNot(dto.getCodigo(), id)) {
             throw new BusinessException("Ya existe una agencia con ese código", "CODIGO_DUPLICADO");
-        }
-        if (dto.getRuc() != null && !dto.getRuc().isBlank() && dto.getRuc().length() != 11) {
-            throw new BusinessException("El RUC debe tener 11 dígitos", "RUC_INVALIDO");
         }
 
         String tipo = (dto.getTipo() != null && !dto.getTipo().isBlank()) ? dto.getTipo() : a.getTipo();

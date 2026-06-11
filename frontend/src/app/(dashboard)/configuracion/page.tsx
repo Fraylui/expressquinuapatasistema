@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   Plus, Pencil, ToggleLeft, ToggleRight, MapPin, Tag,
   Check, X, Truck, UserCircle, Search, AlertTriangle, Mail,
-  Building2, Upload, Trash2, ImageIcon,
+  Building2, Upload, Trash2, ImageIcon, Calendar,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -13,7 +13,7 @@ import api from '@/services/api'
 import { useEmpresaStore } from '@/stores/empresaStore'
 import { useEffect } from 'react'
 
-type Tab = 'empresa' | 'rutas' | 'tarifas' | 'vehiculos' | 'conductores'
+type Tab = 'empresa' | 'rutas' | 'tarifas' | 'temporadas' | 'vehiculos' | 'conductores'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,7 @@ interface Ruta {
   destino: string
   distanciaKm: number | null
   duracionMin: number | null
+  duracionTexto: string | null
   activo: boolean
 }
 
@@ -35,6 +36,7 @@ interface Tarifa {
   tipoVehiculo: string
   precio: number
   vigente: boolean
+  temporadaId: number | null
 }
 
 interface Vehiculo {
@@ -61,6 +63,15 @@ interface Conductor {
   email: string | null
   fechaVencLic: string | null
   activo: boolean
+}
+
+interface Temporada {
+  id: number
+  nombre: string
+  fechaIni: string
+  fechaFin: string
+  activo: boolean
+  duracionDias: number | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,6 +139,10 @@ function RutasTab() {
       toast.error('Código, origen y destino son obligatorios')
       return
     }
+    if (form.origen.trim().toLowerCase() === form.destino.trim().toLowerCase()) {
+      toast.error('Origen y destino no pueden ser iguales')
+      return
+    }
     setSaving(true)
     try {
       const body = {
@@ -155,11 +170,11 @@ function RutasTab() {
 
   const toggleActivo = async (r: Ruta) => {
     try {
-      await api.patch(`/api/configuracion/rutas/${r.id}/activo`)
+      await api.patch(`/api/configuracion/rutas/${r.id}/activo`, { activo: !r.activo })
       mutate('/api/configuracion/rutas')
       toast.success(r.activo ? 'Ruta desactivada' : 'Ruta activada')
-    } catch {
-      toast.error('Error al cambiar estado')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al cambiar estado')
     }
   }
 
@@ -211,7 +226,7 @@ function RutasTab() {
                     {r.distanciaKm != null ? `${r.distanciaKm} km` : '—'}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600">
-                    {r.duracionMin != null ? `${Math.floor(r.duracionMin / 60)}h ${r.duracionMin % 60}m` : '—'}
+                    {r.duracionTexto ?? (r.duracionMin != null ? `${Math.floor(r.duracionMin / 60)}h ${r.duracionMin % 60}m` : '—')}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -287,16 +302,20 @@ function RutasTab() {
 
 // ─── TarifasTab ───────────────────────────────────────────────────────────────
 
-interface TarifaFormState { rutaId: string; tipoVehiculo: string; precio: string }
-const emptyTarifa: TarifaFormState = { rutaId: '', tipoVehiculo: '', precio: '' }
-const TIPOS_VEHICULO = ['COMBI', 'CAMIONETA']
+interface TarifaFormState { rutaId: string; tipoVehiculo: string; precio: string; temporadaId: string }
+const emptyTarifa: TarifaFormState = { rutaId: '', tipoVehiculo: '', precio: '', temporadaId: '' }
+// La empresa solo opera combis y camionetas
+const TIPOS_TARIFA  = ['COMBI', 'CAMIONETA']
+const TIPOS_FLOTA   = ['COMBI', 'CAMIONETA']
 
 function TarifasTab() {
   const { data: tarifasData, isLoading } = useSWR<Tarifa[]>('/api/configuracion/tarifas')
   const { data: rutasData }              = useSWR<Ruta[]>('/api/configuracion/rutas')
+  const { data: temporadasData }         = useSWR<Temporada[]>('/api/configuracion/temporadas?soloActivas=true')
 
-  const tarifas = tarifasData ?? []
-  const rutas   = (rutasData ?? []).filter(r => r.activo)
+  const tarifas    = tarifasData ?? []
+  const rutas      = (rutasData ?? []).filter(r => r.activo)
+  const temporadas = temporadasData ?? []
 
   const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Tarifa | null>(null)
@@ -318,7 +337,10 @@ function TarifasTab() {
   const abrirCrear = () => { setEditando(null); setForm(emptyTarifa); setOpen(true) }
   const abrirEditar = (t: Tarifa) => {
     setEditando(t)
-    setForm({ rutaId: String(t.rutaId), tipoVehiculo: t.tipoVehiculo, precio: String(t.precio) })
+    setForm({
+      rutaId: String(t.rutaId), tipoVehiculo: t.tipoVehiculo,
+      precio: String(t.precio), temporadaId: t.temporadaId != null ? String(t.temporadaId) : '',
+    })
     setOpen(true)
   }
 
@@ -333,6 +355,7 @@ function TarifasTab() {
         rutaId: parseInt(form.rutaId),
         tipoVehiculo: form.tipoVehiculo,
         precio: parseFloat(form.precio),
+        temporadaId: form.temporadaId ? parseInt(form.temporadaId) : null,
       }
       if (editando) {
         await api.put(`/api/configuracion/tarifas/${editando.id}`, body)
@@ -352,7 +375,7 @@ function TarifasTab() {
 
   const toggleVigente = async (t: Tarifa) => {
     try {
-      await api.patch(`/api/configuracion/tarifas/${t.id}/vigente`)
+      await api.patch(`/api/configuracion/tarifas/${t.id}/vigente`, { vigente: !t.vigente })
       mutate('/api/configuracion/tarifas')
       toast.success(t.vigente ? 'Tarifa desactivada' : 'Tarifa activada')
     } catch {
@@ -456,7 +479,7 @@ function TarifasTab() {
             <select value={form.tipoVehiculo} onChange={e => setForm(f => ({ ...f, tipoVehiculo: e.target.value }))}
               className={inputCls()}>
               <option value="">Selecciona tipo</option>
-              {TIPOS_VEHICULO.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+              {TIPOS_TARIFA.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
             </select>
           </div>
           <div>
@@ -465,10 +488,220 @@ function TarifasTab() {
               onChange={e => setForm(f => ({ ...f, precio: e.target.value }))}
               placeholder="25.00" className={inputCls()} />
           </div>
+          {temporadas.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Temporada <span className="text-gray-400">(opcional)</span></label>
+              <select value={form.temporadaId} onChange={e => setForm(f => ({ ...f, temporadaId: e.target.value }))}
+                className={inputCls()}>
+                <option value="">Sin temporada (precio base)</option>
+                {temporadas.map(tp => (
+                  <option key={tp.id} value={tp.id}>{tp.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button variant="primary" loading={saving} onClick={guardar}>
               {editando ? 'Guardar cambios' : 'Crear tarifa'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+// ─── TemporadasTab ────────────────────────────────────────────────────────────
+
+interface TemporadaFormState { nombre: string; fechaIni: string; fechaFin: string }
+const emptyTemporada: TemporadaFormState = { nombre: '', fechaIni: '', fechaFin: '' }
+
+function TemporadasTab() {
+  const { data: tempData, isLoading } = useSWR<Temporada[]>('/api/configuracion/temporadas')
+  const temporadas = tempData ?? []
+
+  const [open, setOpen]         = useState(false)
+  const [editando, setEditando] = useState<Temporada | null>(null)
+  const [form, setForm]         = useState<TemporadaFormState>(emptyTemporada)
+  const [saving, setSaving]     = useState(false)
+  const [q, setQ]               = useState('')
+
+  const filtered = useMemo(() => {
+    const low = q.toLowerCase()
+    return temporadas.filter(t => t.nombre.toLowerCase().includes(low))
+  }, [temporadas, q])
+
+  const activas = temporadas.filter(t => t.activo).length
+
+  const abrirCrear = () => { setEditando(null); setForm(emptyTemporada); setOpen(true) }
+  const abrirEditar = (t: Temporada) => {
+    setEditando(t)
+    setForm({ nombre: t.nombre, fechaIni: t.fechaIni, fechaFin: t.fechaFin })
+    setOpen(true)
+  }
+
+  const guardar = async () => {
+    if (!form.nombre || !form.fechaIni || !form.fechaFin) {
+      toast.error('Todos los campos son obligatorios')
+      return
+    }
+    if (form.fechaFin <= form.fechaIni) {
+      toast.error('La fecha de fin debe ser posterior a la de inicio')
+      return
+    }
+    setSaving(true)
+    try {
+      const body = { nombre: form.nombre, fechaIni: form.fechaIni, fechaFin: form.fechaFin }
+      if (editando) {
+        await api.put(`/api/configuracion/temporadas/${editando.id}`, body)
+        toast.success('Temporada actualizada')
+      } else {
+        await api.post('/api/configuracion/temporadas', body)
+        toast.success('Temporada creada')
+      }
+      setOpen(false)
+      mutate('/api/configuracion/temporadas')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleActivo = async (t: Temporada) => {
+    try {
+      await api.patch(`/api/configuracion/temporadas/${t.id}/activo`, { activo: !t.activo })
+      mutate('/api/configuracion/temporadas')
+      toast.success(t.activo ? 'Temporada desactivada' : 'Temporada activada')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al cambiar estado')
+    }
+  }
+
+  const eliminar = async (t: Temporada) => {
+    if (!confirm(`¿Eliminar la temporada "${t.nombre}"? Esta acción no se puede deshacer.`)) return
+    try {
+      await api.delete(`/api/configuracion/temporadas/${t.id}`)
+      mutate('/api/configuracion/temporadas')
+      toast.success('Temporada eliminada')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al eliminar')
+    }
+  }
+
+  const fmtFecha = (s: string) =>
+    new Date(s + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-900">{activas}</span> activas
+            {temporadas.length !== activas && (
+              <span className="text-gray-400"> · {temporadas.length - activas} inactivas</span>
+            )}
+          </p>
+          <SearchBar value={q} onChange={setQ} placeholder="Buscar temporada..." />
+        </div>
+        <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nueva temporada</Button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-gray-400">Cargando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-12 text-center">
+            <Calendar size={32} className="text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">{q ? 'Sin resultados' : 'No hay temporadas registradas'}</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Inicio</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Fin</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Duración</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map(t => (
+                <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-900">{t.nombre}</td>
+                  <td className="px-4 py-3 text-gray-600">{fmtFecha(t.fechaIni)}</td>
+                  <td className="px-4 py-3 text-gray-600">{fmtFecha(t.fechaFin)}</td>
+                  <td className="px-4 py-3 text-center text-gray-500 text-xs">
+                    {t.duracionDias != null ? `${t.duracionDias} días` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      t.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {t.activo ? <Check size={10} /> : <X size={10} />}
+                      {t.activo ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => abrirEditar(t)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#064e3b] hover:bg-emerald-50 transition-colors"
+                        aria-label="Editar temporada">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => toggleActivo(t)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        aria-label={t.activo ? 'Desactivar' : 'Activar'}>
+                        {t.activo ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
+                      </button>
+                      {!t.activo && (
+                        <button onClick={() => eliminar(t)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          aria-label="Eliminar temporada">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar temporada' : 'Nueva temporada'} size="md">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+            <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+              placeholder="Ej: Fiestas Patrias 2026" className={inputCls()} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Fecha inicio *</label>
+              <input type="date" value={form.fechaIni} onChange={e => setForm(f => ({ ...f, fechaIni: e.target.value }))}
+                className={inputCls()} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Fecha fin *</label>
+              <input type="date" value={form.fechaFin} min={form.fechaIni || undefined}
+                onChange={e => setForm(f => ({ ...f, fechaFin: e.target.value }))}
+                className={inputCls()} />
+            </div>
+          </div>
+          {form.fechaIni && form.fechaFin && form.fechaFin > form.fechaIni && (
+            <p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+              Duración: {Math.round((new Date(form.fechaFin).getTime() - new Date(form.fechaIni).getTime()) / 86400000) + 1} días
+            </p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="primary" loading={saving} onClick={guardar}>
+              {editando ? 'Guardar cambios' : 'Crear temporada'}
             </Button>
           </div>
         </div>
@@ -653,7 +886,7 @@ function VehiculosTab() {
               <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
                 className={inputCls()}>
                 <option value="">Seleccionar</option>
-                {TIPOS_VEHICULO.map(t => <option key={t} value={t}>{t}</option>)}
+                {TIPOS_FLOTA.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
           </div>
@@ -798,7 +1031,7 @@ function ConductoresTab() {
 
   const toggleActivo = async (c: Conductor) => {
     try {
-      await api.patch(`/api/configuracion/conductores/${c.id}/activo`)
+      await api.patch(`/api/configuracion/conductores/${c.id}/activo`, { activo: !c.activo })
       mutate('/api/configuracion/conductores')
       toast.success(c.activo ? 'Conductor desactivado' : 'Conductor activado')
     } catch {
@@ -993,12 +1226,13 @@ function ConductoresTab() {
 // ─── EmpresaTab ───────────────────────────────────────────────────────────────
 
 function EmpresaTab() {
-  const { nombre, ruc, direccion, ciudad, telefono, logoBase64, setLogoBase64, fetchFromApi, saveToApi } = useEmpresaStore()
+  const { nombre, ruc, direccion, ciudad, telefono, logoBase64, cuotaSalidaCombi, setLogoBase64, fetchFromApi, saveToApi } = useEmpresaStore()
   const [localNombre,    setLocalNombre]    = useState(nombre)
   const [localRuc,       setLocalRuc]       = useState(ruc)
   const [localDireccion, setLocalDireccion] = useState(direccion)
   const [localCiudad,    setLocalCiudad]    = useState(ciudad)
   const [localTelefono,  setLocalTelefono]  = useState(telefono)
+  const [localCuotaCombi, setLocalCuotaCombi] = useState(cuotaSalidaCombi)
   const [saving,         setSaving]         = useState(false)
   const [dragging,       setDragging]       = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1009,7 +1243,8 @@ function EmpresaTab() {
   useEffect(() => {
     setLocalNombre(nombre); setLocalRuc(ruc)
     setLocalDireccion(direccion); setLocalCiudad(ciudad); setLocalTelefono(telefono)
-  }, [nombre, ruc, direccion, ciudad, telefono])
+    setLocalCuotaCombi(cuotaSalidaCombi)
+  }, [nombre, ruc, direccion, ciudad, telefono, cuotaSalidaCombi])
 
   const handleGuardar = async () => {
     if (!localNombre.trim()) { toast.error('El nombre de la empresa es obligatorio'); return }
@@ -1021,6 +1256,7 @@ function EmpresaTab() {
         direccion: localDireccion.trim(),
         ciudad:    localCiudad.trim(),
         telefono:  localTelefono.trim(),
+        cuotaSalidaCombi: localCuotaCombi,
       })
       toast.success('Datos de empresa guardados')
     } catch { toast.error('Error al guardar. El backend debe estar activo.') }
@@ -1174,6 +1410,20 @@ function EmpresaTab() {
           </div>
         </div>
 
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Cuota fija por salida de combi (S/)</label>
+          <input
+            value={localCuotaCombi}
+            onChange={e => setLocalCuotaCombi(e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="0.00"
+            inputMode="decimal"
+            className={inputCls('font-mono')}
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Se registra automáticamente en caja al confirmar la salida de un viaje en COMBI. Dejar en 0 para deshabilitar.
+          </p>
+        </div>
+
         <div className="pt-2">
           <Button variant="primary" loading={saving} onClick={handleGuardar}>
             Guardar cambios
@@ -1192,6 +1442,7 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'empresa',     label: 'Empresa',     icon: Building2 },
   { key: 'rutas',       label: 'Rutas',       icon: MapPin },
   { key: 'tarifas',     label: 'Tarifas',     icon: Tag },
+  { key: 'temporadas',  label: 'Temporadas',  icon: Calendar },
   { key: 'vehiculos',   label: 'Vehículos',   icon: Truck },
   { key: 'conductores', label: 'Conductores', icon: UserCircle },
 ]
@@ -1226,6 +1477,7 @@ export default function ConfiguracionPage() {
       {tab === 'empresa'     && <EmpresaTab />}
       {tab === 'rutas'       && <RutasTab />}
       {tab === 'tarifas'     && <TarifasTab />}
+      {tab === 'temporadas'  && <TemporadasTab />}
       {tab === 'vehiculos'   && <VehiculosTab />}
       {tab === 'conductores' && <ConductoresTab />}
     </div>

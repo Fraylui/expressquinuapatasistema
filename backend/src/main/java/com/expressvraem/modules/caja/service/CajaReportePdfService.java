@@ -84,6 +84,8 @@ public class CajaReportePdfService {
                 BigDecimal montoPasajes   = bd(datos.get("montoPasajes"));
                 BigDecimal montoEnc       = bd(datos.get("montoEncomiendas"));
                 BigDecimal montoPagoDest  = bd(datos.get("montoPagoDestino"));
+                BigDecimal montoExternas  = bd(datos.get("montoExternas"));
+                BigDecimal montoCuotas    = bd(datos.get("montoCuotasCombi"));
                 BigDecimal saldo          = montoApertura.add(totalIngresos).subtract(totalEgresos);
                 BigDecimal montoCierre    = bd(datos.get("montoCierre"));
                 BigDecimal diferencia     = bd(datos.get("diferencia"));
@@ -97,6 +99,10 @@ public class CajaReportePdfService {
                      "S/ " + montoEnc.toPlainString()},
                     {"  Contraentrega (" + str(datos.get("cantPagoDestino")) + "):",
                      "S/ " + montoPagoDest.toPlainString()},
+                    {"  Enc. externas (" + str(datos.get("cantExternas")) + "):",
+                     "S/ " + montoExternas.toPlainString()},
+                    {"  Cuotas combi (" + str(datos.get("cantCuotasCombi")) + "):",
+                     "S/ " + montoCuotas.toPlainString()},
                     {"  Total ingresos:",
                      "S/ " + totalIngresos.toPlainString()},
                     {"  Total egresos:",

@@ -3,8 +3,10 @@ package com.expressvraem.modules.empresa.controller;
 import com.expressvraem.modules.empresa.entity.EmpresaConfig;
 import com.expressvraem.modules.empresa.service.EmpresaConfigService;
 import com.expressvraem.shared.exceptions.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,7 +22,8 @@ public class EmpresaConfigController {
     }
 
     @PutMapping
-    public ResponseEntity<ApiResponse<EmpresaConfig>> save(@RequestBody EmpresaConfig cfg) {
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<EmpresaConfig>> save(@Valid @RequestBody EmpresaConfig cfg) {
         return ResponseEntity.ok(ApiResponse.ok(service.save(cfg)));
     }
 }

@@ -23,8 +23,6 @@ export enum EstadoEncomienda {
 export enum TipoVehiculo {
   COMBI = 'COMBI',
   CAMIONETA = 'CAMIONETA',
-  BUS = 'BUS',
-  MINIVAN = 'MINIVAN',
 }
 
 export enum EstadoCaja {

@@ -59,6 +59,13 @@ public class Usuario {
     @Column(name = "ip_ultimo_acceso", length = 45)
     private String ipUltimoAcceso;
 
+    @Builder.Default
+    @Column(name = "intentos_fallidos", nullable = false)
+    private int intentosFallidos = 0;
+
+    @Column(name = "bloqueado_hasta")
+    private LocalDateTime bloqueadoHasta;
+
     /** Relación con roles (compatibilidad Spring Security) */
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(

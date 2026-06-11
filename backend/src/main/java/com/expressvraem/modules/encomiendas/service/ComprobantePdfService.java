@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 
 @Service
@@ -94,9 +95,13 @@ public class ComprobantePdfService {
 
             boolean esPorCobrar = "POR_COBRAR".equals(enc.getFormaCobro());
             String qrContent    = trackUrl + enc.getCodigoTracking();
-            String montoStr     = enc.getMonto() != null
-                    ? "S/ " + enc.getMonto().toPlainString()
-                    : enc.getPrecioEnvio() != null ? "S/ " + enc.getPrecioEnvio().toPlainString() : "—";
+
+            // monto = precio base; precioEnvio = precio final (con descuento aplicado)
+            BigDecimal montoBase  = enc.getMonto() != null ? enc.getMonto() : enc.getPrecioEnvio();
+            BigDecimal descuento  = enc.getMontoDescuento() != null ? enc.getMontoDescuento() : BigDecimal.ZERO;
+            BigDecimal montoFinal = enc.getPrecioEnvio() != null ? enc.getPrecioEnvio() : montoBase;
+            boolean hayDescuento  = descuento.compareTo(BigDecimal.ZERO) > 0;
+            String montoStr       = montoFinal != null ? "S/ " + montoFinal.toPlainString() : "—";
 
             String monto4hash   = enc.getMonto() != null
                     ? enc.getMonto().toPlainString()
@@ -119,6 +124,7 @@ public class ComprobantePdfService {
                       + 6                // destino + dash
                       + 8 * 9            // rem + des + paquete
                       + (viajeHora.isEmpty() ? 0 : 8 * 3)
+                      + (hayDescuento ? 8 * 4 : 0) // precio + descuento en ambas secciones
                       + 8 * 4            // cobro + emision
                       + 6                // dash
                       + 8 * 2            // footer
@@ -167,6 +173,10 @@ public class ComprobantePdfService {
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Destino:",     agenciaDestNombre + (agenciaDestCiudad.isEmpty() ? "" : " - " + agenciaDestCiudad), y); y -= 1;
                 if (!viajeHora.isEmpty()) {
                     y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Viaje:",   viajeRuta + "  " + viajeHora + "  " + viajePlaca, y); y -= 1;
+                }
+                if (hayDescuento) {
+                    y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Precio:",    "S/ " + montoBase.toPlainString(), y); y -= 1;
+                    y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Descuento:", "- S/ " + descuento.toPlainString(), y); y -= 1;
                 }
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Monto:",       montoStr + (esPorCobrar ? " (EN DESTINO)" : ""), y); y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Forma pago:",  esPorCobrar ? "POR COBRAR" : (enc.getFormaCobro() != null ? enc.getFormaCobro() : "EFECTIVO"), y); y -= 2;
@@ -235,6 +245,10 @@ public class ComprobantePdfService {
                 }
 
                 // Cobro
+                if (hayDescuento) {
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Precio:",    "S/ " + montoBase.toPlainString(), y); y -= 1;
+                    y = drawLabel(cs, fontBold, fontNorm, 7f, "Descuento:", "- S/ " + descuento.toPlainString(), y); y -= 1;
+                }
                 if (esPorCobrar) {
                     y = drawLabel(cs, fontBold, fontNorm, 7f, "Monto:", montoStr + " (EN DESTINO)", y); y -= 1;
                     y = drawLabel(cs, fontBold, fontNorm, 7f, "Cobro:", "POR COBRAR AL DESTINATARIO", y);

@@ -13,11 +13,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/configuracion/conductores")
@@ -26,90 +30,255 @@ public class ConfiguracionConductorController {
 
     private final ConductorRepository conductorRepository;
 
+    // ── Listar ────────────────────────────────────────────────────────────────
+
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Conductor>>> listar() {
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listar(
+            @RequestParam(required = false, defaultValue = "false") boolean soloActivos) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        List<Conductor> lista = agenciaId != null
-                ? conductorRepository.findByAgenciaId(agenciaId)
-                : conductorRepository.findAll();
-        return ResponseEntity.ok(ApiResponse.ok(lista));
+
+        List<Conductor> lista;
+        if (agenciaId != null) {
+            lista = soloActivos
+                    ? conductorRepository.findByAgenciaIdAndActivo(agenciaId, true)
+                    : conductorRepository.findByAgenciaId(agenciaId);
+        } else {
+            lista = soloActivos
+                    ? conductorRepository.findAll().stream().filter(Conductor::isActivo).toList()
+                    : conductorRepository.findAll();
+        }
+
+        return ResponseEntity.ok(ApiResponse.ok(lista.stream().map(this::toMap).toList()));
     }
 
+    // ── Detalle ───────────────────────────────────────────────────────────────
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> detalle(@PathVariable Long id) {
+        Conductor c = conductorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Conductor", id));
+        return ResponseEntity.ok(ApiResponse.ok(toMap(c)));
+    }
+
+    // ── Crear ─────────────────────────────────────────────────────────────────
+
     @PostMapping
-    public ResponseEntity<ApiResponse<Conductor>> crear(@Valid @RequestBody ConductorDTO dto) {
-        if (conductorRepository.existsByDni(dto.getDni())) {
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Map<String, Object>>> crear(@Valid @RequestBody ConductorDTO dto) {
+        Long agenciaId = AgenciaContext.getAgenciaId();
+        if (agenciaId == null) {
+            throw new BusinessException("No se pudo determinar la agencia del usuario", "AGENCIA_REQUERIDA");
+        }
+
+        String dni      = dto.getDni().trim();
+        String licencia = dto.getLicencia().toUpperCase().trim();
+
+        if (conductorRepository.existsByDni(dni)) {
             throw new BusinessException("Ya existe un conductor con ese DNI", "DNI_DUPLICADO");
         }
-        if (conductorRepository.existsByLicencia(dto.getLicencia())) {
-            throw new BusinessException("Ya existe un conductor con esa licencia", "LICENCIA_DUPLICADA");
+        if (conductorRepository.existsByLicencia(licencia)) {
+            throw new BusinessException("Ya existe un conductor con ese número de licencia", "LICENCIA_DUPLICADA");
         }
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) agenciaId = 1L;
 
         Conductor c = Conductor.builder()
                 .agenciaId(agenciaId)
-                .nombres(dto.getNombres())
-                .apellidos(dto.getApellidos())
-                .dni(dto.getDni())
-                .licencia(dto.getLicencia())
+                .nombres(dto.getNombres().trim())
+                .apellidos(dto.getApellidos().trim())
+                .dni(dni)
+                .licencia(licencia)
                 .categoriaLic(dto.getCategoriaLic())
                 .telefono(dto.getTelefono())
                 .email(dto.getEmail())
                 .fechaVencLic(dto.getFechaVencLic())
                 .activo(true)
-                .createdAt(OffsetDateTime.now())
                 .build();
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(conductorRepository.save(c)));
+        Conductor saved = conductorRepository.save(c);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Conductor registrado", toMap(saved)));
     }
 
+    // ── Actualizar ────────────────────────────────────────────────────────────
+
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<Conductor>> actualizar(
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Map<String, Object>>> actualizar(
             @PathVariable Long id,
             @Valid @RequestBody ConductorDTO dto) {
         Conductor c = conductorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Conductor", id));
-        if (conductorRepository.existsByDniAndIdNot(dto.getDni(), id)) {
+
+        String dni      = dto.getDni().trim();
+        String licencia = dto.getLicencia().toUpperCase().trim();
+
+        if (conductorRepository.existsByDniAndIdNot(dni, id)) {
             throw new BusinessException("Ya existe un conductor con ese DNI", "DNI_DUPLICADO");
         }
-        if (conductorRepository.existsByLicenciaAndIdNot(dto.getLicencia(), id)) {
-            throw new BusinessException("Ya existe un conductor con esa licencia", "LICENCIA_DUPLICADA");
+        if (conductorRepository.existsByLicenciaAndIdNot(licencia, id)) {
+            throw new BusinessException("Ya existe un conductor con ese número de licencia", "LICENCIA_DUPLICADA");
         }
-        c.setNombres(dto.getNombres());
-        c.setApellidos(dto.getApellidos());
-        c.setDni(dto.getDni());
-        c.setLicencia(dto.getLicencia());
+
+        c.setNombres(dto.getNombres().trim());
+        c.setApellidos(dto.getApellidos().trim());
+        c.setDni(dni);
+        c.setLicencia(licencia);
         c.setCategoriaLic(dto.getCategoriaLic());
         c.setTelefono(dto.getTelefono());
         c.setEmail(dto.getEmail());
         c.setFechaVencLic(dto.getFechaVencLic());
-        return ResponseEntity.ok(ApiResponse.ok(conductorRepository.save(c)));
+
+        Conductor saved = conductorRepository.save(c);
+        return ResponseEntity.ok(ApiResponse.ok("Conductor actualizado", toMap(saved)));
     }
 
+    // ── Activar / Desactivar ──────────────────────────────────────────────────
+
     @PatchMapping("/{id}/activo")
-    public ResponseEntity<ApiResponse<Conductor>> toggleActivo(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Map<String, Object>>> cambiarActivo(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> body) {
+        Boolean activo = body.get("activo");
+        if (activo == null) {
+            throw new BusinessException("El campo 'activo' es obligatorio", "CAMPO_REQUERIDO");
+        }
         Conductor c = conductorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Conductor", id));
-        c.setActivo(!c.isActivo());
-        return ResponseEntity.ok(ApiResponse.ok(conductorRepository.save(c)));
+        c.setActivo(activo);
+        Conductor saved = conductorRepository.save(c);
+        String msg = activo ? "Conductor activado" : "Conductor desactivado";
+        return ResponseEntity.ok(ApiResponse.ok(msg, toMap(saved)));
     }
+
+    // ── Renovar licencia ──────────────────────────────────────────────────────
+
+    @PatchMapping("/{id}/licencia")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Map<String, Object>>> renovarLicencia(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String fechaStr = body.get("fechaVencLic");
+        if (fechaStr == null || fechaStr.isBlank()) {
+            throw new BusinessException(
+                    "El campo 'fechaVencLic' es obligatorio (formato YYYY-MM-DD)", "CAMPO_REQUERIDO");
+        }
+        LocalDate nuevaFecha;
+        try {
+            nuevaFecha = LocalDate.parse(fechaStr);
+        } catch (Exception e) {
+            throw new BusinessException("Formato de fecha inválido. Use YYYY-MM-DD", "FECHA_INVALIDA");
+        }
+        if (!nuevaFecha.isAfter(LocalDate.now())) {
+            throw new BusinessException(
+                    "La nueva fecha de vencimiento debe ser posterior a hoy", "FECHA_PASADA");
+        }
+
+        Conductor c = conductorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Conductor", id));
+        c.setFechaVencLic(nuevaFecha);
+        Conductor saved = conductorRepository.save(c);
+        return ResponseEntity.ok(ApiResponse.ok("Licencia renovada hasta " + nuevaFecha, toMap(saved)));
+    }
+
+    // ── Eliminar ──────────────────────────────────────────────────────────────
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+        Conductor c = conductorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Conductor", id));
+        if (c.isActivo()) {
+            throw new BusinessException(
+                    "No se puede eliminar un conductor activo. Desactívalo primero.",
+                    "CONDUCTOR_ACTIVO");
+        }
+        conductorRepository.delete(c);
+        return ResponseEntity.ok(ApiResponse.ok("Conductor eliminado", null));
+    }
+
+    // ── Helper: enriquecer respuesta ──────────────────────────────────────────
+
+    private Map<String, Object> toMap(Conductor c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id",           c.getId());
+        m.put("agenciaId",    c.getAgenciaId());
+        m.put("nombres",      c.getNombres());
+        m.put("apellidos",    c.getApellidos());
+        String n = c.getNombres() != null ? c.getNombres() : "";
+        String a = c.getApellidos() != null ? c.getApellidos() : "";
+        m.put("nombreCompleto", (n + " " + a).trim());
+        m.put("dni",          c.getDni());
+        m.put("licencia",     c.getLicencia());
+        m.put("categoriaLic", c.getCategoriaLic());
+        m.put("telefono",     c.getTelefono());
+        m.put("email",        c.getEmail());
+        m.put("fechaVencLic", c.getFechaVencLic());
+        m.put("activo",       c.isActivo());
+        m.put("createdAt",    c.getCreatedAt());
+        m.put("updatedAt",    c.getUpdatedAt());
+
+        // Alerta de vencimiento de licencia
+        if (c.getFechaVencLic() != null) {
+            long dias = ChronoUnit.DAYS.between(LocalDate.now(), c.getFechaVencLic());
+            m.put("diasVencLic", dias);
+            if (dias < 0) {
+                m.put("alertaLicencia", "VENCIDA");
+            } else if (dias <= 30) {
+                m.put("alertaLicencia", "PROXIMA_A_VENCER");
+            } else {
+                m.put("alertaLicencia", "VIGENTE");
+            }
+        } else {
+            m.put("diasVencLic",    null);
+            m.put("alertaLicencia", "SIN_FECHA");
+        }
+
+        return m;
+    }
+
+    // ── DTO ───────────────────────────────────────────────────────────────────
 
     @Data
     public static class ConductorDTO {
-        @NotBlank @Size(max = 80)
+
+        @NotBlank(message = "Nombres obligatorio")
+        @Size(max = 80)
         private String nombres;
-        @NotBlank @Size(max = 80)
+
+        @NotBlank(message = "Apellidos obligatorio")
+        @Size(max = 80)
         private String apellidos;
-        @NotBlank @Size(min = 8, max = 8) @Pattern(regexp = "\\d{8}")
+
+        @NotBlank(message = "DNI obligatorio")
+        @Size(min = 8, max = 8, message = "DNI debe tener exactamente 8 dígitos")
+        @Pattern(regexp = "\\d{8}", message = "DNI debe contener solo dígitos")
         private String dni;
-        @NotBlank @Size(max = 20)
+
+        @NotBlank(message = "Número de licencia obligatorio")
+        @Size(max = 20)
         private String licencia;
-        @Size(max = 10)
+
+        @Pattern(
+            regexp = "^(A-I|A-IIa|A-IIb|A-IIIa|A-IIIb|A-IIIc|B-I|B-IIa|B-IIb|B-IIc)$",
+            message = "Categoría inválida. Valores permitidos: A-I, A-IIa, A-IIb, A-IIIa, A-IIIb, A-IIIc, B-I, B-IIa, B-IIb, B-IIc"
+        )
         private String categoriaLic;
+
+        @Pattern(regexp = "9\\d{8}", message = "Teléfono debe tener 9 dígitos y empezar con 9")
         @Size(max = 20)
         private String telefono;
+
+        @Email(message = "Email inválido")
         @Size(max = 100)
         private String email;
+
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         private LocalDate fechaVencLic;
     }

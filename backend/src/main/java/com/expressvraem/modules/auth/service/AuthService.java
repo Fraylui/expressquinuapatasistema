@@ -15,10 +15,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,82 +36,94 @@ public class AuthService {
     private static final int  MAX_INTENTOS    = 5;
     private static final long BLOQUEO_MINUTOS = 30;
 
-    // email → [intentos, primerIntento]
-    private final Map<String, long[]> intentosFallidos = new ConcurrentHashMap<>();
+    // ── Failed-attempt helpers (persisted in DB) ─────────────────
 
-    private void registrarIntentoFallido(String email) {
-        long ahora = System.currentTimeMillis();
-        intentosFallidos.compute(email, (k, v) -> {
-            if (v == null || ahora - v[1] > BLOQUEO_MINUTOS * 60_000) {
-                return new long[]{1, ahora};
-            }
-            v[0]++;
-            return v;
-        });
+    @Transactional
+    void registrarIntentoFallido(Usuario usuario) {
+        int intentos = usuario.getIntentosFallidos() + 1;
+        usuario.setIntentosFallidos(intentos);
+        if (intentos >= MAX_INTENTOS) {
+            usuario.setBloqueadoHasta(LocalDateTime.now().plusMinutes(BLOQUEO_MINUTOS));
+        }
+        usuarioRepository.save(usuario);
     }
 
-    private void verificarBloqueo(String email) {
-        long[] datos = intentosFallidos.get(email);
-        if (datos == null) return;
-        long ahora   = System.currentTimeMillis();
-        long minutos = (ahora - datos[1]) / 60_000;
-        if (datos[0] >= MAX_INTENTOS && minutos < BLOQUEO_MINUTOS) {
-            long restantes = BLOQUEO_MINUTOS - minutos;
+    void verificarBloqueo(Usuario usuario) {
+        LocalDateTime bloqueadoHasta = usuario.getBloqueadoHasta();
+        if (bloqueadoHasta == null) return;
+        LocalDateTime ahora = LocalDateTime.now();
+        if (bloqueadoHasta.isAfter(ahora)) {
+            long restantes = Duration.between(ahora, bloqueadoHasta).toMinutes() + 1;
             throw new BusinessException(
                 "Cuenta bloqueada temporalmente por " + MAX_INTENTOS + " intentos fallidos. " +
                 "Intenta nuevamente en " + restantes + " minuto(s).",
                 "CUENTA_BLOQUEADA");
         }
-        // Limpiar si ya venció el bloqueo
-        if (minutos >= BLOQUEO_MINUTOS) intentosFallidos.remove(email);
+        // Block expired — clear it
+        usuario.setIntentosFallidos(0);
+        usuario.setBloqueadoHasta(null);
+        usuarioRepository.save(usuario);
     }
 
-    private void limpiarIntentos(String email) {
-        intentosFallidos.remove(email);
+    @Transactional
+    void limpiarIntentos(Usuario usuario) {
+        if (usuario.getIntentosFallidos() > 0 || usuario.getBloqueadoHasta() != null) {
+            usuario.setIntentosFallidos(0);
+            usuario.setBloqueadoHasta(null);
+            usuarioRepository.save(usuario);
+        }
     }
 
     /** Solo SUPER_ADMIN puede usar este método para desbloquear manualmente. */
+    @Transactional
     public void desbloquearCuenta(String email) {
-        intentosFallidos.remove(email);
-        log.info("Cuenta {} desbloqueada manualmente por SUPER_ADMIN", email);
+        usuarioRepository.findByEmail(email).ifPresent(u -> {
+            u.setIntentosFallidos(0);
+            u.setBloqueadoHasta(null);
+            usuarioRepository.save(u);
+            log.info("Cuenta {} desbloqueada manualmente por SUPER_ADMIN", email);
+        });
     }
 
-    public java.util.Map<String, Object> getResumenIntentosFallidos() {
-        long ahora = System.currentTimeMillis();
-        var activos = intentosFallidos.entrySet().stream()
-            .filter(e -> ahora - e.getValue()[1] < BLOQUEO_MINUTOS * 60_000)
-            .map(e -> {
-                var m = new java.util.LinkedHashMap<String, Object>();
-                m.put("email",        e.getKey());
-                m.put("intentos",     e.getValue()[0]);
-                m.put("bloqueado",    e.getValue()[0] >= MAX_INTENTOS);
-                m.put("minutosRest",  BLOQUEO_MINUTOS - (ahora - e.getValue()[1]) / 60_000);
-                return m;
-            }).toList();
-        var result = new java.util.LinkedHashMap<String, Object>();
+    public Map<String, Object> getResumenIntentosFallidos() {
+        LocalDateTime ahora = LocalDateTime.now();
+        var usuarios = usuarioRepository.findByIntentosFallidosGreaterThan(0);
+        var activos = usuarios.stream().map(u -> {
+            var m = new LinkedHashMap<String, Object>();
+            m.put("email",       u.getEmail());
+            m.put("intentos",    u.getIntentosFallidos());
+            boolean bloqueado = u.getBloqueadoHasta() != null && u.getBloqueadoHasta().isAfter(ahora);
+            m.put("bloqueado",   bloqueado);
+            m.put("minutosRest", bloqueado ? Duration.between(ahora, u.getBloqueadoHasta()).toMinutes() + 1 : 0);
+            return m;
+        }).toList();
+        var result = new LinkedHashMap<String, Object>();
         result.put("cuentasConIntentos", activos.size());
         result.put("cuentasBloqueadas",  activos.stream().filter(m -> (Boolean) m.get("bloqueado")).count());
         result.put("detalle", activos);
         return result;
     }
 
+    // ── Login ─────────────────────────────────────────────────────
+
     @Transactional
     public LoginResponseDTO login(LoginRequestDTO dto, String ip) {
-        // Verificar bloqueo antes de cualquier consulta
-        verificarBloqueo(dto.email());
+        // Fetch user (active or not) to check block status first
+        var usuarioOpt = usuarioRepository.findByEmail(dto.email());
 
-        var userOpt = usuarioRepository.findByEmailAndActivo(dto.email(), true);
-        if (userOpt.isEmpty()) {
-            registrarIntentoFallido(dto.email());
+        if (usuarioOpt.isEmpty() || !usuarioOpt.get().isActivo()) {
+            // Track attempt on inactive accounts too, but don't reveal whether user exists
+            usuarioOpt.ifPresent(this::registrarIntentoFallido);
             auditLoginFallido(dto.email(), null, ip, "USUARIO_NO_ENCONTRADO");
             throw new BusinessException("Credenciales inválidas", "AUTH_INVALID");
         }
-        Usuario usuario = userOpt.get();
+
+        Usuario usuario = usuarioOpt.get();
+        verificarBloqueo(usuario);
 
         if (!passwordEncoder.matches(dto.password(), usuario.getPasswordHash())) {
-            registrarIntentoFallido(dto.email());
-            long[] datos = intentosFallidos.get(dto.email());
-            long intentos = datos != null ? datos[0] : 1;
+            registrarIntentoFallido(usuario);
+            int intentos = usuario.getIntentosFallidos();
             log.warn("Login fallido para: {} desde IP: {} (intento {}/{})", dto.email(), ip, intentos, MAX_INTENTOS);
             auditLoginFallido(dto.email(), usuario.getAgenciaId(), ip,
                 "PASSWORD_INCORRECTO (intento " + intentos + "/" + MAX_INTENTOS + ")");
@@ -124,17 +137,15 @@ public class AuthService {
                 (MAX_INTENTOS - intentos), "AUTH_INVALID");
         }
 
-        limpiarIntentos(dto.email());
+        limpiarIntentos(usuario);
 
         usuario.setUltimoAcceso(LocalDateTime.now());
         usuario.setIpUltimoAcceso(ip);
         usuarioRepository.save(usuario);
 
         List<String> modulosActivos = buildModulosActivos(usuario);
-
         var userDetails = userDetailsService.loadUserByUsername(dto.email());
 
-        // SUPER_ADMIN y GERENTE: agenciaId null → ven todas las agencias
         Long agenciaIdJwt = switch (usuario.getRol()) {
             case "SUPER_ADMIN", "GERENTE" -> null;
             default -> usuario.getAgenciaId();
@@ -178,6 +189,8 @@ public class AuthService {
                         .ip(ip).build()));
     }
 
+    // ── Refresh token — Fix 3: verify activo ─────────────────────
+
     public LoginResponseDTO refreshToken(String token) {
         if (!jwtTokenProvider.validateToken(token)) {
             throw new BusinessException("Token de refresco inválido o expirado", "TOKEN_INVALID");
@@ -186,8 +199,8 @@ public class AuthService {
             throw new BusinessException("El token proporcionado no es un token de refresco", "TOKEN_TYPE_INVALID");
         }
         String email = jwtTokenProvider.getUsernameFromToken(token);
-        var usuario = usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
+        var usuario = usuarioRepository.findByEmailAndActivo(email, true)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado o inactivo", "USER_NOT_FOUND"));
 
         List<String> modulosActivos = buildModulosActivos(usuario);
         var userDetails = userDetailsService.loadUserByUsername(email);
@@ -202,9 +215,11 @@ public class AuthService {
         return buildResponse(newToken, newRefreshToken, usuario, modulosActivos);
     }
 
+    // ── /me — Fix 2: verify activo ───────────────────────────────
+
     public LoginResponseDTO.UsuarioInfo getMeInfo(String email) {
-        Usuario usuario = usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
+        Usuario usuario = usuarioRepository.findByEmailAndActivo(email, true)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado o inactivo", "USER_NOT_FOUND"));
         List<String> modulos = buildModulosActivos(usuario);
         return new LoginResponseDTO.UsuarioInfo(
                 usuario.getId(),
@@ -217,8 +232,9 @@ public class AuthService {
         );
     }
 
+    // ── Helpers ───────────────────────────────────────────────────
+
     private List<String> buildModulosActivos(Usuario usuario) {
-        // SUPER_ADMIN tiene todos los módulos siempre
         if ("SUPER_ADMIN".equals(usuario.getRol())) {
             return List.of("VENTAS","ENCOMIENDAS","CAJA","MANIFIESTOS",
                            "REPORTES","USUARIOS","AGENCIAS","CONFIGURACION","AUDITORIA");
@@ -239,7 +255,7 @@ public class AuthService {
                         usuario.getEmail(),
                         usuario.getRol(),
                         usuario.getAgenciaId(),
-                        modulosActivos,    // permisos = modulosActivos para frontend
+                        modulosActivos,
                         modulosActivos
                 )
         );

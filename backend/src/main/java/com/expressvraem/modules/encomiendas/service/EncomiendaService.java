@@ -8,6 +8,7 @@ import com.expressvraem.modules.clientes.service.ClienteService;
 import com.expressvraem.modules.encomiendas.dto.EntregarEncomiendaDTO;
 import com.expressvraem.modules.encomiendas.dto.RecepcionItemDTO;
 import com.expressvraem.modules.encomiendas.dto.RegistrarEncomiendaDTO;
+import com.expressvraem.modules.promociones.entity.Promocion;
 import com.expressvraem.modules.promociones.service.PromocionService;
 import com.expressvraem.modules.encomiendas.entity.Encomienda;
 import com.expressvraem.modules.encomiendas.entity.HistorialEncomienda;
@@ -33,7 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -87,15 +88,10 @@ public class EncomiendaService {
         BigDecimal descuento  = BigDecimal.ZERO;
         Long       promoIdRef = null;
         if (dto.promocionId() != null) {
-            final BigDecimal[] dRef = { BigDecimal.ZERO };
-            final Long[]       idRef = { null };
-            promocionService.findById(dto.promocionId()).ifPresent(promo -> {
-                dRef[0]  = promocionService.calcularDescuento(promo, precio);
-                idRef[0] = promo.getId();
-                promocionService.incrementarUso(promo.getId());
-            });
-            descuento  = dRef[0];
-            promoIdRef = idRef[0];
+            Promocion promo = promocionService.findVigenteById(dto.promocionId(), "ENCOMIENDAS");
+            descuento  = promocionService.calcularDescuento(promo, precio);
+            promoIdRef = promo.getId();
+            promocionService.incrementarUso(promo.getId());
         }
         BigDecimal precioEnvioFinal = precio.subtract(descuento);
         if (precioEnvioFinal.compareTo(BigDecimal.ZERO) < 0) precioEnvioFinal = BigDecimal.ZERO;
@@ -138,6 +134,19 @@ public class EncomiendaService {
                     log.warn("No se pudo registrar mov. origen para enc. {}: {}", saved.getCodigoTracking(), e.getMessage());
                 }
             });
+        } else if (precioEnvioFinal.compareTo(BigDecimal.ZERO) > 0) {
+            // Cobro al contado en origen: caja OBLIGATORIA — el dinero recibido debe entrar al turno
+            var turno = cajaRepository.findByUsuarioIdAndEstado(operadorId, "ABIERTA");
+            if (turno.isEmpty()) {
+                throw new BusinessException(
+                        "Debe tener un turno de caja abierto para cobrar encomiendas al contado. Abra su caja primero.",
+                        "CAJA_REQUERIDA");
+            }
+            cajaService.registrarMovimiento(
+                    turno.get().getId(), "INGRESO",
+                    "Encomienda " + saved.getCodigoTracking() + " — " + dto.formaCobro(),
+                    precioEnvioFinal, operadorId, "ENCOMIENDA", saved.getId(),
+                    "ENCOMIENDA", saved.getViajeId(), null, null, null);
         }
 
         auditoriaService.registrar(operadorId, usuarioNombre, agenciaId,
@@ -272,7 +281,8 @@ public class EncomiendaService {
             cajaService.registrarMovimiento(
                     turno.get().getId(), "INGRESO",
                     "Pago en destino enc. " + enc.getCodigoTracking() + " — " + dto.formaPago(),
-                    montoEnc, usuarioId, "PAGO_DESTINO", id);
+                    montoEnc, usuarioId, "PAGO_DESTINO", id,
+                    "ENC_PAGO_DESTINO", enc.getViajeId(), null, null, null);
             cobrado = true;
         }
 

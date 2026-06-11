@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -29,9 +30,13 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api/manifiestos")
@@ -70,6 +75,8 @@ public class ManifiestoController {
 
     @PostMapping("/generar/{viajeId}")
     @RequiereModulo("MANIFIESTOS")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<Manifiesto>> generar(
             @PathVariable Long viajeId,
             Authentication auth) {
@@ -187,6 +194,8 @@ public class ManifiestoController {
 
     @PostMapping("/{viajeId}/guardar")
     @RequiereModulo("MANIFIESTOS")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<Manifiesto>> guardar(
             @PathVariable Long viajeId,
             @RequestBody(required = false) Map<String, String> body,
@@ -226,6 +235,8 @@ public class ManifiestoController {
 
     @PatchMapping("/{id}/estado")
     @RequiereModulo("MANIFIESTOS")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @Transactional
     public ResponseEntity<ApiResponse<Manifiesto>> cambiarEstado(
             @PathVariable Long id,
             @RequestBody Map<String, String> body) {
@@ -299,6 +310,25 @@ public class ManifiestoController {
         }
 
         List<Pasaje> pasajes = pasajeRepository.findActivosByViajeId(viajeId);
+        List<Encomienda> encomiendas = encomiendaRepository.findByViajeId(viajeId);
+
+        // Batch-load all client data in a single query — avoids N+1 (one query per passenger/consignee)
+        Set<Long> clienteIds = Stream.concat(
+                pasajes.stream().map(Pasaje::getClienteId).filter(id -> id != null),
+                encomiendas.stream().flatMap(e -> Stream.of(e.getRemitenteId(), e.getDestinatarioId()))
+                        .filter(id -> id != null)
+        ).collect(Collectors.toSet());
+
+        Map<Long, Object[]> clienteMap = new HashMap<>();
+        if (!clienteIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, nombres, apellidos, tipo_doc, num_doc FROM clientes WHERE id IN :ids")
+                    .setParameter("ids", clienteIds)
+                    .getResultList();
+            rows.forEach(r -> clienteMap.put(((Number) r[0]).longValue(), r));
+        }
+
         List<ManifiestoDTO.PasajeroItem> pasajeroItems = new ArrayList<>();
         BigDecimal totalRec = BigDecimal.ZERO;
 
@@ -312,24 +342,18 @@ public class ManifiestoController {
             item.setFormaPago(p.getFormaPago());
             item.setEstadoPasaje(p.getEstado());
             if (p.getPrecioFinal() != null) totalRec = totalRec.add(p.getPrecioFinal());
-
             item.setNumAsiento(p.getAsientoNumero() != null ? p.getAsientoNumero() : 0);
 
-            try {
-                Object[] cl = (Object[]) entityManager
-                        .createNativeQuery("SELECT nombres, apellidos, tipo_doc, num_doc FROM clientes WHERE id = :id")
-                        .setParameter("id", p.getClienteId())
-                        .getSingleResult();
-                item.setNombres(str(cl[0]));
-                item.setApellidos(str(cl[1]));
-                item.setTipoDoc(str(cl[2]));
-                item.setNumDoc(str(cl[3]));
-            } catch (Exception e) {
-                log.warn("Cliente no encontrado para pasaje {}: {}", p.getId(), e.getMessage());
+            Object[] cl = p.getClienteId() != null ? clienteMap.get(p.getClienteId()) : null;
+            if (cl != null) {
+                item.setNombres(str(cl[1]));
+                item.setApellidos(str(cl[2]));
+                item.setTipoDoc(str(cl[3]));
+                item.setNumDoc(str(cl[4]));
+            } else {
                 item.setNombres("—"); item.setApellidos("—");
                 item.setTipoDoc("—"); item.setNumDoc("—");
             }
-
             pasajeroItems.add(item);
         }
 
@@ -337,7 +361,6 @@ public class ManifiestoController {
         dto.setTotalPasajeros(pasajeroItems.size());
         dto.setTotalRecaudado(totalRec);
 
-        List<Encomienda> encomiendas = encomiendaRepository.findByViajeId(viajeId);
         List<ManifiestoDTO.EncomiendaItem> encItems = new ArrayList<>();
         BigDecimal totalEnc = BigDecimal.ZERO;
 
@@ -355,8 +378,8 @@ public class ManifiestoController {
             ei.setEstado(enc.getEstado());
             if (enc.getPrecioEnvio() != null) totalEnc = totalEnc.add(enc.getPrecioEnvio());
 
-            ei.setRemitente(resolveNombreCliente(enc.getRemitenteId()));
-            ei.setDestinatario(resolveNombreCliente(enc.getDestinatarioId()));
+            ei.setRemitente(resolveNombreClienteFromMap(enc.getRemitenteId(), clienteMap));
+            ei.setDestinatario(resolveNombreClienteFromMap(enc.getDestinatarioId(), clienteMap));
             encItems.add(ei);
         }
 
@@ -367,18 +390,12 @@ public class ManifiestoController {
         return dto;
     }
 
-    private String resolveNombreCliente(Long clienteId) {
+    private String resolveNombreClienteFromMap(Long clienteId, Map<Long, Object[]> clienteMap) {
         if (clienteId == null) return "—";
-        try {
-            Object[] cl = (Object[]) entityManager
-                    .createNativeQuery("SELECT apellidos, nombres FROM clientes WHERE id = :id")
-                    .setParameter("id", clienteId)
-                    .getSingleResult();
-            return str(cl[0]) + ", " + str(cl[1]);
-        } catch (Exception e) {
-            log.warn("Cliente {} no encontrado: {}", clienteId, e.getMessage());
-            return "—";
-        }
+        Object[] cl = clienteMap.get(clienteId);
+        if (cl == null) return "—";
+        // row: [id, nombres, apellidos, tipo_doc, num_doc]
+        return str(cl[2]) + ", " + str(cl[1]);
     }
 
     private ManifiestoPdfService.TicketData buildTicketData(Pasaje p) {
@@ -453,7 +470,7 @@ public class ManifiestoController {
 
     private String generarNumero(Long agenciaId) {
         int año = LocalDateTime.now().getYear();
-        long count = manifiestoRepository.count() + 1;
+        long count = manifiestoRepository.countByAgenciaId(agenciaId) + 1;
         return String.format("MAN-%d-%05d", año, count);
     }
 

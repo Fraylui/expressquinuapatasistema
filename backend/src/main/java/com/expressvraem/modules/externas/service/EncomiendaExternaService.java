@@ -65,20 +65,18 @@ public class EncomiendaExternaService {
         EncomiendaExterna saved = repo.save(enc);
 
         if ("PAGADO".equals(dto.estadoPago()) && dto.monto().compareTo(BigDecimal.ZERO) > 0) {
-            cajaRepository.findByUsuarioIdAndEstado(operadorId, "ABIERTA").ifPresentOrElse(
-                caja -> {
-                    try {
-                        cajaService.registrarMovimiento(
-                                caja.getId(), "INGRESO",
-                                "Enc. externa " + correlativo + " — " + dto.formaPago(),
-                                dto.monto(), operadorId, "ENC_EXTERNA", saved.getId());
-                    } catch (Exception e) {
-                        log.warn("Error registrando en caja para enc. externa {}: {}", correlativo, e.getMessage());
-                        throw new BusinessException("Encomienda registrada pero fallo al registrar en caja: " + e.getMessage(), "CAJA_ERROR");
-                    }
-                },
-                () -> log.warn("No hay caja abierta para operador {} al registrar enc. externa {}", operadorId, correlativo)
-            );
+            // Cobro al conductor: caja OBLIGATORIA — el dinero recibido debe entrar al turno
+            var turno = cajaRepository.findByUsuarioIdAndEstado(operadorId, "ABIERTA");
+            if (turno.isEmpty()) {
+                throw new BusinessException(
+                        "Debe tener un turno de caja abierto para cobrar al conductor. " +
+                        "Abra su caja primero o registre la encomienda como pago al recoger.",
+                        "CAJA_REQUERIDA");
+            }
+            cajaService.registrarMovimiento(
+                    turno.get().getId(), "INGRESO",
+                    "Enc. externa " + correlativo + " — " + dto.formaPago(),
+                    dto.monto(), operadorId, "ENC_EXTERNA", saved.getId());
         }
 
         log.info("Encomienda externa registrada: {} agencia={}", correlativo, agenciaId);

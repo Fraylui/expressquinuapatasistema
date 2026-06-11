@@ -56,6 +56,17 @@ public class PromocionService {
         return repository.findById(id);
     }
 
+    /** Devuelve la promoción solo si existe y está vigente para el módulo indicado; si no, lanza error. */
+    public Promocion findVigenteById(Long id, String aplicaA) {
+        Promocion p = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Promocion", id));
+        if (!esVigente(p, aplicaA))
+            throw new BusinessException(
+                    "La promoción «" + p.getNombre() + "» no está vigente o no aplica aquí",
+                    "PROMO_NO_VIGENTE");
+        return p;
+    }
+
     // ── Cálculo de descuento ──────────────────────────────────────────────────
 
     public BigDecimal calcularDescuento(Promocion p, BigDecimal precioBase) {
@@ -71,10 +82,8 @@ public class PromocionService {
 
     @Transactional
     public void incrementarUso(Long id) {
-        Promocion p = repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Promocion", id));
-        p.setUsosActuales(p.getUsosActuales() + 1);
-        repository.save(p);
+        // Atomic DB-level increment — avoids lost-update race condition under concurrent promo use
+        repository.incrementarUsoById(id);
     }
 
     // ── CRUD ─────────────────────────────────────────────────────────────────
@@ -141,7 +150,15 @@ public class PromocionService {
 
     @Transactional
     public void eliminar(Long id) {
-        repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Promocion", id));
+        Promocion p = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Promocion", id));
+        // Las ventas guardan descuento_id/promocion_id: borrar una promo usada rompe el historial
+        if (p.getUsosActuales() != null && p.getUsosActuales() > 0) {
+            throw new BusinessException(
+                    "La promoción «" + p.getNombre() + "» ya fue usada en " + p.getUsosActuales()
+                            + " venta(s). Desactívala en lugar de eliminarla para conservar el historial.",
+                    "PROMO_CON_USOS");
+        }
         repository.deleteById(id);
     }
 

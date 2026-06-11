@@ -145,7 +145,9 @@ public class ViajeScheduler {
                     .createNativeQuery("SELECT nombres, apellidos FROM clientes WHERE id = :id")
                     .setParameter("id", clienteId)
                     .getSingleResult();
-            return row[0] + " " + row[1];
+            String n = row[0] != null ? row[0].toString() : "";
+            String a = row[1] != null ? row[1].toString() : "";
+            return (n + " " + a).trim();
         } catch (Exception e) {
             return "Cliente #" + clienteId;
         }

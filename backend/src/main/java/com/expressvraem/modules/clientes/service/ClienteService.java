@@ -5,6 +5,7 @@ import com.expressvraem.modules.auditoria.service.AuditoriaService;
 import com.expressvraem.modules.clientes.dto.ClienteDTO;
 import com.expressvraem.modules.clientes.entity.Cliente;
 import com.expressvraem.modules.clientes.repository.ClienteRepository;
+import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -90,7 +91,10 @@ public class ClienteService {
 
     public List<Cliente> buscar(String q) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) return List.of();
+        // SUPER_ADMIN / GERENTE tienen agenciaId null — buscan en todas las agencias
+        if (agenciaId == null) {
+            return clienteRepository.findByApellidosContainingIgnoreCaseOrNombresContainingIgnoreCase(q, q);
+        }
         if (q == null || q.isBlank()) return clienteRepository.findByAgenciaIdOrderByApellidosAsc(agenciaId);
         // Try num_doc match first (faster for DNI lookup)
         List<Cliente> byDoc = clienteRepository.findByAgenciaIdAndNumDocContainingIgnoreCase(agenciaId, q);
@@ -100,6 +104,11 @@ public class ClienteService {
     }
 
     public Cliente crear(ClienteDTO dto) {
+        if (dto.getTipoDoc() != null && dto.getNumDoc() != null &&
+                clienteRepository.findByTipoDocAndNumDoc(dto.getTipoDoc(), dto.getNumDoc()).isPresent()) {
+            throw new BusinessException(
+                "Ya existe un cliente con " + dto.getTipoDoc() + " " + dto.getNumDoc(), "CLIENTE_DUPLICADO");
+        }
         Long agenciaId = AgenciaContext.getAgenciaId();
         boolean empresa = dto.isEmpresa();
         Cliente c = Cliente.builder()
@@ -125,6 +134,16 @@ public class ClienteService {
     public Cliente actualizar(Long id, ClienteDTO dto) {
         Cliente c = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente", id));
+        if (dto.getTipoDoc() != null && dto.getNumDoc() != null) {
+            clienteRepository.findByTipoDocAndNumDoc(dto.getTipoDoc(), dto.getNumDoc())
+                    .ifPresent(existing -> {
+                        if (!existing.getId().equals(id)) {
+                            throw new BusinessException(
+                                "Ya existe otro cliente con " + dto.getTipoDoc() + " " + dto.getNumDoc(),
+                                "CLIENTE_DUPLICADO");
+                        }
+                    });
+        }
         String antes = toJson(c);
         boolean empresa = dto.isEmpresa();
         c.setTipo(empresa ? "EMPRESA" : "PERSONA");

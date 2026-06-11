@@ -63,9 +63,9 @@ public class LiquidacionViajeService {
         String conductorNombre = "—";
         try {
             Object[] condRow = (Object[]) entityManager
-                    .createNativeQuery("SELECT nombres || ' ' || apellidos FROM usuarios WHERE id = :id")
+                    .createNativeQuery("SELECT COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM usuarios WHERE id = :id")
                     .setParameter("id", viaje.getConductorId()).getSingleResult();
-            conductorNombre = String.valueOf(condRow[0]);
+            conductorNombre = String.valueOf(condRow[0]).trim();
         } catch (Exception ignored) {}
 
         // ── Pasajes activos ───────────────────────────────────────────────────
@@ -102,7 +102,6 @@ public class LiquidacionViajeService {
             PDPage page = new PDPage(PDRectangle.A4);
             doc.addPage(page);
             PDPageContentStream cs = new PDPageContentStream(doc, page);
-            int pageNum = 1;
             float y = PAGE_H - MARGIN;
 
             PDType1Font BOLD   = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
@@ -170,7 +169,7 @@ public class LiquidacionViajeService {
 
             for (Object[] p : pasajes) {
                 if (y < MARGIN + 60) {
-                    cs.close(); pageNum++;
+                    cs.close();
                     page = new PDPage(PDRectangle.A4); doc.addPage(page);
                     cs = new PDPageContentStream(doc, page);
                     y = PAGE_H - MARGIN;
@@ -239,7 +238,7 @@ public class LiquidacionViajeService {
 
                 for (Object[] e : encomiendas) {
                     if (y < MARGIN + 60) {
-                        cs.close(); pageNum++;
+                        cs.close();
                         page = new PDPage(PDRectangle.A4); doc.addPage(page);
                         cs = new PDPageContentStream(doc, page);
                         y = PAGE_H - MARGIN;
@@ -283,7 +282,7 @@ public class LiquidacionViajeService {
 
             // ── Resumen final ─────────────────────────────────────────────────
             if (y < MARGIN + 80) {
-                cs.close(); pageNum++;
+                cs.close();
                 page = new PDPage(PDRectangle.A4); doc.addPage(page);
                 cs = new PDPageContentStream(doc, page);
                 y = PAGE_H - MARGIN;

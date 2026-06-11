@@ -24,6 +24,9 @@ public class ViajeResponseDTO {
     private Long    asientosOcupados;
     private Long    cantEncomiendas;
 
+    /** Suma de ingresos en caja vinculados a este viaje (pasajes + encomiendas + cuota combi). */
+    private java.math.BigDecimal ingresosViaje;
+
     @Data
     public static class RutaDTO {
         private Long   id;

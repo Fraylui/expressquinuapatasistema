@@ -93,7 +93,7 @@ public class ComprobanteEntregaPdfService {
 
                 // ── Encabezado ─────────────────────────────────────────────────
                 y = drawCenteredText(cs, fontBold, 9f, EMPRESA, y);              y -= 2;
-                y = drawCenteredText(cs, fontNorm, 7f, "RUC: 20601234567", y);  y -= 4;
+                if (!RUC.isEmpty()) { y = drawCenteredText(cs, fontNorm, 7f, RUC, y); y -= 4; }
                 y = drawDashes(cs, y);                                            y -= 3;
 
                 // ── Título ─────────────────────────────────────────────────────

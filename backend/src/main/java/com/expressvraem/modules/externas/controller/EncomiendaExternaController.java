@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,13 +42,17 @@ public class EncomiendaExternaController {
         if (fromContext != null) return fromContext;
         return usuarioRepository.findByEmail(auth.getName())
                 .map(Usuario::getAgenciaId)
-                .orElse(1L);
+                .orElse(null);
     }
 
     private String resolveNombre(Authentication auth) {
         try {
             var u = usuarioRepository.findByEmail(auth.getName()).orElse(null);
-            if (u != null) return u.getNombres() + " " + u.getApellidos();
+            if (u != null) {
+                String n = u.getNombres() != null ? u.getNombres() : "";
+                String a = u.getApellidos() != null ? u.getApellidos() : "";
+                return (n + " " + a).trim();
+            }
         } catch (Exception ignored) {}
         return auth.getName();
     }
@@ -55,6 +60,7 @@ public class EncomiendaExternaController {
     // ── Registrar ───────────────────────────────────────────────────────────────
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<EncomiendaExterna>> registrar(
             @Valid @RequestBody RegistrarEncomiendaExternaDTO dto,
             Authentication auth) {
@@ -75,6 +81,7 @@ public class EncomiendaExternaController {
     // ── Entregar ────────────────────────────────────────────────────────────────
 
     @PostMapping("/{id}/entregar")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> entregar(
             @PathVariable Long id,
             @Valid @RequestBody EntregarEncomiendaExternaDTO dto,

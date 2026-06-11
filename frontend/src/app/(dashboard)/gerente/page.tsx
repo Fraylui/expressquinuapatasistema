@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import {
   Ticket, Package, DollarSign, ShieldCheck, AlertTriangle,
-  TrendingUp, TrendingDown, Activity, FileText, Download, Bus, Clock,
+  TrendingUp, TrendingDown, FileText, Download, Bus, Clock,
   ChevronRight, RefreshCw, Building2, ArrowUpRight, ArrowDownRight,
   Minus, MapPin, Users, Wallet, BarChart2, CheckCircle2,
 } from 'lucide-react'
@@ -23,7 +23,25 @@ interface KPIs {
   pasajesHoy: number; ingresosHoy: number; encomiendaActivas: number
   cajasAbiertas: number; auditoriaHoy: number; viajesActivosHoy: number
   diferenciasHoy: number; fechaHora: string
+  ingresosPorCategoria?: Record<string, number>
 }
+
+const CATEGORIA_INGRESO_META: Record<string, { label: string; cls: string }> = {
+  PASAJE_CAMIONETA:   { label: 'Pasajes camioneta', cls: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
+  PASAJE_COMBI:       { label: 'Pasajes combi',     cls: 'bg-teal-50 border-teal-100 text-teal-700' },
+  CUOTA_SALIDA_COMBI: { label: 'Cuotas combi',      cls: 'bg-cyan-50 border-cyan-100 text-cyan-700' },
+  ENCOMIENDA:         { label: 'Encomiendas',       cls: 'bg-violet-50 border-violet-100 text-violet-700' },
+  ENC_PAGO_DESTINO:   { label: 'Enc. pago destino', cls: 'bg-purple-50 border-purple-100 text-purple-700' },
+  ENC_EXTERNA:        { label: 'Enc. externas',     cls: 'bg-amber-50 border-amber-100 text-amber-700' },
+  PASAJE:             { label: 'Pasajes',           cls: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
+  OTRO:               { label: 'Otros',             cls: 'bg-gray-50 border-gray-200 text-gray-600' },
+}
+
+/* Categorías que siempre se muestran aunque estén en S/ 0.00 */
+const CATEGORIAS_FIJAS = [
+  'PASAJE_CAMIONETA', 'PASAJE_COMBI', 'CUOTA_SALIDA_COMBI',
+  'ENCOMIENDA', 'ENC_PAGO_DESTINO', 'ENC_EXTERNA',
+]
 interface Comparativa {
   pasajesHoy: number; pasajesAyer: number; pasajesDelta: number
   ingresosHoy: number; ingresosAyer: number; ingresosDelta: number
@@ -233,19 +251,13 @@ export default function GerentePage() {
   const { data: encPendRaw } = useSWR(ag('/api/reportes/encomiendas-pendientes'), { refreshInterval: 300_000 })
   const encPendientes: EncomiendaPendiente[] = (encPendRaw as any) ?? []
 
-  const { data: auditoriaData } = useSWR('/api/auditoria/resumen', { refreshInterval: 60_000 })
-  const auditoria = auditoriaData as any
-
   const { data: topRutasRaw } = useSWR(ag(`/api/reportes/top-rutas?dias=${topDias}`), { refreshInterval: 300_000 })
   const topRutas: TopRuta[] = (topRutasRaw as any) ?? []
 
   const { data: conductoresRaw } = useSWR(ag('/api/reportes/conductores-activos'), { refreshInterval: 60_000 })
   const conductoresActivos: ConductorActivo[] = (conductoresRaw as any) ?? []
 
-  const { data: operadoresRaw } = useSWR(
-    agenciaFiltro ? `/api/caja/estado-operadores` : null,
-    { refreshInterval: 120_000 }
-  )
+  const { data: operadoresRaw } = useSWR('/api/caja/estado-operadores', { refreshInterval: 120_000 })
   const estadoOperadores: EstadoOperador[] = (operadoresRaw as any) ?? []
 
   // ── Chart data ────────────────────────────────────────────────────────────────
@@ -368,7 +380,7 @@ export default function GerentePage() {
       />
 
       {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         <KPICard
           label="Pasajes hoy"
           value={kpis?.pasajesHoy ?? '—'}
@@ -396,12 +408,6 @@ export default function GerentePage() {
           icon={DollarSign} accent="bg-indigo-500"
         />
         <KPICard
-          label="Eventos hoy"
-          value={kpis?.auditoriaHoy ?? '—'}
-          sub="acciones registradas"
-          icon={Activity} accent="bg-amber-500"
-        />
-        <KPICard
           label="Viajes activos"
           value={kpis?.viajesActivosHoy ?? '—'}
           sub="programados + en ruta"
@@ -415,6 +421,41 @@ export default function GerentePage() {
           accent={kpis !== undefined && kpis.diferenciasHoy > 0 ? 'bg-red-500' : 'bg-gray-400'}
           inverseAlert
         />
+      </div>
+
+      {/* ── Ingresos de hoy por servicio (separación combis / camionetas / encomiendas) ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+            Ingresos de hoy por servicio
+          </p>
+          <Link href="/reportes" className="text-[11px] text-[#064e3b] hover:underline font-medium">
+            Ver reporte completo →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5">
+          {CATEGORIAS_FIJAS.map(key => {
+            const meta  = CATEGORIA_INGRESO_META[key]
+            const monto = Number(kpis?.ingresosPorCategoria?.[key] ?? 0)
+            return (
+              <div key={key} className={`rounded-xl px-3.5 py-2 border ${meta.cls} ${monto === 0 ? 'opacity-60' : ''}`}>
+                <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">{meta.label}</p>
+                <p className="text-base font-bold tabular-nums">{fmtMoney(monto)}</p>
+              </div>
+            )
+          })}
+          {Object.entries(kpis?.ingresosPorCategoria ?? {})
+            .filter(([key, monto]) => !CATEGORIAS_FIJAS.includes(key) && Number(monto) > 0)
+            .map(([key, monto]) => {
+              const meta = CATEGORIA_INGRESO_META[key] ?? { label: key, cls: 'bg-gray-50 border-gray-200 text-gray-600' }
+              return (
+                <div key={key} className={`rounded-xl px-3.5 py-2 border ${meta.cls}`}>
+                  <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">{meta.label}</p>
+                  <p className="text-base font-bold tabular-nums">{fmtMoney(Number(monto))}</p>
+                </div>
+              )
+            })}
+        </div>
       </div>
 
       {/* ── Grid principal ── */}
@@ -596,51 +637,43 @@ export default function GerentePage() {
             )}
           </div>
 
-          {/* Estado de controles */}
+          {/* Estado de operadores: quién tiene caja abierta y con cuánto */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <ShieldCheck size={13} className="text-[#064e3b]" /> Controles activos
+              <Users size={13} className="text-[#064e3b]" />
+              Cajas de operadores
+              {estadoOperadores.filter(o => !o.tieneCaja).length > 0 && (
+                <span className="ml-auto px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
+                  {estadoOperadores.filter(o => !o.tieneCaja).length} sin caja
+                </span>
+              )}
             </h3>
-            <div className="space-y-2">
-              {[
-                { desc: 'Descuentos limitados según el rol del usuario' },
-                { desc: 'Auditoría de todas las acciones con IP y hora' },
-                { desc: 'Máximo 5 intentos de inicio de sesión por minuto' },
-                { desc: 'Cada agencia solo ve sus propios datos' },
-              ].map(({ desc }) => (
-                <div key={desc} className="flex items-start gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
-                  <CheckCircle2 size={12} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-gray-600">{desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Bitácora */}
-          {auditoria && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <Activity size={13} className="text-[#064e3b]" /> Bitácora hoy
-              </h3>
-              <div className="space-y-1.5">
-                {[
-                  { label: 'Total eventos', value: auditoria.total ?? 0, cls: 'text-gray-900' },
-                  { label: 'Creaciones',    value: auditoria.inserts ?? 0, cls: 'text-blue-600' },
-                  { label: 'Modificaciones',value: auditoria.updates ?? 0, cls: 'text-amber-600' },
-                  { label: 'Eliminaciones', value: auditoria.deletes ?? 0, cls: 'text-red-600' },
-                ].map(({ label, value, cls }) => (
-                  <div key={label} className="flex justify-between items-center py-1 border-b border-gray-50 last:border-0">
-                    <span className="text-xs text-gray-500">{label}</span>
-                    <span className={`text-sm font-bold tabular-nums ${cls}`}>{value}</span>
+            {estadoOperadores.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-6">Sin operadores registrados</p>
+            ) : (
+              <div className="space-y-2">
+                {estadoOperadores.map(op => (
+                  <div key={op.usuarioId} className={`flex items-center justify-between px-3 py-2 rounded-xl border ${
+                    op.tieneCaja ? 'border-emerald-100 bg-emerald-50' : 'border-gray-100 bg-gray-50'
+                  }`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${op.tieneCaja ? 'bg-emerald-400' : 'bg-gray-300'}`} />
+                      <span className="text-xs font-medium text-gray-800 truncate">{op.nombre}</span>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      {op.tieneCaja
+                        ? <p className="text-xs font-mono text-emerald-700 font-semibold">S/ {Number(op.saldoActual ?? 0).toFixed(2)}</p>
+                        : <p className="text-[11px] text-gray-400">Sin caja</p>
+                      }
+                      {op.tieneCaja && op.fechaApertura && (
+                        <p className="text-[10px] text-gray-400">desde {format(new Date(op.fechaApertura), 'HH:mm')}</p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
-              <Link href="/auditoria"
-                className="mt-3 block text-center text-xs text-[#064e3b] hover:underline font-medium">
-                Ver bitácora completa →
-              </Link>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -696,42 +729,6 @@ export default function GerentePage() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── Estado operadores (solo cuando hay filtro de agencia) ── */}
-      {agenciaFiltro && estadoOperadores.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <Users size={14} className="text-[#064e3b]" />
-            Estado de operadores
-            {estadoOperadores.filter(o => !o.tieneCaja).length > 0 && (
-              <span className="ml-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
-                {estadoOperadores.filter(o => !o.tieneCaja).length} sin caja
-              </span>
-            )}
-          </h3>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {estadoOperadores.map(op => (
-              <div key={op.usuarioId} className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${
-                op.tieneCaja ? 'border-emerald-100 bg-emerald-50/50' : 'border-red-100 bg-red-50/50'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${op.tieneCaja ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                  <span className="text-sm font-medium text-gray-800">{op.nombre}</span>
-                </div>
-                <div className="text-right">
-                  {op.tieneCaja
-                    ? <p className="text-xs font-mono text-emerald-700 font-semibold">S/ {Number(op.saldoActual ?? 0).toFixed(2)}</p>
-                    : <p className="text-xs text-red-600 font-medium">Sin caja abierta</p>
-                  }
-                  {op.fechaApertura && (
-                    <p className="text-[10px] text-gray-400">{format(new Date(op.fechaApertura), 'HH:mm')}</p>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -824,7 +821,7 @@ export default function GerentePage() {
           <Download size={14} className="text-[#064e3b]" />
           <h3 className="text-sm font-semibold text-gray-800">Descargar reportes</h3>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {([
             { label: 'Ventas del día',   tipo: 'ventas',      icon: Ticket,      color: 'from-blue-500 to-blue-600' },
             { label: 'Encomiendas',      tipo: 'encomiendas', icon: Package,     color: 'from-emerald-500 to-teal-600' },
@@ -851,14 +848,6 @@ export default function GerentePage() {
             <Download size={10} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
           </button>
 
-          <Link href="/auditoria"
-            className="group flex flex-col items-center gap-2 p-4 border border-gray-200 rounded-xl hover:border-transparent hover:shadow-md transition-all">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center">
-              <Activity size={16} className="text-white" />
-            </div>
-            <span className="text-xs font-medium text-gray-600 text-center leading-tight">Log auditoría</span>
-            <ChevronRight size={10} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
-          </Link>
         </div>
       </div>
     </div>

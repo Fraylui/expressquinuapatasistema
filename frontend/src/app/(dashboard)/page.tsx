@@ -4,9 +4,7 @@ import useSWR from 'swr'
 import { redirect } from 'next/navigation'
 import {
   Ticket, Package, DollarSign, TrendingUp, Bus, ArrowRight,
-  Activity, Clock, Wifi, Database, Tag, UserCheck, FileText,
-  BarChart2, Users, Building2, Settings, ClipboardList,
-  PackageSearch, ChevronRight, AlertCircle, CheckCircle,
+  Tag, UserCheck, FileText, PackageSearch, ChevronRight,
   MapPin, Plus, Zap, LayoutGrid, RefreshCw,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -49,17 +47,6 @@ const MODULOS_CONFIG = [
       { href: '/manifiestos',          label: 'Manifiestos',     desc: 'Gestión de carga por viaje',          icon: FileText,      bg: 'bg-orange-500',   light: 'bg-orange-50 dark:bg-orange-900/20',    text: 'text-orange-600 dark:text-orange-400',    modulo: 'MANIFIESTOS',  roles: null },
       { href: '/clientes',             label: 'Clientes',        desc: 'Base de datos de pasajeros',          icon: UserCheck,     bg: 'bg-violet-500',   light: 'bg-violet-50 dark:bg-violet-900/20',    text: 'text-violet-600 dark:text-violet-400',    modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
       { href: '/promociones',          label: 'Promociones',     desc: 'Descuentos y campañas activas',       icon: Tag,           bg: 'bg-rose-500',     light: 'bg-rose-50 dark:bg-rose-900/20',        text: 'text-rose-600 dark:text-rose-400',        modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
-    ],
-  },
-  {
-    section: 'GESTIÓN',
-    items: [
-      { href: '/gerente',      label: 'Panel Gerencial', desc: 'KPIs, COBIT/COSO y análisis',   icon: TrendingUp,  bg: 'bg-indigo-600',  light: 'bg-indigo-50 dark:bg-indigo-900/20',  text: 'text-indigo-600 dark:text-indigo-400',  modulo: 'REPORTES',      roles: ['SUPER_ADMIN','GERENTE'] },
-      { href: '/reportes',     label: 'Reportes',        desc: 'Estadísticas y exportaciones',  icon: BarChart2,   bg: 'bg-blue-600',    light: 'bg-blue-50 dark:bg-blue-900/20',      text: 'text-blue-700 dark:text-blue-400',      modulo: 'REPORTES',      roles: null },
-      { href: '/usuarios',     label: 'Usuarios',        desc: 'Cuentas y permisos de acceso',  icon: Users,       bg: 'bg-slate-600',   light: 'bg-slate-50 dark:bg-slate-800',       text: 'text-slate-600 dark:text-slate-400',    modulo: 'USUARIOS',      roles: null },
-      { href: '/agencias',     label: 'Agencias',        desc: 'Red de sucursales y sedes',     icon: Building2,   bg: 'bg-stone-500',   light: 'bg-stone-50 dark:bg-stone-900/20',    text: 'text-stone-600 dark:text-stone-400',    modulo: 'AGENCIAS',      roles: null },
-      { href: '/configuracion',label: 'Configuración',   desc: 'Parámetros del sistema',        icon: Settings,    bg: 'bg-gray-600',    light: 'bg-gray-50 dark:bg-gray-800',         text: 'text-gray-600 dark:text-gray-400',      modulo: 'CONFIGURACION', roles: null },
-      { href: '/auditoria',    label: 'Auditoría',       desc: 'Registro de actividad',         icon: ClipboardList,bg: 'bg-red-600',    light: 'bg-red-50 dark:bg-red-900/20',        text: 'text-red-600 dark:text-red-400',        modulo: 'AUDITORIA',     roles: ['SUPER_ADMIN'] },
     ],
   },
 ]
@@ -226,13 +213,34 @@ export default function DashboardPage() {
   const { data: turno }   = useSWR('/api/caja/turno-actual')
   const { data: viajesD, mutate: mutateViajes } = useSWR('/api/viajes/disponibles')
   const { data: promosD } = useSWR('/api/promociones/vigentes')
+  const { data: encStats } = useSWR('/api/encomiendas/stats')
+  const { data: agenciasD } = useSWR('/api/agencias')
 
   const cajaAbierta   = (turno as any)?.estado === 'ABIERTA'
   const totalIngresos = (turno as any)?.totalIngresos
   const saldoActual   = (turno as any)?.saldoActual
+  const montoPasajes     = Number((turno as any)?.montoPasajes ?? 0)
+  const montoEncomiendas = Number((turno as any)?.montoEncomiendas ?? 0) + Number((turno as any)?.montoPagoDestino ?? 0)
+  const montoExternas    = Number((turno as any)?.montoExternas ?? 0)
+  const montoCuotasCombi = Number((turno as any)?.montoCuotasCombi ?? 0)
+  const desgloseTurno = [
+    `Pasajes S/ ${montoPasajes.toFixed(2)}`,
+    `Encom. S/ ${montoEncomiendas.toFixed(2)}`,
+    ...(montoExternas > 0    ? [`Ext. S/ ${montoExternas.toFixed(2)}`] : []),
+    ...(montoCuotasCombi > 0 ? [`Combi S/ ${montoCuotasCombi.toFixed(2)}`] : []),
+  ].join(' · ')
   const viajes: ViajeDisponible[] = (viajesD as any) ?? []
   const promos: PromocionVigente[] = (promosD as any) ?? []
   const totalLibres = viajes.reduce((s, v) => s + (v.asientosLibres ?? 0), 0)
+
+  const encRegistradasHoy = (encStats as any)?.registradasHoy
+  const encPorEntregar    = (encStats as any)?.disponibles
+
+  // Nombre real de la agencia: catálogo público → turno → fallback al ID
+  const agenciaNombre =
+    ((agenciasD as any) ?? []).find((a: any) => a.id === user?.agenciaId)?.nombre
+    ?? ((turno as any)?.agenciaNombre as string | undefined)?.split(' — ')[0]
+    ?? (user?.agenciaId != null ? `Agencia #${user.agenciaId}` : '—')
 
   // Filtro de módulos
   const puedeVer = (m: { modulo: string | null; roles: string[] | null }) => {
@@ -304,7 +312,7 @@ export default function DashboardPage() {
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <span className="flex items-center gap-1.5 text-xs bg-white/10 px-2.5 py-1 rounded-full font-medium">
                 <MapPin size={11} className="text-emerald-300" />
-                <span suppressHydrationWarning>Agencia #{user?.agenciaId ?? '—'}</span>
+                <span suppressHydrationWarning>{mounted ? agenciaNombre : ''}</span>
               </span>
               <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${
                 cajaAbierta ? 'bg-green-400/20 text-green-200' : 'bg-white/10 text-white/70'
@@ -385,12 +393,12 @@ export default function DashboardPage() {
         />
         <KPICard
           label="Encomiendas"
-          value="—"
+          value={mounted && encRegistradasHoy != null ? String(encRegistradasHoy) : '—'}
           icon={Package}
           iconBg="bg-blue-50 dark:bg-blue-900/20"
           iconText="text-blue-600 dark:text-blue-400"
           borderColor="border-l-blue-400"
-          sub="activas hoy"
+          sub={mounted && encPorEntregar != null ? `registradas hoy · ${encPorEntregar} por entregar` : 'registradas hoy'}
           action={{ label: 'Ir a encomiendas', href: '/encomiendas' }}
         />
         <KPICard
@@ -400,7 +408,7 @@ export default function DashboardPage() {
           iconBg="bg-emerald-50 dark:bg-emerald-900/20"
           iconText="text-emerald-600 dark:text-emerald-400"
           borderColor="border-l-emerald-400"
-          sub={cajaAbierta ? 'turno en curso' : 'sin turno activo'}
+          sub={cajaAbierta ? desgloseTurno : 'sin turno activo'}
           action={!cajaAbierta ? { label: 'Abrir turno', href: '/caja' } : { label: 'Ver caja', href: '/caja' }}
         />
         <KPICard
@@ -490,85 +498,42 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Panel derecho */}
+        {/* Panel derecho: promociones vigentes (lo que el operador ofrece al vender) */}
         <div className="lg:col-span-2 space-y-3">
-
-          {/* Estado del sistema */}
-          <div className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-[#334155] shadow-sm overflow-hidden">
-            <div className="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-gray-50 dark:border-[#293548]">
-              <Activity size={13} className="text-gray-400 dark:text-slate-500" />
-              <h3 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Sistema</h3>
-            </div>
-            <div className="divide-y divide-gray-50 dark:divide-[#293548]">
-              {[
-                { label: 'Base de datos', icon: Database, ok: true },
-                { label: 'Servidor API',  icon: Wifi,     ok: true },
-                { label: 'Turno de caja', icon: Clock,    ok: cajaAbierta, badge: mounted ? (cajaAbierta ? 'Abierta' : 'Cerrada') : null },
-              ].map(({ label, icon: Icon, ok, badge }) => (
-                <div key={label} className="flex items-center justify-between px-5 py-3">
-                  <div className="flex items-center gap-2.5 text-sm text-gray-600 dark:text-slate-400">
-                    <Icon size={13} className="text-gray-400 dark:text-slate-500" />
-                    {label}
-                  </div>
-                  {badge ? (
-                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${
-                      ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-slate-500'
-                    }`}>
-                      {ok ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
-                      {badge}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Activo
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Agencia */}
           <div className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-[#334155] shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <MapPin size={13} className="text-emerald-500" />
-              <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Tu agencia</p>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Tag size={13} className="text-rose-500" />
+                <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Promociones vigentes</p>
+              </div>
+              {promos.length > 0 && (
+                <span className="text-[11px] font-semibold bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full tabular-nums">
+                  {promos.length}
+                </span>
+              )}
             </div>
-            <p className="text-base font-bold text-gray-800 dark:text-slate-200" suppressHydrationWarning>
-              Agencia #{user?.agenciaId ?? '—'}
-            </p>
-            <Link href="/viajes"
-              className="mt-1.5 flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold">
-              Viajes del día <ArrowRight size={11} />
-            </Link>
-
-            {/* Promos activas */}
-            {promos.length > 0 && (
-              <>
-                <div className="my-3 h-px bg-gray-50 dark:bg-[#293548]" />
-                <div className="flex items-center gap-2 mb-2">
-                  <Tag size={12} className="text-rose-500" />
-                  <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Promos activas</p>
-                </div>
-                <div className="space-y-1.5">
-                  {promos.slice(0, 3).map(p => (
-                    <div key={p.id} className="flex items-center justify-between">
-                      <span className="text-xs text-gray-700 dark:text-slate-300 font-medium truncate mr-2">{p.nombre}</span>
-                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                        {p.tipoDescuento === 'MONTO_FIJO' ? `S/ ${p.valor}` : `${p.valor}%`}
-                      </span>
-                    </div>
-                  ))}
-                  {promos.length > 3 && (
-                    <Link href="/promociones" className="text-xs text-gray-400 dark:text-slate-500 hover:underline">
-                      +{promos.length - 3} más
-                    </Link>
-                  )}
-                </div>
-              </>
+            {!mounted || promos.length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-slate-500 py-3 text-center">
+                Sin promociones vigentes hoy
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {promos.slice(0, 5).map(p => (
+                  <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-rose-50/60 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-900/30">
+                    <span className="text-xs text-gray-700 dark:text-slate-300 font-medium truncate mr-2">{p.nombre}</span>
+                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 shrink-0">
+                      {p.tipoDescuento === 'MONTO_FIJO' ? `S/ ${p.valor}` : `${p.valor}%`}
+                    </span>
+                  </div>
+                ))}
+                {promos.length > 5 && (
+                  <Link href="/promociones" className="block text-center text-xs text-gray-400 dark:text-slate-500 hover:underline pt-1">
+                    +{promos.length - 5} más
+                  </Link>
+                )}
+              </div>
             )}
           </div>
-
         </div>
       </div>
     </div>

@@ -13,7 +13,7 @@ interface Asiento {
 }
 
 interface AsientosResponse {
-  tipoVehiculo: 'COMBI' | 'CAMIONETA' | 'MINIVAN'
+  tipoVehiculo: 'COMBI' | 'CAMIONETA'
   totalAsientos: number
   capacidadPasajeros: number
   asientos: Asiento[]

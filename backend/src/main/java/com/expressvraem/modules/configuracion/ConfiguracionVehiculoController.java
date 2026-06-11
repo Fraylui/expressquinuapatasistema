@@ -12,6 +12,8 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -25,6 +27,7 @@ public class ConfiguracionVehiculoController {
     private final VehiculoRepository vehiculoRepository;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR')")
     public ResponseEntity<ApiResponse<List<Vehiculo>>> listar() {
         Long agenciaId = AgenciaContext.getAgenciaId();
         List<Vehiculo> lista = agenciaId != null
@@ -34,9 +37,13 @@ public class ConfiguracionVehiculoController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
     public ResponseEntity<ApiResponse<Vehiculo>> crear(@Valid @RequestBody VehiculoDTO dto) {
         Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) agenciaId = 1L;
+        if (agenciaId == null) {
+            throw new BusinessException("No se pudo determinar la agencia del usuario", "AGENCIA_REQUERIDA");
+        }
 
         String placa = dto.getPlaca().toUpperCase().trim();
         if (vehiculoRepository.existsByPlacaAndIdNot(placa, 0L)) {
@@ -61,6 +68,8 @@ public class ConfiguracionVehiculoController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
     public ResponseEntity<ApiResponse<Vehiculo>> actualizar(
             @PathVariable Long id,
             @Valid @RequestBody VehiculoDTO dto) {
@@ -83,6 +92,8 @@ public class ConfiguracionVehiculoController {
     }
 
     @PatchMapping("/{id}/estado")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    @Transactional
     public ResponseEntity<ApiResponse<Vehiculo>> cambiarEstado(
             @PathVariable Long id,
             @RequestParam String estado) {
@@ -102,11 +113,13 @@ public class ConfiguracionVehiculoController {
         @NotBlank @Size(max = 10)
         private String placa;
         @NotBlank
+        @Pattern(regexp = "^(COMBI|CAMIONETA)$", message = "Tipo de vehículo debe ser COMBI o CAMIONETA")
         private String tipo;
         @Size(max = 50)
         private String marca;
         @Size(max = 50)
         private String modelo;
+        @Min(value = 1900, message = "Año inválido") @Max(value = 2100, message = "Año inválido")
         private Integer anio;
         @NotNull @Min(1)
         private Integer capacidad;

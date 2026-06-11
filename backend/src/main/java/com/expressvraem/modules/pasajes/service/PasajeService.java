@@ -8,6 +8,7 @@ import com.expressvraem.modules.pasajes.dto.PasajeResponseDTO;
 import com.expressvraem.modules.pasajes.dto.VentaPasajeDTO;
 import com.expressvraem.modules.pasajes.entity.Pasaje;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
+import com.expressvraem.modules.promociones.entity.Promocion;
 import com.expressvraem.modules.promociones.service.PromocionService;
 import com.expressvraem.modules.tarifas.entity.Tarifa;
 import com.expressvraem.modules.tarifas.repository.TarifaRepository;
@@ -51,8 +52,7 @@ public class PasajeService {
     private final TarifaRepository tarifaRepository;
     private final EntityManager entityManager;
 
-    private static final AtomicLong SEQ = new AtomicLong(
-            System.currentTimeMillis() % 100000);
+    private static final AtomicLong SEQ = new AtomicLong(0);
 
     @Transactional
     public PasajeResponseDTO venderPasaje(VentaPasajeDTO dto, Long operadorId,
@@ -75,8 +75,8 @@ public class PasajeService {
                     "VIAJE_VENCIDO");
         }
 
-        // Lock asiento por viaje + numero (SELECT FOR UPDATE via JPQL pessimistic lock)
-        Asiento asiento = asientoRepository.findByViajeIdAndNumero(dto.viajeId(), dto.asientoNumero())
+        // SELECT FOR UPDATE — prevents double-booking under concurrent requests
+        Asiento asiento = asientoRepository.findByViajeIdAndNumeroForUpdate(dto.viajeId(), dto.asientoNumero())
                 .orElseThrow(() -> new BusinessException(
                         "El asiento N° " + dto.asientoNumero() + " no existe en este viaje",
                         "ASIENTO_NO_ENCONTRADO"));
@@ -93,61 +93,57 @@ public class PasajeService {
         asiento.setEstado(esReserva ? "RESERVADO" : "OCUPADO");
         asientoRepository.save(asiento);
 
-        // Buscar o crear cliente
-        Cliente cliente = clienteRepository.findByDni(dto.clienteDni())
-                .orElseGet(() -> clienteRepository.findByTipoDocAndNumDoc("DNI", dto.clienteDni())
-                        .orElseGet(() -> {
-                            Cliente c = Cliente.builder()
-                                    .agenciaId(agenciaId != null ? agenciaId : 1L)
-                                    .tipo("PERSONA")
-                                    .nombres(dto.clienteNombres())
-                                    .apellidos(dto.clienteApellidos())
-                                    .tipoDoc("DNI")
-                                    .numDoc(dto.clienteDni())
-                                    .dni(dto.clienteDni())
-                                    .telefono(dto.clienteTelefono())
-                                    .direccion(dto.clienteDireccion())
-                                    .build();
-                            return clienteRepository.save(c);
-                        }));
+        // Single lookup by tipoDoc+numDoc, create if not found
+        Cliente cliente = clienteRepository.findByTipoDocAndNumDoc("DNI", dto.clienteDni())
+                .orElseGet(() -> {
+                    Cliente c = Cliente.builder()
+                            .agenciaId(agenciaId != null ? agenciaId : 1L)
+                            .tipo("PERSONA")
+                            .nombres(dto.clienteNombres())
+                            .apellidos(dto.clienteApellidos())
+                            .tipoDoc("DNI")
+                            .numDoc(dto.clienteDni())
+                            .dni(dto.clienteDni())
+                            .telefono(dto.clienteTelefono())
+                            .direccion(dto.clienteDireccion())
+                            .build();
+                    return clienteRepository.save(c);
+                });
 
         BigDecimal descuento      = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
         String     motivoDescuento = dto.motivoDescuento();
 
-        // Si el cajero seleccionó una promoción, recalcular el descuento desde ella
+        // Si el cajero seleccionó una promoción, recalcular el descuento desde ella validando vigencia
         if (dto.promocionId() != null) {
-            promocionService.findById(dto.promocionId()).ifPresent(promo -> {
-                // El descuento calculado queda capturado por la variable efectiva más abajo
-            });
-            // Usar variable final para lambda-capture
-            final BigDecimal[] ref = { descuento };
-            final String[] motivoRef = { motivoDescuento };
-            promocionService.findById(dto.promocionId()).ifPresent(promo -> {
-                ref[0]      = promocionService.calcularDescuento(promo, dto.precioBase());
-                motivoRef[0] = promo.getNombre();
-                promocionService.incrementarUso(promo.getId());
-            });
-            descuento      = ref[0];
-            motivoDescuento = motivoRef[0];
+            Promocion promo = promocionService.findVigenteById(dto.promocionId(), "PASAJES");
+            descuento       = promocionService.calcularDescuento(promo, dto.precioBase());
+            motivoDescuento = promo.getNombre();
+            promocionService.incrementarUso(promo.getId());
         }
 
         BigDecimal precioFinal = dto.precioBase().subtract(descuento);
         if (precioFinal.compareTo(BigDecimal.ZERO) < 0) precioFinal = BigDecimal.ZERO;
 
-        // Resolver tarifaId real (rutaId + tipoVehiculo del viaje)
+        // Resolver tarifaId real (rutaId + tipoVehiculo del viaje).
+        // Nota: la query de una sola columna devuelve el escalar directo, no Object[].
         long tarifaId = 1L;
+        String tipoVehiculo = null;
         try {
-            Object[] vehRow = (Object[]) entityManager
+            Object vehTipo = entityManager
                     .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
                     .setParameter("vid", viaje.getVehiculoId())
                     .getSingleResult();
-            String tipoVehiculo = String.valueOf(vehRow[0]);
-            List<Tarifa> tarifas = tarifaRepository.findVigenteByRutaAndTipo(viaje.getRutaId(), tipoVehiculo);
+            tipoVehiculo = vehTipo != null ? String.valueOf(vehTipo) : null;
+            List<Tarifa> tarifas = tarifaRepository.findVigenteEnTemporada(viaje.getRutaId(), tipoVehiculo);
             if (!tarifas.isEmpty()) tarifaId = tarifas.get(0).getId();
         } catch (Exception ignored) {}
 
-        long seq = SEQ.incrementAndGet();
-        String codigoBoleta = String.format("VTA-%d-%05d", LocalDateTime.now().getYear(), seq);
+        int anioActual = LocalDateTime.now().getYear();
+        long dbMax = pasajeRepository.maxCorrelativoByAgenciaAndAnio(
+                agenciaId != null ? agenciaId : 1L, anioActual);
+        // Seed in-memory counter from DB on first use; always take the higher of DB max and in-memory
+        long seq = SEQ.updateAndGet(cur -> Math.max(cur, dbMax) + 1);
+        String codigoBoleta = String.format("VTA-%d-%05d", anioActual, seq);
 
         Pasaje pasaje = Pasaje.builder()
                 .agenciaId(agenciaId != null ? agenciaId : 1L)
@@ -180,7 +176,9 @@ public class PasajeService {
                         cajaService.getTurnoActual(operadorId).getId(),
                         "INGRESO",
                         "Pasaje " + codigoBoleta + " - asiento " + dto.asientoNumero(),
-                        precioFinal, operadorId, "PASAJE", saved.getId());
+                        precioFinal, operadorId, "PASAJE", saved.getId(),
+                        tipoVehiculo != null ? "PASAJE_" + tipoVehiculo : "PASAJE",
+                        viaje.getId(), viaje.getVehiculoId(), tipoVehiculo, viaje.getConductorId());
             } catch (Exception ex) {
                 log.warn("Sin turno activo para registrar pasaje {}: {}", codigoBoleta, ex.getMessage());
             }

@@ -1,8 +1,7 @@
 package com.expressvraem.modules.reportes.service;
 
 import com.expressvraem.modules.auditoria.repository.AuditoriaRepository;
-import com.expressvraem.modules.caja.repository.CajaRepository;
-import com.expressvraem.modules.encomiendas.repository.EncomiendaRepository;
+
 import com.expressvraem.modules.encomiendas.service.EncomiendaService;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
 import com.expressvraem.modules.caja.repository.MovimientoCajaRepository;
@@ -30,10 +29,8 @@ import java.util.stream.Collectors;
 public class ReporteService {
 
     private final PasajeRepository pasajeRepository;
-    private final EncomiendaRepository encomiendaRepository;
     private final EncomiendaService encomiendaService;
     private final MovimientoCajaRepository movimientoRepository;
-    private final CajaRepository cajaRepository;
     private final AuditoriaRepository auditoriaRepository;
     private final ExcelReportGenerator excelGenerator;
     private final EntityManager entityManager;
@@ -59,6 +56,22 @@ public class ReporteService {
                 .findByAgenciaIdOptionalAndTipoAndCreatedAtBetween(agenciaId, "INGRESO", inicioDia, finDia)
                 .stream().map(m -> m.getMonto()).reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // Desglose de hoy por categoría: pasajes camioneta/combi, cuotas combi, encomiendas, externas
+        Map<String, Object> ingresosPorCategoria = new java.util.LinkedHashMap<>();
+        try {
+            List<?> catRows = entityManager.createNativeQuery(
+                "SELECT COALESCE(categoria_ingreso,'OTRO'), SUM(monto) FROM movimientos_caja " +
+                "WHERE tipo = 'INGRESO' AND (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
+                "AND created_at BETWEEN :ini AND :fin GROUP BY 1")
+                .setParameter("ag", agenciaId).setParameter("ini", inicioDia).setParameter("fin", finDia)
+                .getResultList();
+            for (Object row : catRows) {
+                Object[] r = (Object[]) row;
+                ingresosPorCategoria.put(String.valueOf(r[0]),
+                        r[1] != null ? new BigDecimal(r[1].toString()) : BigDecimal.ZERO);
+            }
+        } catch (Exception ignored) {}
+
         long encomiendaActivas = 0;
         try {
             Object cnt = entityManager.createNativeQuery(
@@ -77,7 +90,14 @@ public class ReporteService {
             cajasAbiertas = cnt != null ? ((Number) cnt).longValue() : 0;
         } catch (Exception ignored) {}
 
-        long auditoriaHoy = auditoriaRepository.countByAgenciaIdAndFechaAfter(agenciaId, inicioDia);
+        long auditoriaHoy = 0;
+        try {
+            Object cnt = entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM auditoria WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
+                "AND fecha >= :ini")
+                .setParameter("ag", agenciaId).setParameter("ini", inicioDia).getSingleResult();
+            auditoriaHoy = cnt != null ? ((Number) cnt).longValue() : 0;
+        } catch (Exception ignored) {}
 
         long viajesActivosHoy = 0;
         try {
@@ -101,6 +121,7 @@ public class ReporteService {
         java.util.Map<String, Object> kpis = new java.util.LinkedHashMap<>();
         kpis.put("pasajesHoy",        pasajesHoy);
         kpis.put("ingresosHoy",       ingresosHoy);
+        kpis.put("ingresosPorCategoria", ingresosPorCategoria);
         kpis.put("encomiendaActivas", encomiendaActivas);
         kpis.put("cajasAbiertas",     cajasAbiertas);
         kpis.put("auditoriaHoy",      auditoriaHoy);
@@ -375,6 +396,17 @@ public class ReporteService {
 
     private String str(Object o) { return o != null ? String.valueOf(o) : "—"; }
 
+    private LocalDateTime parseFechaSegura(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            String normalized = s.replace(" ", "T");
+            if (normalized.length() > 19) normalized = normalized.substring(0, 19);
+            return LocalDateTime.parse(normalized);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     @Transactional(readOnly = true)
     public byte[] generarReporteVentas(LocalDateTime desde, LocalDateTime hasta, Long agenciaId) throws IOException {
@@ -445,10 +477,8 @@ public class ReporteService {
     @Transactional(readOnly = true)
     public byte[] generarReporteEncomiendas(Long agenciaId, String estado, String desde, String hasta) throws IOException {
         Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
-        java.time.LocalDateTime desdeDate = desde != null && !desde.isBlank()
-                ? java.time.LocalDateTime.parse(desde.replace(" ", "T").substring(0, 19)) : null;
-        java.time.LocalDateTime hastaDate = hasta != null && !hasta.isBlank()
-                ? java.time.LocalDateTime.parse(hasta.replace(" ", "T").substring(0, 19)) : null;
+        java.time.LocalDateTime desdeDate = parseFechaSegura(desde);
+        java.time.LocalDateTime hastaDate = parseFechaSegura(hasta);
         var encomiendas = encomiendaService.buscarConFiltros(ag, estado, null, desdeDate, hastaDate, null);
 
         // Batch-load nombres de clientes (remitente + destinatario) para evitar N+1
@@ -511,53 +541,172 @@ public class ReporteService {
         return excelGenerator.generarReporteEncomiendas(datos);
     }
 
+    @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getTendencia(Long agenciaId, int dias) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM");
-        List<Map<String, Object>> resultado = new ArrayList<>();
+        LocalDateTime inicio = LocalDate.now().minusDays(dias - 1L).atStartOfDay();
+        LocalDateTime fin    = LocalDate.now().atTime(23, 59, 59);
 
+        // Two batch queries instead of 2×N per-day queries
+        Map<LocalDate, long[]> pasajesPorDia = new java.util.TreeMap<>();
+        try {
+            List<Object[]> rows = entityManager.createNativeQuery(
+                "SELECT DATE(fecha_emision), COUNT(*), COALESCE(SUM(precio_final),0) FROM pasajes " +
+                "WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) AND estado != 'ANULADO' " +
+                "AND fecha_emision BETWEEN :ini AND :fin GROUP BY DATE(fecha_emision)")
+                .setParameter("ag", agenciaId).setParameter("ini", inicio).setParameter("fin", fin)
+                .getResultList();
+            for (Object[] r : rows) {
+                LocalDate d = ((java.sql.Date) r[0]).toLocalDate();
+                long cnt = ((Number) r[1]).longValue();
+                long ing = new BigDecimal(r[2].toString()).multiply(BigDecimal.valueOf(100)).longValue();
+                pasajesPorDia.put(d, new long[]{ cnt, ing });
+            }
+        } catch (Exception ignored) {}
+
+        Map<LocalDate, Long> encomiendaPorDia = new java.util.TreeMap<>();
+        try {
+            List<Object[]> rows = entityManager.createNativeQuery(
+                "SELECT DATE(fecha_registro), COUNT(*) FROM encomiendas " +
+                "WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
+                "AND fecha_registro BETWEEN :ini AND :fin GROUP BY DATE(fecha_registro)")
+                .setParameter("ag", agenciaId).setParameter("ini", inicio).setParameter("fin", fin)
+                .getResultList();
+            for (Object[] r : rows) {
+                encomiendaPorDia.put(((java.sql.Date) r[0]).toLocalDate(), ((Number) r[1]).longValue());
+            }
+        } catch (Exception ignored) {}
+
+        List<Map<String, Object>> resultado = new ArrayList<>();
         for (int i = dias - 1; i >= 0; i--) {
             LocalDate fecha = LocalDate.now().minusDays(i);
-            LocalDateTime inicio = fecha.atStartOfDay();
-            LocalDateTime fin    = fecha.atTime(23, 59, 59);
-
-            // Pasajes del día
-            long pasajes = 0;
-            BigDecimal ingresos = BigDecimal.ZERO;
-            try {
-                Object[] row = (Object[]) entityManager.createNativeQuery(
-                    "SELECT COUNT(*), COALESCE(SUM(precio_final), 0) FROM pasajes " +
-                    "WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) AND estado != 'ANULADO' " +
-                    "AND fecha_emision BETWEEN :ini AND :fin")
-                    .setParameter("ag", agenciaId)
-                    .setParameter("ini", inicio)
-                    .setParameter("fin", fin)
-                    .getSingleResult();
-                pasajes  = row[0] != null ? ((Number) row[0]).longValue() : 0;
-                ingresos = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
-            } catch (Exception ignored) {}
-
-            // Encomiendas del día
-            long encomiendas = 0;
-            try {
-                Object count = entityManager.createNativeQuery(
-                    "SELECT COUNT(*) FROM encomiendas " +
-                    "WHERE (CAST(:ag AS BIGINT) IS NULL OR agencia_id = :ag) " +
-                    "AND fecha_registro BETWEEN :ini AND :fin")
-                    .setParameter("ag", agenciaId)
-                    .setParameter("ini", inicio)
-                    .setParameter("fin", fin)
-                    .getSingleResult();
-                encomiendas = count != null ? ((Number) count).longValue() : 0;
-            } catch (Exception ignored) {}
-
+            long[] pRow = pasajesPorDia.getOrDefault(fecha, new long[]{ 0L, 0L });
+            long enc    = encomiendaPorDia.getOrDefault(fecha, 0L);
             Map<String, Object> item = new java.util.LinkedHashMap<>();
             item.put("fecha",       fecha.format(fmt));
-            item.put("pasajes",     pasajes);
-            item.put("encomiendas", encomiendas);
-            item.put("ingresos",    ingresos.doubleValue());
+            item.put("pasajes",     pRow[0]);
+            item.put("encomiendas", enc);
+            item.put("ingresos",    pRow[1] / 100.0);
             resultado.add(item);
         }
         return resultado;
+    }
+
+    /**
+     * Reporte de ingresos altamente filtrable: rango de fechas, agencia, usuario,
+     * tipo de vehículo y categoría, con desglose agrupado por la dimensión pedida.
+     * Se apoya en las columnas de dimensión de movimientos_caja (migración V5).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getIngresos(LocalDateTime desde, LocalDateTime hasta,
+                                           Long agenciaId, Long usuarioId,
+                                           String tipoVehiculo, String categoria,
+                                           String groupBy) {
+
+        String filtros = " WHERE mc.tipo = 'INGRESO' AND mc.monto > 0 " +
+                "AND mc.created_at BETWEEN :desde AND :hasta " +
+                "AND (CAST(:ag  AS BIGINT)  IS NULL OR mc.agencia_id = :ag) " +
+                "AND (CAST(:usr AS BIGINT)  IS NULL OR mc.usuario_id = :usr) " +
+                "AND (CAST(:tv  AS VARCHAR) IS NULL OR mc.tipo_vehiculo = :tv) " +
+                "AND (CAST(:cat AS VARCHAR) IS NULL OR mc.categoria_ingreso = :cat) ";
+
+        // ── Totales por categoría (siempre) ──────────────────────────────────
+        Map<String, Map<String, Object>> porCategoria = new java.util.LinkedHashMap<>();
+        BigDecimal totalGeneral = BigDecimal.ZERO;
+        long operacionesTotal = 0;
+        try {
+            List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT COALESCE(mc.categoria_ingreso,'OTRO'), SUM(mc.monto), COUNT(*) " +
+                    "FROM movimientos_caja mc" + filtros +
+                    "GROUP BY 1 ORDER BY 2 DESC")
+                    .setParameter("desde", desde).setParameter("hasta", hasta)
+                    .setParameter("ag", agenciaId).setParameter("usr", usuarioId)
+                    .setParameter("tv", tipoVehiculo).setParameter("cat", categoria)
+                    .getResultList();
+            for (Object[] r : rows) {
+                BigDecimal monto = r[1] != null ? new BigDecimal(r[1].toString()) : BigDecimal.ZERO;
+                long ops = ((Number) r[2]).longValue();
+                Map<String, Object> item = new java.util.LinkedHashMap<>();
+                item.put("total", monto);
+                item.put("operaciones", ops);
+                porCategoria.put(String.valueOf(r[0]), item);
+                totalGeneral = totalGeneral.add(monto);
+                operacionesTotal += ops;
+            }
+        } catch (Exception ignored) {}
+
+        // ── Desglose por la dimensión pedida (whitelist contra SQL injection) ─
+        String groupExpr, labelExpr, joins;
+        switch (groupBy == null ? "categoria" : groupBy) {
+            case "dia" -> {
+                groupExpr = "DATE(mc.created_at)";
+                labelExpr = "TO_CHAR(DATE(mc.created_at), 'DD/MM/YYYY')";
+                joins = "";
+            }
+            case "agencia" -> {
+                groupExpr = "mc.agencia_id";
+                labelExpr = "MAX(COALESCE(ag.nombre, 'Agencia ' || mc.agencia_id))";
+                joins = "LEFT JOIN agencias ag ON ag.id = mc.agencia_id ";
+            }
+            case "usuario" -> {
+                groupExpr = "mc.usuario_id";
+                labelExpr = "MAX(COALESCE(TRIM(u.nombres || ' ' || COALESCE(u.apellidos,'')), 'Usuario ' || mc.usuario_id))";
+                joins = "LEFT JOIN usuarios u ON u.id = mc.usuario_id ";
+            }
+            case "vehiculo" -> {
+                groupExpr = "mc.vehiculo_id";
+                labelExpr = "MAX(COALESCE(v.placa || ' (' || v.tipo || ')', 'Sin vehiculo'))";
+                joins = "LEFT JOIN vehiculos v ON v.id = mc.vehiculo_id ";
+            }
+            case "conductor" -> {
+                groupExpr = "mc.conductor_id";
+                labelExpr = "MAX(COALESCE(" +
+                        "NULLIF(TRIM(COALESCE(cd.nombres,'') || ' ' || COALESCE(cd.apellidos,'')), ''), " +
+                        "NULLIF(TRIM(COALESCE(uc.nombres,'') || ' ' || COALESCE(uc.apellidos,'')), ''), " +
+                        "'Sin conductor'))";
+                joins = "LEFT JOIN conductores cd ON cd.id = mc.conductor_id " +
+                        "LEFT JOIN usuarios uc ON uc.id = mc.conductor_id ";
+            }
+            case "viaje" -> {
+                groupExpr = "mc.viaje_id";
+                labelExpr = "CASE WHEN mc.viaje_id IS NULL THEN 'Sin viaje' ELSE 'Viaje ' || mc.viaje_id END";
+                joins = "";
+            }
+            default -> {
+                groupExpr = "COALESCE(mc.categoria_ingreso,'OTRO')";
+                labelExpr = groupExpr;
+                joins = "";
+            }
+        }
+
+        List<Map<String, Object>> desglose = new ArrayList<>();
+        try {
+            List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT " + groupExpr + " AS clave, " + labelExpr + " AS etiqueta, " +
+                    "COUNT(*) AS operaciones, SUM(mc.monto) AS total " +
+                    "FROM movimientos_caja mc " + joins + filtros +
+                    "GROUP BY " + groupExpr + " ORDER BY total DESC LIMIT 200")
+                    .setParameter("desde", desde).setParameter("hasta", hasta)
+                    .setParameter("ag", agenciaId).setParameter("usr", usuarioId)
+                    .setParameter("tv", tipoVehiculo).setParameter("cat", categoria)
+                    .getResultList();
+            for (Object[] r : rows) {
+                Map<String, Object> item = new java.util.LinkedHashMap<>();
+                item.put("clave",       r[0] != null ? r[0].toString() : null);
+                item.put("etiqueta",    r[1] != null ? r[1].toString() : "—");
+                item.put("operaciones", ((Number) r[2]).longValue());
+                item.put("total",       r[3] != null ? new BigDecimal(r[3].toString()) : BigDecimal.ZERO);
+                desglose.add(item);
+            }
+        } catch (Exception ignored) {}
+
+        Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("totalGeneral",     totalGeneral);
+        resp.put("operacionesTotal", operacionesTotal);
+        resp.put("porCategoria",     porCategoria);
+        resp.put("groupBy",          groupBy == null ? "categoria" : groupBy);
+        resp.put("desglose",         desglose);
+        return resp;
     }
 
     public byte[] generarReporteCaja(Long cajaId) throws IOException {
