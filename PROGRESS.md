@@ -337,33 +337,59 @@
 
 ---
 
-## Próximos pasos sugeridos (continuar aquí)
+## PENDIENTES — Plan de pre-lanzamiento
 
-### Opción A — Módulos operativos (mayor impacto)
-1. **Viajes** — revisar flujo completo programar→salida→llegada desde el frontend, probar con datos reales
-2. **Pasajes** — validar que el selector de tarifa respeta `temporada_id` del viaje activo
-3. **Caja** — verificar que el cierre de turno genera el PDF correctamente
+### 1. Auditoría UX restante (capturas Playwright a detalle, claro/oscuro, por rol)
+Método ya probado: capturar → analizar qué va / qué no va / qué falta → corregir → re-capturar.
+- [ ] `/usuarios` — CRUD de cuentas + asignación de módulos (probar como SUPER_ADMIN y como GERENTE con las guardas nuevas)
+- [ ] `/agencias` — jerarquía principal/sucursal, métricas, asignación de encargados
+- [ ] `/configuracion` — los 6 tabs (Empresa con la cuota combi nueva, Rutas, Tarifas, Temporadas, Vehículos, Conductores)
+- [ ] `/auditoria` — como SUPER_ADMIN (filtros, exports PDF/Excel, actividad)
+- [ ] Segunda pasada fina a `/gerente` y `/reportes` (ya auditados hoy, revisar con datos de la simulación)
 
-### Opción B — Calidad y robustez
-1. **Tests de integración** — al menos para Auth, Viajes y Pasajes (los más críticos)
-2. **Rate limiting** — revisar que el bloqueo por `intentos_fallidos` funciona (columna recién agregada)
-3. **Manifiestos** — probar generación de PDF con pasajeros y encomiendas reales
+### 2. Simulación de operación real (UAT con datos ficticios) — ANTES de lanzar
+Simular **1 semana a 1 mes de trabajo** de la empresa con datos no reales, como si los usuarios reales estuvieran operando, para detectar fallas y cosas que sobran:
+- [ ] Guion diario por rol:
+  - OPERADOR (Huamanga y Kimbiri): abrir caja → vender 10-20 pasajes (combi y camioneta, con y sin promo) → registrar 3-5 encomiendas (contado y por cobrar) → recibir 1-2 externas (pagada por conductor y por cobrar) → entregar encomiendas llegadas → cerrar caja CADA día y cuadrar
+  - GERENTE: programar viajes del día siguiente, confirmar salidas (cuota combi) y llegadas, revisar consolidado, panel gerencial y reporte de ingresos semanal
+  - ADMIN_AGENCIA: gestión de su sucursal
+- [ ] Incluir casos límite: viaje cancelado con pasajeros, encomienda devuelta/observada, descuadre de caja intencional, promo vencida, asiento doble reservado, día de temporada alta (tarifa especial)
+- [ ] Registrar TODO problema en una lista: errores, pasos confusos, datos faltantes, pantallas/funciones que nadie usó (candidatas a quitar)
+- [ ] Al final: cuadrar caja vs reportes vs manifiestos del período completo — los totales deben coincidir al céntimo
+- [ ] Se puede automatizar parte del guion con Playwright (base ya existe en `frontend/screenshot-*.js`) para generar el mes de datos rápido
 
-### Opción C — Funcionalidades nuevas
-1. **Conductor portal** — vista `/conductor` que muestre los viajes asignados al conductor logueado
-2. **Notificaciones en tiempo real** — WebSocket para alertar al operador cuando llega un pasaje reservado
-3. **Tracking QR** — UI del tracking público para escanear QR de encomienda
+### 3. Equipamiento recomendado por agencia (documentar y validar con Kevin)
+- [ ] **Por cada agencia/sucursal**: PC o laptop (Chrome actualizado), **impresora térmica 80 mm** (tickets de pasaje, comprobantes de encomienda, cierre de caja), impresora A4 (manifiestos MTC, liquidaciones), internet estable (mín. 10 Mbps) + plan de datos de respaldo, UPS o estabilizador (cortes de luz en el VRAEM), celular con Yape/Plin de la empresa para cobros digitales
+- [ ] Opcional: lector de código QR/barras (tracking de encomiendas), segunda pantalla para el mostrador
+- [ ] Definir dónde se aloja producción (VPS) y quién administra los backups
+
+### 4. Mejoras de interfaz anotadas
+- [ ] **Logo de la empresa en el sidebar**: arriba de "OPERACIÓN" hoy va un ícono fijo + nombre; usar el `logoBase64` que ya se configura en Configuración → Empresa (con fallback al ícono actual si no hay logo)
+- [ ] Alerta "turno de caja abierto +24 h" en el panel gerencial
+- [ ] Permitir REPORTES a ADMIN_AGENCIA con alcance forzado a su agencia
+
+### 5. Técnicos
+- [ ] **Push a GitHub** — el repo no tiene remoto configurado (crear repo privado y conectar)
+- [ ] **Health check `DOWN`** en `/actuator/health` (sospecha: componente mail sin SMTP) — producción usa ese check para reinicios
+- [ ] **Migraciones V5–V7 en producción** al desplegar (con backup previo; el deploy no las corre solo)
+- [ ] Verificar bloqueo por `intentos_fallidos` en login (columna agregada hoy, sin probar)
+
+### 6. Limpieza de datos de prueba
+- [ ] Confirmar llegada de los 4 viajes EN_RUTA del 13 de mayo (ya tienen alerta roja en /viajes)
+- [ ] Corregir viaje con conductor "Super Admin Sistema" (seed)
+- [ ] Cerrar el turno de caja de Carlos (+228 h abierto)
+
+### 7. Funcionalidades nuevas (post-lanzamiento)
+- [ ] Portal del conductor `/conductor` (rol existe, página no)
+- [ ] Tracking QR público (backend listo, falta UI de escaneo)
+- [ ] Notificaciones WebSocket al operador cuando llega un pasaje reservado
+- [ ] Tests de integración Auth/Viajes/Pasajes + E2E Playwright
+
+### 8. Entrega
+- [ ] Manual PDF para usuario final (operador)
+- [ ] Manual PDF para administrador del sistema
+- [ ] Capacitación con usuarios reales de la empresa
+- [ ] Entrega formal con firma de Kevin Sandoval Torres
 
 ### Para continuar en la próxima sesión, decirle al asistente:
-> "Continúa desde PROGRESS.md — sesión 2026-06-11. Quiero trabajar en [Opción A/B/C]."
-
----
-
-## Pendiente (bajo prioridad)
-
-- [ ] Tests automatizados end-to-end (Playwright)
-- [ ] Pruebas con usuarios reales de la empresa
-- [ ] Manual PDF para usuario final
-- [ ] Manual PDF para administrador del sistema
-- [ ] QR en tracking público de encomiendas (backend listo, falta UI)
-- [ ] Entrega formal con firma de Kevin Sandoval Torres
+> "Continúa desde PROGRESS.md — quiero trabajar en el pendiente [N]."
