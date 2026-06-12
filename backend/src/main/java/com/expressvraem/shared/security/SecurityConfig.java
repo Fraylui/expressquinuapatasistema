@@ -80,7 +80,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/auditoria/exportar").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/auditoria/exportar-pdf").hasRole("SUPER_ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/agencias/**").hasRole("SUPER_ADMIN")
-                .requestMatchers("/api/modulos/**").hasRole("SUPER_ADMIN")
+                // Catálogo de módulos: GERENTE también lo usa para asignar (guardas en ModuloController)
+                .requestMatchers("/api/modulos/**").hasAnyRole("SUPER_ADMIN","GERENTE")
                 .requestMatchers("/api/auth/desbloquear").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/auth/intentos-fallidos").hasRole("SUPER_ADMIN")
 

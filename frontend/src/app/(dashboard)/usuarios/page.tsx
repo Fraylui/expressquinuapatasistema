@@ -12,7 +12,15 @@ import { useAuthStore } from '@/stores/authStore'
 import Link from 'next/link'
 import api from '@/services/api'
 import toast from 'react-hot-toast'
+import { format } from 'date-fns'
 import type { Agencia } from '@/types'
+
+/** El backend envía "yyyy-MM-dd HH:mm:ss"; mostrar dd/MM/yyyy HH:mm */
+function fmtFecha(s?: string): string | null {
+  if (!s) return null
+  const d = new Date(s.replace(' ', 'T'))
+  return isNaN(d.getTime()) ? s : format(d, 'dd/MM/yyyy HH:mm')
+}
 
 const ROL_LABEL: Record<string, string> = {
   SUPER_ADMIN:    'Super Admin',
@@ -462,7 +470,7 @@ export default function UsuariosPage() {
                     <td className="px-4 py-3 text-xs text-gray-700">{u.agenciaNombre ?? `#${u.agenciaId}`}</td>
                   )}
                   <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                    {u.ultimoAcceso ?? <span className="text-gray-300">—</span>}
+                    {fmtFecha(u.ultimoAcceso) ?? <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     <Badge estado={u.activo ? 'DISPONIBLE' : 'CANCELADO'} label={u.activo ? 'Activo' : 'Inactivo'} />
@@ -489,7 +497,9 @@ export default function UsuariosPage() {
                             : <ToggleLeft size={16} />}
                         </button>
                       )}
-                      {esSuperAdmin && u.rol !== 'SUPER_ADMIN' && (
+                      {/* Módulos: SUPER_ADMIN a cualquiera; GERENTE solo a ADMIN_AGENCIA/OPERADOR/CONDUCTOR */}
+                      {((esSuperAdmin && u.rol !== 'SUPER_ADMIN') ||
+                        (me?.rol === 'GERENTE' && !['SUPER_ADMIN', 'GERENTE'].includes(u.rol))) && (
                         <Link href={`/usuarios/${u.id}/modulos`}>
                           <button
                             aria-label="Gestionar módulos"
