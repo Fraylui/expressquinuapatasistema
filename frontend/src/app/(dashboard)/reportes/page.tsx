@@ -10,6 +10,7 @@ import {
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, AreaChart, Area,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import api from '@/services/api'
 import toast from 'react-hot-toast'
@@ -68,20 +69,26 @@ interface IngresosResp {
   desglose: { clave: string | null; etiqueta: string; operaciones: number; total: number }[]
 }
 
-const CATEGORIA_META: Record<string, { label: string; chip: string }> = {
-  PASAJE_CAMIONETA:   { label: 'Pasajes camioneta', chip: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
-  PASAJE_COMBI:       { label: 'Pasajes combi',     chip: 'bg-teal-50 border-teal-100 text-teal-700' },
-  CUOTA_SALIDA_COMBI: { label: 'Cuotas combi',      chip: 'bg-cyan-50 border-cyan-100 text-cyan-700' },
-  ENCOMIENDA:         { label: 'Encomiendas',       chip: 'bg-violet-50 border-violet-100 text-violet-700' },
-  ENC_PAGO_DESTINO:   { label: 'Enc. pago destino', chip: 'bg-purple-50 border-purple-100 text-purple-700' },
-  ENC_EXTERNA:        { label: 'Enc. externas',     chip: 'bg-amber-50 border-amber-100 text-amber-700' },
-  PASAJE:             { label: 'Pasajes',           chip: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
-  OTRO:               { label: 'Otros ingresos',    chip: 'bg-gray-50 border-gray-200 text-gray-600' },
+const CATEGORIA_META: Record<string, { label: string; desc: string; color: string }> = {
+  PASAJE_COMBI:       { label: 'Pasajes en combi',         desc: 'Boletos para viajes en combi',                    color: '#059669' },
+  PASAJE_CAMIONETA:   { label: 'Pasajes en camioneta',     desc: 'Boletos para viajes en camioneta',                color: '#0d9488' },
+  PASAJE:             { label: 'Pasajes (sin vehículo)',   desc: 'Ventas antiguas sin tipo de vehículo registrado', color: '#34d399' },
+  ENCOMIENDA:         { label: 'Encomiendas (origen)',     desc: 'Cobradas al remitente al enviar',                 color: '#7c3aed' },
+  ENC_PAGO_DESTINO:   { label: 'Encomiendas (al entregar)',desc: 'Cobradas al destinatario al recoger',             color: '#a855f7' },
+  ENC_EXTERNA:        { label: 'Enc. conductores externos',desc: 'Servicio de recepción y entrega a terceros',      color: '#d97706' },
+  CUOTA_SALIDA_COMBI: { label: 'Cuotas de salida de combi',desc: 'Monto fijo por cada salida de combi',             color: '#0891b2' },
+  OTRO:               { label: 'Otros ingresos',           desc: 'Ingresos manuales registrados en caja',           color: '#6b7280' },
 }
 
+/** Agrupación de negocio para las tarjetas resumen */
+const GRUPOS_RESUMEN: { titulo: string; icon: React.ElementType; cats: string[]; bg: string; texto: string }[] = [
+  { titulo: 'Pasajes',        icon: Ticket,  cats: ['PASAJE_COMBI', 'PASAJE_CAMIONETA', 'PASAJE'],      bg: 'bg-emerald-50 border-emerald-100', texto: 'text-emerald-700' },
+  { titulo: 'Encomiendas',    icon: Package, cats: ['ENCOMIENDA', 'ENC_PAGO_DESTINO', 'ENC_EXTERNA'],   bg: 'bg-violet-50 border-violet-100',   texto: 'text-violet-700' },
+  { titulo: 'Cuotas y otros', icon: Wallet,  cats: ['CUOTA_SALIDA_COMBI', 'OTRO'],                      bg: 'bg-cyan-50 border-cyan-100',       texto: 'text-cyan-700' },
+]
+
+// Categoría y día tienen su propia visualización (donut y evolución diaria)
 const GROUP_OPTIONS = [
-  { key: 'categoria', label: 'Categoría' },
-  { key: 'dia',       label: 'Día' },
   { key: 'agencia',   label: 'Agencia' },
   { key: 'usuario',   label: 'Usuario' },
   { key: 'vehiculo',  label: 'Vehículo' },
@@ -113,7 +120,7 @@ function IngresosSection() {
   const [usuarioId, setUsuarioId]       = useState('')
   const [tipoVehiculo, setTipoVehiculo] = useState('')
   const [categoria, setCategoria]       = useState('')
-  const [groupBy, setGroupBy]           = useState('categoria')
+  const [groupBy, setGroupBy]           = useState('usuario')
 
   // ADMIN_AGENCIA: el backend fuerza su agencia — no mostrar filtros de agencia/usuario
   const { user } = useAuthStore()
@@ -133,12 +140,32 @@ function IngresosSection() {
   const { data, isLoading } = useSWR<IngresosResp>(
     desde && hasta ? `/api/reportes/ingresos?${qs.toString()}` : null)
 
+  // Serie por día para la evolución (mismos filtros, agrupada por día)
+  const qsDia = new URLSearchParams(qs); qsDia.set('groupBy', 'dia')
+  const { data: dataDia } = useSWR<IngresosResp>(
+    desde && hasta && desde !== hasta ? `/api/reportes/ingresos?${qsDia.toString()}` : null)
+
   const cats     = data?.porCategoria ?? {}
+  const total    = Number(data?.totalGeneral ?? 0)
   const desglose = data?.desglose ?? []
-  const chartData = desglose.slice(0, 12).map(d => ({
-    etiqueta: d.etiqueta.length > 18 ? d.etiqueta.slice(0, 17) + '…' : d.etiqueta,
+
+  const pieData = Object.entries(cats)
+    .map(([key, v]) => ({
+      key,
+      label: CATEGORIA_META[key]?.label ?? key,
+      color: CATEGORIA_META[key]?.color ?? '#9ca3af',
+      total: Number(v.total),
+      operaciones: v.operaciones,
+      pct: total > 0 ? (Number(v.total) / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.total - a.total)
+
+  const serieDia = (dataDia?.desglose ?? []).map(d => ({
+    fecha: (d.etiqueta ?? '').slice(5),   // MM-DD
     total: Number(d.total),
   }))
+
+  const maxDesglose = desglose.length ? Math.max(...desglose.map(d => Number(d.total))) : 1
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
@@ -214,85 +241,153 @@ function IngresosSection() {
         </div>
       </div>
 
-      {/* Total + chips por categoría */}
-      <div className="flex flex-wrap gap-3">
-        <div className="rounded-xl px-4 py-3 bg-[#064e3b] text-white min-w-[150px]">
-          <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">Total del período</p>
-          <p className="text-2xl font-black tabular-nums">{data ? fmtMoney(Number(data.totalGeneral)) : '—'}</p>
-          <p className="text-[10px] opacity-60">{data?.operacionesTotal ?? 0} operaciones</p>
+      {/* ── A. Resumen: total + 3 grupos de negocio ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-2xl p-4 bg-[#064e3b] text-white">
+          <p className="text-[10px] font-semibold opacity-70 uppercase tracking-widest">Total del período</p>
+          <p className="text-2xl font-black tabular-nums mt-1">{data ? fmtMoney(total) : '—'}</p>
+          <p className="text-[11px] opacity-60 mt-0.5">{data?.operacionesTotal ?? 0} operaciones</p>
         </div>
-        {Object.entries(cats).map(([key, v]) => {
-          const meta = CATEGORIA_META[key] ?? { label: key, chip: 'bg-gray-50 border-gray-200 text-gray-600' }
+        {GRUPOS_RESUMEN.map(g => {
+          const presentes = g.cats.filter(c => cats[c])
+          const subtotal = presentes.reduce((s, c) => s + Number(cats[c].total), 0)
+          const pct = total > 0 ? (subtotal / total) * 100 : 0
+          const Icon = g.icon
           return (
-            <div key={key} className={`rounded-xl px-4 py-3 border min-w-[140px] ${meta.chip}`}>
-              <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">{meta.label}</p>
-              <p className="text-lg font-bold tabular-nums">{fmtMoney(Number(v.total))}</p>
-              <p className="text-[10px] opacity-60">{v.operaciones} op.</p>
+            <div key={g.titulo} className={`rounded-2xl p-4 border ${g.bg}`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-[10px] font-semibold uppercase tracking-widest ${g.texto}`}>
+                  <Icon size={12} className="inline -mt-0.5 mr-1" />{g.titulo}
+                </p>
+                <span className={`text-[10px] font-bold ${g.texto} opacity-70`}>{pct.toFixed(0)}%</span>
+              </div>
+              <p className="text-xl font-black tabular-nums mt-1 text-gray-900">{fmtMoney(subtotal)}</p>
+              <div className="mt-1.5 space-y-0.5">
+                {presentes.map(c => (
+                  <p key={c} className="text-[10px] text-gray-500 flex justify-between gap-2">
+                    <span className="truncate">{CATEGORIA_META[c].label}</span>
+                    <span className="tabular-nums shrink-0">{fmtMoney(Number(cats[c].total))}</span>
+                  </p>
+                ))}
+                {presentes.length === 0 && <p className="text-[10px] text-gray-400">Sin movimientos</p>}
+              </div>
             </div>
           )
         })}
-        {!isLoading && data && Object.keys(cats).length === 0 && (
-          <p className="text-sm text-gray-400 self-center">Sin ingresos en el período seleccionado</p>
-        )}
       </div>
 
-      {/* Selector de agrupación */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Desglose por:</span>
-        <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-xl flex-wrap">
-          {GROUP_OPTIONS.map(g => (
-            <button key={g.key} onClick={() => setGroupBy(g.key)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                groupBy === g.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              {g.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Gráfico + tabla del desglose */}
-      {desglose.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 28)}>
-            <ComposedChart data={chartData} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-                tickFormatter={v => `S/${v}`} />
-              <YAxis type="category" dataKey="etiqueta" tick={{ fontSize: 10, fill: '#6b7280' }}
-                axisLine={false} tickLine={false} width={120} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="total" name="Ingresos" fill="#059669" radius={[0, 4, 4, 0]} barSize={16} />
-            </ComposedChart>
-          </ResponsiveContainer>
-
-          <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white">
-                <tr className="border-b border-gray-100">
-                  {[GROUP_OPTIONS.find(g => g.key === groupBy)?.label ?? 'Grupo', 'Operaciones', 'Total'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {desglose.map((d, i) => (
-                  <tr key={`${d.clave}-${i}`} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-3 py-2 text-xs text-gray-700">
-                      {groupBy === 'categoria' ? (CATEGORIA_META[d.etiqueta]?.label ?? d.etiqueta) : d.etiqueta}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-500 tabular-nums">{d.operaciones}</td>
-                    <td className="px-3 py-2 text-xs font-bold text-gray-900 tabular-nums">{fmtMoney(Number(d.total))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
+      {!isLoading && data && total === 0 && (
         <div className="py-8 text-center">
           <DollarSign size={26} className="mx-auto mb-2 text-gray-200" />
-          <p className="text-sm text-gray-400">{isLoading ? 'Cargando…' : 'Sin datos para los filtros seleccionados'}</p>
+          <p className="text-sm text-gray-400">Sin ingresos en el período seleccionado</p>
+        </div>
+      )}
+
+      {/* ── B. Composición: donut + leyenda con porcentajes ── */}
+      {total > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-center pt-1">
+          <div className="lg:col-span-2 relative">
+            <ResponsiveContainer width="100%" height={230}>
+              <PieChart>
+                <Pie data={pieData} dataKey="total" nameKey="label" cx="50%" cy="50%"
+                  innerRadius={68} outerRadius={100} paddingAngle={2} strokeWidth={0}>
+                  {pieData.map(p => <Cell key={p.key} fill={p.color} />)}
+                </Pie>
+                <Tooltip formatter={(v: any, n: any) => [fmtMoney(Number(v)), n]}
+                  contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest">Total</p>
+              <p className="text-lg font-black text-gray-900 tabular-nums">{fmtMoney(total)}</p>
+            </div>
+          </div>
+
+          <div className="lg:col-span-3 space-y-1.5">
+            {pieData.map(p => (
+              <div key={p.key} className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-gray-50 transition-colors">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 leading-tight">{p.label}</p>
+                  <p className="text-[10px] text-gray-400 truncate">{CATEGORIA_META[p.key]?.desc}</p>
+                </div>
+                <div className="w-20 shrink-0 hidden sm:block">
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${p.pct}%`, background: p.color }} />
+                  </div>
+                </div>
+                <span className="text-[11px] text-gray-400 tabular-nums w-10 text-right shrink-0">{p.pct.toFixed(1)}%</span>
+                <span className="text-[11px] text-gray-400 tabular-nums w-12 text-right shrink-0">{p.operaciones} op.</span>
+                <span className="text-xs font-bold text-gray-900 tabular-nums w-24 text-right shrink-0">{fmtMoney(p.total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── C. Evolución diaria ── */}
+      {serieDia.length > 1 && (
+        <div className="pt-2 border-t border-gray-100">
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Evolución diaria</p>
+          <ResponsiveContainer width="100%" height={170}>
+            <AreaChart data={serieDia} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradIngresosDia" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#059669" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#059669" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+              <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                tickFormatter={v => `S/${v}`} width={55} />
+              <Tooltip content={<ChartTooltip />} />
+              <Area type="monotone" dataKey="total" name="Ingresos" stroke="#059669" strokeWidth={2}
+                fill="url(#gradIngresosDia)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── D. Desglose dimensional ── */}
+      {total > 0 && (
+        <div className="pt-2 border-t border-gray-100 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">¿Quién genera estos ingresos? Ver por:</span>
+            <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-xl flex-wrap">
+              {GROUP_OPTIONS.filter(g => sinFiltroAgencia || g.key !== 'agencia').map(g => (
+                <button key={g.key} onClick={() => setGroupBy(g.key)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    groupBy === g.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  }`}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            {desglose.slice(0, 10).map((d, i) => (
+              <div key={`${d.clave}-${i}`} className="flex items-center gap-3">
+                <span className="text-xs text-gray-700 w-56 truncate shrink-0" title={d.etiqueta}>{d.etiqueta}</span>
+                <div className="flex-1 h-4 bg-gray-50 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-[#059669] to-[#34d399] transition-all duration-500"
+                    style={{ width: `${(Number(d.total) / maxDesglose) * 100}%` }} />
+                </div>
+                <span className="text-[11px] text-gray-400 tabular-nums w-12 text-right shrink-0">{d.operaciones} op.</span>
+                <span className="text-xs font-bold text-gray-900 tabular-nums w-24 text-right shrink-0">{fmtMoney(Number(d.total))}</span>
+              </div>
+            ))}
+            {desglose.length > 10 && (
+              <p className="text-[10px] text-gray-400 pt-1">Mostrando los 10 mayores de {desglose.length}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="py-8 text-center">
+          <p className="text-sm text-gray-400">Cargando…</p>
         </div>
       )}
     </div>
