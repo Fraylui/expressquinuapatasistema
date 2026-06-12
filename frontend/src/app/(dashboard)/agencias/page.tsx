@@ -54,12 +54,13 @@ function MetricasCard({ agenciaId }: { agenciaId: number }) {
 interface AgenciaCardProps {
   agencia: Agencia
   isSuperAdmin: boolean
+  puedeGestionar: boolean
   onEdit: (a: Agencia) => void
   onToggleEstado: (a: Agencia) => void
   onAgregarSucursal: (padreId: number, padreNombre: string) => void
 }
 
-function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado, onAgregarSucursal }: AgenciaCardProps) {
+function AgenciaCard({ agencia, isSuperAdmin, puedeGestionar, onEdit, onToggleEstado, onAgregarSucursal }: AgenciaCardProps) {
   const router = useRouter()
   const esActiva = agencia.estado === 'ACTIVA'
 
@@ -142,28 +143,29 @@ function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado, onAgregarS
           >
             Configurar
           </Button>
+          {puedeGestionar && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={GitBranch}
+              onClick={() => onAgregarSucursal(agencia.id, agencia.nombre)}
+              className="justify-center text-cyan-600 border-cyan-300 hover:bg-cyan-50"
+            >
+              Agregar sucursal
+            </Button>
+          )}
+          {/* Desactivar/activar agencia: solo SUPER_ADMIN (así lo exige el backend) */}
           {isSuperAdmin && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={GitBranch}
-                onClick={() => onAgregarSucursal(agencia.id, agencia.nombre)}
-                className="justify-center text-cyan-600 border-cyan-300 hover:bg-cyan-50"
-              >
-                Agregar sucursal
-              </Button>
-              <button
-                onClick={() => onToggleEstado(agencia)}
-                className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
-                  esActiva
-                    ? 'text-red-600 hover:bg-red-50'
-                    : 'text-green-600 hover:bg-green-50'
-                }`}
-              >
-                {esActiva ? 'Desactivar' : 'Activar'}
-              </button>
-            </>
+            <button
+              onClick={() => onToggleEstado(agencia)}
+              className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
+                esActiva
+                  ? 'text-red-600 hover:bg-red-50'
+                  : 'text-green-600 hover:bg-green-50'
+              }`}
+            >
+              {esActiva ? 'Desactivar' : 'Activar'}
+            </button>
           )}
         </div>
       </div>
@@ -176,7 +178,7 @@ function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado, onAgregarS
             <SucursalCard
               key={s.id}
               sucursal={s}
-              isSuperAdmin={isSuperAdmin}
+              puedeGestionar={puedeGestionar}
               onEdit={onEdit}
               onToggleEstado={onToggleEstado}
             />
@@ -191,12 +193,12 @@ function AgenciaCard({ agencia, isSuperAdmin, onEdit, onToggleEstado, onAgregarS
 
 interface SucursalCardProps {
   sucursal: Agencia
-  isSuperAdmin: boolean
+  puedeGestionar: boolean
   onEdit: (a: Agencia) => void
   onToggleEstado: (a: Agencia) => void
 }
 
-function SucursalCard({ sucursal, isSuperAdmin, onEdit, onToggleEstado }: SucursalCardProps) {
+function SucursalCard({ sucursal, puedeGestionar, onEdit, onToggleEstado }: SucursalCardProps) {
   const router = useRouter()
   const esActiva = sucursal.estado === 'ACTIVA'
 
@@ -229,7 +231,7 @@ function SucursalCard({ sucursal, isSuperAdmin, onEdit, onToggleEstado }: Sucurs
           >
             <ChevronRight size={14} />
           </button>
-          {isSuperAdmin && (
+          {puedeGestionar && (
             <button
               onClick={() => onEdit(sucursal)}
               className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
@@ -271,6 +273,8 @@ const EMPTY_FORM: FormState = {
 export default function AgenciasPage() {
   const { hasRole } = useAuthStore()
   const isSuperAdmin = hasRole('SUPER_ADMIN')
+  // El backend permite crear/editar agencias a SUPER_ADMIN y GERENTE
+  const puedeGestionar = isSuperAdmin || hasRole('GERENTE')
 
   // Hierarchical list (principals with nested sucursales)
   const { data: agencias, mutate } = useSWR<Agencia[]>('/api/agencias')
@@ -395,7 +399,7 @@ export default function AgenciasPage() {
   const AgenciaForm = ({ onSubmit, submitLabel }: { onSubmit: () => void; submitLabel: string }) => (
     <div className="space-y-4">
       {/* Tipo */}
-      {isSuperAdmin && (
+      {puedeGestionar && (
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
           <div className="flex gap-2">
@@ -520,7 +524,7 @@ export default function AgenciasPage() {
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
         >
           <option value="">— Sin encargado —</option>
-          {(usuarios || []).map(u => (
+          {(usuarios || []).filter(u => u.rol !== 'CONDUCTOR').map(u => (
             <option key={u.id} value={u.id}>
               {u.nombres} {u.apellidos} ({u.rol})
             </option>
@@ -569,7 +573,7 @@ export default function AgenciasPage() {
           <h1 className="text-xl font-bold text-gray-900">Agencias</h1>
           <p className="text-sm text-gray-500">Estructura jerárquica de agencias y sucursales</p>
         </div>
-        {isSuperAdmin && (
+        {puedeGestionar && (
           <Button icon={Plus} onClick={openNueva}>Nueva agencia</Button>
         )}
       </div>
@@ -587,6 +591,7 @@ export default function AgenciasPage() {
               key={a.id}
               agencia={a}
               isSuperAdmin={isSuperAdmin}
+              puedeGestionar={puedeGestionar}
               onEdit={openEditar}
               onToggleEstado={toggleEstado}
               onAgregarSucursal={openAgregarSucursal}
@@ -602,10 +607,13 @@ export default function AgenciasPage() {
         title={modalTitle}
         size="lg"
       >
-        <AgenciaForm
-          onSubmit={modalNueva ? crearAgencia : guardarAgencia}
-          submitLabel={modalNueva ? 'Crear' : 'Guardar'}
-        />
+        {/* Llamada como función (no <AgenciaForm/>): al estar definida dentro del
+            componente, usarla como JSX crea un "tipo" nuevo en cada render y React
+            remonta el formulario — los inputs perdían el foco en cada tecla */}
+        {AgenciaForm({
+          onSubmit: modalNueva ? crearAgencia : guardarAgencia,
+          submitLabel: modalNueva ? 'Crear' : 'Guardar',
+        })}
       </Modal>
     </div>
   )

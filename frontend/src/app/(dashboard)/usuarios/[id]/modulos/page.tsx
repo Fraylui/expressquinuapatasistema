@@ -52,10 +52,11 @@ interface UsuarioInfo {
 }
 
 const ROL_LABEL: Record<string, string> = {
-  SUPER_ADMIN: 'Super Administrador',
-  GERENTE:     'Gerente General',
-  OPERADOR:    'Operador',
-  CONDUCTOR:   'Conductor',
+  SUPER_ADMIN:   'Super Administrador',
+  GERENTE:       'Gerente General',
+  ADMIN_AGENCIA: 'Jefe de Sucursal',
+  OPERADOR:      'Operador',
+  CONDUCTOR:     'Conductor',
 }
 
 export default function ModulosUsuarioPage() {
@@ -68,12 +69,17 @@ export default function ModulosUsuarioPage() {
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
 
-  // Solo SUPER_ADMIN puede acceder
+  // SUPER_ADMIN y GERENTE pueden acceder (el backend limita al GERENTE
+  // a usuarios ADMIN_AGENCIA y OPERADOR)
   useEffect(() => {
-    if (me && me.rol !== 'SUPER_ADMIN') {
+    if (me && me.rol !== 'SUPER_ADMIN' && me.rol !== 'GERENTE') {
       router.replace('/')
     }
   }, [me, router])
+
+  // GERENTE no puede tocar módulos de pares ni superiores
+  const targetProtegido = me?.rol === 'GERENTE' &&
+    (usuario?.rol === 'GERENTE' || usuario?.rol === 'SUPER_ADMIN')
 
   useEffect(() => {
     Promise.all([
@@ -100,6 +106,8 @@ export default function ModulosUsuarioPage() {
     if (modulo.codigo === 'AUDITORIA') return
     // SUPER_ADMIN tiene todos siempre
     if (usuario?.rol === 'SUPER_ADMIN') return
+    // GERENTE no puede modificar a pares ni superiores
+    if (targetProtegido) return
 
     setGuardando(modulo.codigo)
     const nuevoEstado = !modulo.activo
@@ -178,6 +186,16 @@ export default function ModulosUsuarioPage() {
         </div>
       )}
 
+      {/* Aviso GERENTE sobre par/superior */}
+      {targetProtegido && usuario?.rol !== 'SUPER_ADMIN' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          <p className="font-semibold">Solo lectura.</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            Un Gerente solo puede asignar módulos a usuarios Jefe de Sucursal y Operador.
+          </p>
+        </div>
+      )}
+
       {/* Lista de módulos */}
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
@@ -200,7 +218,7 @@ export default function ModulosUsuarioPage() {
           const colorClass = MODULO_COLORES[m.codigo] ?? 'bg-gray-50 text-gray-600 border-gray-200'
           const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN'
           const esAuditoria = m.codigo === 'AUDITORIA'
-          const deshabilitado = esSuperAdmin || esAuditoria
+          const deshabilitado = esSuperAdmin || esAuditoria || targetProtegido
           const isLoading = guardando === m.codigo
 
           return (

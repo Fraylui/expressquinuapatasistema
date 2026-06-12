@@ -360,12 +360,30 @@
 
 ---
 
+## Sesión 2026-06-11 (parte 4) — Auditoría UX /usuarios y /agencias
+
+### `/usuarios` + asignación de módulos
+- **GERENTE no podía asignar módulos desde la UI**: el botón (escudo) solo se mostraba a SUPER_ADMIN y la página `/usuarios/[id]/modulos` lo expulsaba — aunque el backend ya lo permitía desde ayer. Ahora: GERENTE ve el botón solo para Jefe de Sucursal/Operador/Conductor (verificado fila por fila con Playwright), la página le permite togglear, y muestra aviso ámbar "Solo lectura" si llega al perfil de un par/superior
+- `SecurityConfig`: `/api/modulos/**` abierto a GERENTE (el catálogo; las guardas finas viven en ModuloController)
+- `ROL_LABEL` de la página de módulos no conocía ADMIN_AGENCIA (mostraba el código crudo)
+- "Último acceso" ahora formatea `dd/MM/yyyy HH:mm` (antes ISO crudo del backend)
+- Verificado OK: filtros (rol/agencia/estado/búsqueda), modal crear/editar con validaciones, toggle activo/inactivo protegido para SUPER_ADMIN, roles asignables correctos por actor
+
+### `/agencias`
+- **Bug React: el formulario perdía el foco en cada tecla** — `AgenciaForm` definido dentro del componente y usado como `<AgenciaForm/>` se remontaba en cada render; ahora se invoca como función. Probado con Playwright: "Sede Pichari Centro" tecleado de corrido queda completo
+- **GERENTE ahora puede crear/configurar agencias y sucursales** (el backend ya lo permitía; la UI solo mostraba los botones a SUPER_ADMIN). Desactivar/Activar sigue siendo solo SUPER_ADMIN, igual que el backend
+- Selector de encargado ya no lista CONDUCTORES
+- Verificado OK: jerarquía principal/sucursal con tarjetas anidadas, métricas por agencia (viajes/pasajes/encomiendas del mes), página de detalle
+- **Observación de datos**: las 3 agencias están "Sin encargado asignado" — asignar en la limpieza de datos (Elena → Kimbiri)
+
+---
+
 ## PENDIENTES — Plan de pre-lanzamiento
 
 ### 1. Auditoría UX restante (capturas Playwright a detalle, claro/oscuro, por rol)
 Método ya probado: capturar → analizar qué va / qué no va / qué falta → corregir → re-capturar.
-- [ ] `/usuarios` — CRUD de cuentas + asignación de módulos (probar como SUPER_ADMIN y como GERENTE con las guardas nuevas)
-- [ ] `/agencias` — jerarquía principal/sucursal, métricas, asignación de encargados
+- [x] `/usuarios` — auditado y corregido (ver sesión parte 4)
+- [x] `/agencias` — auditado y corregido (ver sesión parte 4)
 - [ ] `/configuracion` — los 6 tabs (Empresa con la cuota combi nueva, Rutas, Tarifas, Temporadas, Vehículos, Conductores)
 - [ ] `/auditoria` — como SUPER_ADMIN (filtros, exports PDF/Excel, actividad)
 - [ ] Segunda pasada fina a `/gerente` y `/reportes` (ya auditados hoy, revisar con datos de la simulación)
