@@ -21,8 +21,9 @@ public class EmpresaConfigController {
         return ResponseEntity.ok(ApiResponse.ok(service.get()));
     }
 
+    // GERENTE administra Configuración → Empresa (nombre, logo, cuota de combi)
     @PutMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE')")
     public ResponseEntity<ApiResponse<EmpresaConfig>> save(@Valid @RequestBody EmpresaConfig cfg) {
         return ResponseEntity.ok(ApiResponse.ok(service.save(cfg)));
     }

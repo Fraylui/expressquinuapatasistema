@@ -169,7 +169,9 @@ public class PasajeService {
 
         Pasaje saved = pasajeRepository.save(pasaje);
 
-        // Registrar en caja solo si es venta con pago inmediato (no reserva)
+        // Registrar en caja solo si es venta con pago inmediato (no reserva).
+        // Sin turno abierto NO se emite boleta: el dinero quedaría fuera de toda
+        // caja y el día no cuadraría (mismo criterio que encomiendas al contado).
         if (!esReserva) {
             try {
                 cajaService.registrarMovimiento(
@@ -179,8 +181,10 @@ public class PasajeService {
                         precioFinal, operadorId, "PASAJE", saved.getId(),
                         tipoVehiculo != null ? "PASAJE_" + tipoVehiculo : "PASAJE",
                         viaje.getId(), viaje.getVehiculoId(), tipoVehiculo, viaje.getConductorId());
-            } catch (Exception ex) {
-                log.warn("Sin turno activo para registrar pasaje {}: {}", codigoBoleta, ex.getMessage());
+            } catch (BusinessException ex) {
+                throw new BusinessException(
+                        "Debe tener un turno de caja abierto para vender pasajes al contado. Abra su caja primero.",
+                        "CAJA_REQUERIDA");
             }
         }
 
@@ -209,6 +213,21 @@ public class PasajeService {
             throw new BusinessException("El pasaje ya está anulado", "PASAJE_YA_ANULADO");
         if (motivo == null || motivo.isBlank())
             throw new BusinessException("El motivo de anulación es obligatorio", "MOTIVO_REQUERIDO");
+
+        // Si el pasaje ya estaba pagado, la anulación implica devolver el dinero:
+        // se registra el egreso en la caja del operador (requiere turno abierto)
+        boolean eraVendido = "VENDIDO".equals(pasaje.getEstado());
+        if (eraVendido && pasaje.getPrecioFinal() != null && pasaje.getPrecioFinal().signum() > 0) {
+            try {
+                cajaService.registrarEgreso(operadorId,
+                        "Devolución por anulación de pasaje " + pasaje.getCodigoBoleta(),
+                        pasaje.getPrecioFinal(), ip, usuarioNombre);
+            } catch (BusinessException ex) {
+                throw new BusinessException(
+                        "Para anular un pasaje pagado necesita turno de caja abierto: se registra la devolución del dinero al cliente.",
+                        "CAJA_REQUERIDA");
+            }
+        }
 
         pasaje.setEstado("ANULADO");
         pasaje.setMotivoAnulacion(motivo);
@@ -247,14 +266,31 @@ public class PasajeService {
         asientoRepository.findByViajeIdAndNumero(pasaje.getViajeId(), pasaje.getAsientoNumero())
                 .ifPresent(a -> { a.setEstado("OCUPADO"); asientoRepository.save(a); });
 
+        // El cobro de la reserva exige caja abierta y lleva las dimensiones del
+        // viaje para que el ingreso caiga en PASAJE_COMBI/PASAJE_CAMIONETA
         try {
+            var viajeReserva = viajeRepository.findById(pasaje.getViajeId()).orElse(null);
+            String tipoVehReserva = null;
+            if (viajeReserva != null && viajeReserva.getVehiculoId() != null) {
+                tipoVehReserva = (String) entityManager.createNativeQuery(
+                                "SELECT tipo FROM vehiculos WHERE id = :vid")
+                        .setParameter("vid", viajeReserva.getVehiculoId())
+                        .getSingleResult();
+            }
             cajaService.registrarMovimiento(
                     cajaService.getTurnoActual(operadorId).getId(),
                     "INGRESO",
                     "Confirmacion reserva " + pasaje.getCodigoBoleta() + " - asiento " + pasaje.getAsientoNumero(),
-                    pasaje.getPrecioFinal(), operadorId, "PASAJE", pasaje.getId());
-        } catch (Exception ex) {
-            log.warn("Sin turno activo para confirmar reserva {}: {}", pasaje.getCodigoBoleta(), ex.getMessage());
+                    pasaje.getPrecioFinal(), operadorId, "PASAJE", pasaje.getId(),
+                    tipoVehReserva != null ? "PASAJE_" + tipoVehReserva : "PASAJE",
+                    pasaje.getViajeId(),
+                    viajeReserva != null ? viajeReserva.getVehiculoId() : null,
+                    tipoVehReserva,
+                    viajeReserva != null ? viajeReserva.getConductorId() : null);
+        } catch (BusinessException ex) {
+            throw new BusinessException(
+                    "Debe tener un turno de caja abierto para confirmar la reserva: el cobro entra a su caja.",
+                    "CAJA_REQUERIDA");
         }
 
         wsPublisher.publicarActualizacionAsientos(pasaje.getViajeId(),

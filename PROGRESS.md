@@ -398,6 +398,39 @@
 
 ---
 
+## Sesión 2026-06-12 (parte 6) — Simulación de operación real (UAT)
+
+Script `scripts/sim-operacion.js` ejecuta por API el guion diario por rol; reporte en `scripts/SIMULACION-UAT.md`.
+**Corrida final: 0 problemas — CUADRE EXACTO S/ 1,444.75 (reporte = suma de las 3 cajas, al céntimo).**
+
+### Bugs reales que la simulación destapó (todos corregidos y re-verificados)
+- **GERENTE no podía programar viajes** — `programar` exigía `AgenciaContext` (vacío para GERENTE/SUPER_ADMIN); ahora cae a la agencia del propio usuario
+- **GERENTE recibía 403 al guardar Configuración → Empresa** — `PUT /api/empresa-config` era solo SUPER_ADMIN (la UI se lo permitía editar y fallaba al guardar)
+- **Venta de pasaje al contado SIN caja se aceptaba** — la boleta se emitía y el dinero no entraba a NINGUNA caja (descuadre silencioso, mismo agujero cerrado antes para encomiendas); ahora `CAJA_REQUERIDA`
+- **Anular pasaje pagado no devolvía el dinero** — ahora registra egreso "Devolución por anulación" en la caja del operador (exige turno abierto)
+- **Confirmar reserva** sin caja solo hacía `log.warn` (mismo agujero) y el ingreso caía en categoría genérica; ahora exige caja y lleva dimensiones (PASAJE_COMBI/CAMIONETA)
+- **Cancelar viaje con pasajeros era silencioso** — ahora responde "ATENCIÓN: tiene N boleta(s) vigente(s) — reubique o anule con devolución" (verificado con boleta anticipada)
+- Filtro `estado` de `GET /api/viajes` se ignoraba para GERENTE (devolvía todos los viajes)
+
+### Flujos verificados de extremo a extremo (todo por API, como usuarios reales)
+- GERENTE: programar 5 viajes (combi/camioneta, hoy y mañana), cuota combi configurada (S/ 10), cancelación, consolidado
+- Carlos (Huamanga): abrir caja → 6 ventas EFECTIVO/YAPE + 1 con promo + reserva→confirmación + anulación con devolución + venta anticipada → 4 encomiendas (contado/por cobrar/frágil/promo) → 2 externas (pagada y por cobrar→entregada cobrando) → confirmar salidas (cuota combi a su caja) → cierre EXACTO S/ 1,149.75
+- Rosa (Kimbiri): caja → 4 ventas → encomienda por cobrar → salida V3 con cuota → **llegada de V1 → recepción de 4 encomiendas → entrega con flujo DISPONIBLE y entrega directa desde LLEGADO_AGENCIA cobrando S/ 20** → cierre EXACTO
+- María: venta/encomienda sin caja RECHAZADAS → turno corto → cierre con descuadre intencional −S/ 5.00 registrado exacto
+- Elena (ADMIN_AGENCIA): KPIs y estado de operadores de su sucursal
+- Casos límite OK: asiento doble, promo inexistente, promo desactivada, conflicto de vehículo ±4h, **licencia vencida bloquea programación** (validación real descubierta en corrida 2)
+- Manifiesto V1: 8 pasajeros + 5 encomiendas, PDF 3.8 KB; tracking público sin login (EXP-2026-00034)
+- Mejora de negocio: entrega de encomienda permitida desde LLEGADO_AGENCIA (antes obligaba a marcar "disponible" aunque el destinatario estuviera en mostrador)
+
+### Limpieza de datos (pendiente 6 — hecho en Fase 0 del script)
+- [x] 4 viajes EN_RUTA del 13 de mayo: llegadas confirmadas (quedaron COMPLETADOS)
+- [x] Caja olvidada de Carlos (+240 h): cerrada cuadrada (S/ 73.50)
+- [x] Encargados asignados: Kevin → Huamanga, Elena → Kimbiri
+- [x] Cuota de salida de combi: S/ 10.00 (era 0; Kevin puede ajustar el monto real)
+- Nota: quedan boletas/encomiendas de prueba de las corridas (V5 cancelado con 1 boleta anticipada, encomiendas LLEGADO_AGENCIA en Kimbiri) — datos ficticios útiles para capacitación; purgar antes del go-live
+
+---
+
 ## PENDIENTES — Plan de pre-lanzamiento
 
 ### 1. Auditoría UX restante (capturas Playwright a detalle, claro/oscuro, por rol)
@@ -408,7 +441,10 @@ Método ya probado: capturar → analizar qué va / qué no va / qué falta → 
 - [x] `/auditoria` — auditado; fix de timezone (ver sesión parte 5)
 - [ ] Segunda pasada fina a `/gerente` y `/reportes` (ya auditados hoy, revisar con datos de la simulación)
 
-### 2. Simulación de operación real (UAT con datos ficticios) — ANTES de lanzar
+### 2. Simulación de operación real (UAT con datos ficticios) — ✅ COMPLETADO (sesión parte 6)
+Guion por rol + casos límite + cuadre al céntimo ejecutados con `scripts/sim-operacion.js` (re-ejecutable); 7 bugs reales encontrados y corregidos. Detalle abajo y en `scripts/SIMULACION-UAT.md`.
+
+<details><summary>Guion original</summary>
 Simular **1 semana a 1 mes de trabajo** de la empresa con datos no reales, como si los usuarios reales estuvieran operando, para detectar fallas y cosas que sobran:
 - [ ] Guion diario por rol:
   - OPERADOR (Huamanga y Kimbiri): abrir caja → vender 10-20 pasajes (combi y camioneta, con y sin promo) → registrar 3-5 encomiendas (contado y por cobrar) → recibir 1-2 externas (pagada por conductor y por cobrar) → entregar encomiendas llegadas → cerrar caja CADA día y cuadrar
@@ -418,6 +454,7 @@ Simular **1 semana a 1 mes de trabajo** de la empresa con datos no reales, como 
 - [ ] Registrar TODO problema en una lista: errores, pasos confusos, datos faltantes, pantallas/funciones que nadie usó (candidatas a quitar)
 - [ ] Al final: cuadrar caja vs reportes vs manifiestos del período completo — los totales deben coincidir al céntimo
 - [ ] Se puede automatizar parte del guion con Playwright (base ya existe en `frontend/screenshot-*.js`) para generar el mes de datos rápido
+</details>
 
 ### 3. Equipamiento recomendado por agencia (documentar y validar con Kevin)
 - [ ] **Por cada agencia/sucursal**: PC o laptop (Chrome actualizado), **impresora térmica 80 mm** (tickets de pasaje, comprobantes de encomienda, cierre de caja), impresora A4 (manifiestos MTC, liquidaciones), internet estable (mín. 10 Mbps) + plan de datos de respaldo, UPS o estabilizador (cortes de luz en el VRAEM), celular con Yape/Plin de la empresa para cobros digitales
@@ -435,10 +472,11 @@ Simular **1 semana a 1 mes de trabajo** de la empresa con datos no reales, como 
 - [ ] **Migraciones V5–V9 en producción** al desplegar (con backup previo; el deploy no las corre solo)
 - [x] Verificar bloqueo por `intentos_fallidos` en login — no funcionaba (rollback); corregido y probado
 
-### 6. Limpieza de datos de prueba
-- [ ] Confirmar llegada de los 4 viajes EN_RUTA del 13 de mayo (ya tienen alerta roja en /viajes)
-- [ ] Corregir viaje con conductor "Super Admin Sistema" (seed)
-- [ ] Cerrar el turno de caja de Carlos (+228 h abierto)
+### 6. Limpieza de datos de prueba — ✅ COMPLETADO (sesión parte 6, Fase 0 del script UAT)
+- [x] Confirmar llegada de los 4 viajes EN_RUTA del 13 de mayo
+- [x] Viaje con conductor "Super Admin Sistema" — era uno de los viajes viejos, quedó COMPLETADO
+- [x] Cerrar el turno de caja de Carlos (cerrado cuadrado en S/ 73.50)
+- [ ] **Purga final de datos ficticios antes del go-live** (boletas/encomiendas/viajes de la simulación UAT)
 
 ### 7. Funcionalidades nuevas (post-lanzamiento)
 - [ ] Portal del conductor `/conductor` (rol existe, página no)
