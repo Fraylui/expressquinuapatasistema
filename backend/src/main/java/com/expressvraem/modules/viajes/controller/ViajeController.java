@@ -71,6 +71,12 @@ public class ViajeController {
 
         Long agenciaId = AgenciaContext.getAgenciaId();
         if (agenciaId == null) {
+            // GERENTE/SUPER_ADMIN no llevan agencia en el contexto (sin filtro):
+            // el viaje se programa en la agencia del propio usuario
+            agenciaId = usuarioRepository.findByEmail(auth.getName())
+                    .map(u -> u.getAgenciaId()).orElse(null);
+        }
+        if (agenciaId == null) {
             throw new BusinessException("No se pudo determinar la agencia del usuario", "AGENCIA_REQUERIDA");
         }
 
@@ -363,7 +369,10 @@ public class ViajeController {
                 ? viajeRepository.findByAgenciaIdAndEstado(agenciaId, estado)
                 : (agenciaId != null)
                     ? viajeRepository.findByAgenciaId(agenciaId)
-                    : viajeRepository.findAll();
+                    : (estado != null)
+                        // GERENTE/SUPER_ADMIN sin agencia: el filtro de estado igual aplica
+                        ? viajeRepository.findByEstadoIn(List.of(estado))
+                        : viajeRepository.findAll();
 
         List<Viaje> sorted = viajes.stream()
                 .sorted(Comparator.comparing(Viaje::getFechaHoraSal,
@@ -471,11 +480,21 @@ public class ViajeController {
                     "Solo se puede cancelar un viaje PROGRAMADO o ATRASADO. Estado actual: " + viaje.getEstado(),
                     "ESTADO_INVALIDO");
         }
+        // Boletas vigentes del viaje: el dinero ya está en caja y los pasajeros
+        // esperan viajar — el operador debe reubicarlos o anular con devolución
+        Number boletasActivas = (Number) entityManager.createNativeQuery(
+                        "SELECT COUNT(*) FROM pasajes WHERE viaje_id = :vid AND estado IN ('VENDIDO','RESERVADO')")
+                .setParameter("vid", id).getSingleResult();
+
         viaje.setEstado("CANCELADO");
         viajeRepository.save(viaje);
         logService.logOperacion(auth.getName(), "VIAJES", "CANCELAR",
-                Map.of("viajeId", id, "operador", auth.getName()));
-        return ResponseEntity.ok(ApiResponse.ok("Viaje cancelado", enrich(viaje)));
+                Map.of("viajeId", id, "operador", auth.getName(), "boletasActivas", boletasActivas.longValue()));
+
+        String msg = boletasActivas.longValue() > 0
+                ? "Viaje cancelado. ATENCIÓN: tiene " + boletasActivas + " boleta(s) vigente(s) — reubique a los pasajeros en otro viaje o anule cada pasaje (la anulación registra la devolución en caja)."
+                : "Viaje cancelado";
+        return ResponseEntity.ok(ApiResponse.ok(msg, enrich(viaje)));
     }
 
     /**

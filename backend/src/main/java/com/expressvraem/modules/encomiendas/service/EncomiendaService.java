@@ -237,9 +237,12 @@ public class EncomiendaService {
         Encomienda enc = encomiendaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Encomienda", id));
 
-        if (!"DISPONIBLE".equals(enc.getEstado())) {
+        // LLEGADO_AGENCIA también es entregable: el paquete ya está físicamente en
+        // la agencia; no se obliga a marcar "disponible" si el destinatario llegó
+        // a recogerlo en ese momento
+        if (!"DISPONIBLE".equals(enc.getEstado()) && !"LLEGADO_AGENCIA".equals(enc.getEstado())) {
             throw new BusinessException(
-                    "Solo se puede entregar si está en estado DISPONIBLE. Estado: " + enc.getEstado(),
+                    "Solo se puede entregar si está DISPONIBLE o LLEGADO_AGENCIA. Estado: " + enc.getEstado(),
                     "ESTADO_INVALIDO");
         }
 
