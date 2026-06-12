@@ -431,6 +431,20 @@ Script `scripts/sim-operacion.js` ejecuta por API el guion diario por rol; repor
 
 ---
 
+## Sesión 2026-06-12 (parte 7) — Rediseño "Ingresos por servicio y vehículo" (/reportes)
+
+Feedback del cliente: "hay muchas cosas que no se entienden, el diseño parece muy básico, algunas cosas están de más".
+Diagnóstico con captura: el mismo dato (totales por categoría) aparecía TRES veces (chips sueltos + barras con códigos crudos `PASAJE_COMBI` + tabla), sin evolución temporal, sin porcentajes y sin explicar qué es cada categoría.
+
+Rediseño (verificado con capturas claro/oscuro):
+- **Tarjetas agrupadas por negocio**: Total del período + Pasajes (86%) + Encomiendas (10%) + Cuotas y otros (4%), cada una con su % del total y sub-desglose por categoría dentro
+- **Donut de composición** con total al centro + leyenda-tabla única: punto de color, nombre humano, descripción de cada categoría ("Encomiendas (al entregar) — cobradas al destinatario al recoger", "Pasajes (sin vehículo) — ventas antiguas sin tipo registrado"…), mini-barra, %, operaciones y monto
+- **Evolución diaria** (área con gradiente, `groupBy=dia` con los mismos filtros) cuando el rango > 1 día
+- **"¿Quién genera estos ingresos?"**: desglose por Agencia/Usuario/Vehículo/Conductor/Viaje con barras horizontales limpias (top 10) — se quitaron Categoría y Día del selector porque ya tienen su propia visualización
+- Eliminada toda la triplicación; etiquetas humanas en todos lados
+
+---
+
 ## PENDIENTES — Plan de pre-lanzamiento
 
 ### 1. Auditoría UX restante (capturas Playwright a detalle, claro/oscuro, por rol)
