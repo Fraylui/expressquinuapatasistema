@@ -37,6 +37,9 @@ services:
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       SPRING_PROFILES_ACTIVE: dev
+      # El contenedor corre en UTC: sin esto LocalDateTime.now() desfasa 5 h
+      # (auditoría, rangos "hoy" de reportes, bloqueos de login)
+      JAVA_TOOL_OPTIONS: -Duser.timezone=America/Lima
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:

@@ -378,14 +378,34 @@
 
 ---
 
+## Sesión 2026-06-11 (parte 5) — Auditoría UX /configuracion y /auditoria
+
+### Bug transversal: backend corría en UTC (desfase de 5 h)
+- La tabla de auditoría mostraba "12/06/26 01:44" cuando en Lima eran las 20:44, y el gráfico de actividad agrupaba todo en 00–01 h
+- Afectaba TODO `LocalDateTime.now()` del backend: rangos "hoy" de reportes/KPIs (el día cambiaba a las 7 pm hora Perú), bloqueos de login, aperturas de caja
+- Fix: `-Duser.timezone=America/Lima` en el `ENTRYPOINT` del Dockerfile de producción y `JAVA_TOOL_OPTIONS` en docker-compose.dev.yml. Los datos históricos son TIMESTAMPTZ (instantes reales), así que se muestran bien sin migración
+- Verificado: auditoría nueva con hora Lima correcta y gráfico distribuido en las horas reales
+
+### `/configuracion` (6 tabs)
+- **Temporadas — duración mal calculada**: "Regular 2026" (ene–jun) mostraba "30 días" en vez de 181 — `Period.getDays()` devuelve solo el componente días ("5 meses y 29 días" → 29); corregido con `ChronoUnit.DAYS` en `ConfiguracionTemporadaController`
+- **Tarifas — columna Temporada nueva**: había tarifas "duplicadas" por ruta/vehículo (S/55 y S/70 COMBI misma ruta) imposibles de distinguir; ahora cada fila muestra su temporada (chip ámbar) o "Base" (gris)
+- Verificado OK: Empresa (logo con preview + cuota combi con ayuda), Rutas (8 activas, CRUD), Vehículos (9, solo COMBI/CAMIONETA), Conductores (alertas de licencias vencidas/por vencer en rojo/ámbar)
+- **Observación de datos**: cuota de salida de combi está en S/ 0 (deshabilitada) — Kevin debe configurar el monto real antes del lanzamiento
+
+### `/auditoria` (como SUPER_ADMIN)
+- Verificado OK: panel de seguridad (intentos fallidos activos), 6 KPIs del día, gráfico actividad hoy/semana, búsqueda + filtros (módulo/acción/fechas con validación de rango/IP/ID), tabla con "ver cambios", exports probados por API: Excel 200 (17 KB) y PDF 200 (13 KB)
+- Los LOGIN_FALLIDO de las pruebas de hoy aparecen en KPIs y gráfico (la migración V8 cerró el ciclo completo)
+
+---
+
 ## PENDIENTES — Plan de pre-lanzamiento
 
 ### 1. Auditoría UX restante (capturas Playwright a detalle, claro/oscuro, por rol)
 Método ya probado: capturar → analizar qué va / qué no va / qué falta → corregir → re-capturar.
 - [x] `/usuarios` — auditado y corregido (ver sesión parte 4)
 - [x] `/agencias` — auditado y corregido (ver sesión parte 4)
-- [ ] `/configuracion` — los 6 tabs (Empresa con la cuota combi nueva, Rutas, Tarifas, Temporadas, Vehículos, Conductores)
-- [ ] `/auditoria` — como SUPER_ADMIN (filtros, exports PDF/Excel, actividad)
+- [x] `/configuracion` — auditado y corregido (ver sesión parte 5)
+- [x] `/auditoria` — auditado; fix de timezone (ver sesión parte 5)
 - [ ] Segunda pasada fina a `/gerente` y `/reportes` (ya auditados hoy, revisar con datos de la simulación)
 
 ### 2. Simulación de operación real (UAT con datos ficticios) — ANTES de lanzar
