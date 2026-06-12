@@ -189,8 +189,10 @@ public class ConfiguracionTemporadaController {
         m.put("fechaIni",  t.getFechaIni());
         m.put("fechaFin",  t.getFechaFin());
         m.put("activo",    t.isActivo());
+        // ChronoUnit.DAYS: until().getDays() devuelve solo el componente "días"
+        // del Period (ene→jun = "5 meses y 29 días" → 29), no el total
         m.put("duracionDias", t.getFechaIni() != null && t.getFechaFin() != null
-                ? t.getFechaIni().until(t.getFechaFin()).getDays() + 1
+                ? java.time.temporal.ChronoUnit.DAYS.between(t.getFechaIni(), t.getFechaFin()) + 1
                 : null);
         m.put("createdAt", t.getCreatedAt());
         m.put("updatedAt", t.getUpdatedAt());

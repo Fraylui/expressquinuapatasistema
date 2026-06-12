@@ -311,11 +311,17 @@ const TIPOS_FLOTA   = ['COMBI', 'CAMIONETA']
 function TarifasTab() {
   const { data: tarifasData, isLoading } = useSWR<Tarifa[]>('/api/configuracion/tarifas')
   const { data: rutasData }              = useSWR<Ruta[]>('/api/configuracion/rutas')
-  const { data: temporadasData }         = useSWR<Temporada[]>('/api/configuracion/temporadas?soloActivas=true')
+  // Todas las temporadas: una tarifa puede referenciar una inactiva (para el nombre en la tabla)
+  const { data: temporadasData }         = useSWR<Temporada[]>('/api/configuracion/temporadas')
 
   const tarifas    = tarifasData ?? []
   const rutas      = (rutasData ?? []).filter(r => r.activo)
-  const temporadas = temporadasData ?? []
+  const temporadas = (temporadasData ?? []).filter(t => t.activo)
+  const temporadaNombre = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const t of temporadasData ?? []) m.set(t.id, t.nombre)
+    return m
+  }, [temporadasData])
 
   const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Tarifa | null>(null)
@@ -412,6 +418,7 @@ function TarifasTab() {
               <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide border-b border-gray-100">
                 <th className="px-4 py-3 text-left font-medium">Ruta</th>
                 <th className="px-4 py-3 text-left font-medium">Vehículo</th>
+                <th className="px-4 py-3 text-left font-medium">Temporada</th>
                 <th className="px-4 py-3 text-right font-medium">Precio</th>
                 <th className="px-4 py-3 text-center font-medium">Estado</th>
                 <th className="px-4 py-3 text-center font-medium">Acciones</th>
@@ -429,6 +436,17 @@ function TarifasTab() {
                     <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
                       {t.tipoVehiculo}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {t.temporadaId != null ? (
+                      <span className="inline-block bg-amber-50 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                        {temporadaNombre.get(t.temporadaId) ?? `Temporada #${t.temporadaId}`}
+                      </span>
+                    ) : (
+                      <span className="inline-block bg-gray-100 text-gray-500 text-xs font-medium px-2 py-0.5 rounded-full">
+                        Base
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-gray-900">
                     S/ {Number(t.precio).toFixed(2)}
