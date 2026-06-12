@@ -5,7 +5,6 @@ import com.expressvraem.modules.auditoria.service.AuditoriaService;
 import com.expressvraem.modules.auth.entity.Usuario;
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +22,6 @@ import java.time.LocalDateTime;
  */
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class LoginAttemptService {
 
     private final UsuarioRepository usuarioRepository;
