@@ -1,7 +1,5 @@
 package com.expressvraem.modules.reportes.service;
 
-import com.expressvraem.modules.auditoria.repository.AuditoriaRepository;
-
 import com.expressvraem.modules.encomiendas.service.EncomiendaService;
 import com.expressvraem.modules.pasajes.repository.PasajeRepository;
 import com.expressvraem.modules.caja.repository.MovimientoCajaRepository;
@@ -31,7 +29,6 @@ public class ReporteService {
     private final PasajeRepository pasajeRepository;
     private final EncomiendaService encomiendaService;
     private final MovimientoCajaRepository movimientoRepository;
-    private final AuditoriaRepository auditoriaRepository;
     private final ExcelReportGenerator excelGenerator;
     private final EntityManager entityManager;
 
