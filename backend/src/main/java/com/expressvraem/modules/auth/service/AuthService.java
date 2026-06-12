@@ -32,21 +32,15 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserDetailsServiceImpl userDetailsService;
     private final AuditoriaService auditoriaService;
+    private final LoginAttemptService loginAttemptService;
 
-    private static final int  MAX_INTENTOS    = 5;
-    private static final long BLOQUEO_MINUTOS = 30;
+    private static final int  MAX_INTENTOS    = LoginAttemptService.MAX_INTENTOS;
+    private static final long BLOQUEO_MINUTOS = LoginAttemptService.BLOQUEO_MINUTOS;
 
-    // ── Failed-attempt helpers (persisted in DB) ─────────────────
-
-    @Transactional
-    void registrarIntentoFallido(Usuario usuario) {
-        int intentos = usuario.getIntentosFallidos() + 1;
-        usuario.setIntentosFallidos(intentos);
-        if (intentos >= MAX_INTENTOS) {
-            usuario.setBloqueadoHasta(LocalDateTime.now().plusMinutes(BLOQUEO_MINUTOS));
-        }
-        usuarioRepository.save(usuario);
-    }
+    // ── Failed-attempt helpers ────────────────────────────────────
+    // El registro del intento vive en LoginAttemptService (REQUIRES_NEW):
+    // login() es @Transactional y lanza excepción tras registrar, así que
+    // guardarlo aquí se perdería con el rollback.
 
     void verificarBloqueo(Usuario usuario) {
         LocalDateTime bloqueadoHasta = usuario.getBloqueadoHasta();
@@ -113,7 +107,7 @@ public class AuthService {
 
         if (usuarioOpt.isEmpty() || !usuarioOpt.get().isActivo()) {
             // Track attempt on inactive accounts too, but don't reveal whether user exists
-            usuarioOpt.ifPresent(this::registrarIntentoFallido);
+            usuarioOpt.ifPresent(u -> loginAttemptService.registrarIntentoFallido(u.getId()));
             auditLoginFallido(dto.email(), null, ip, "USUARIO_NO_ENCONTRADO");
             throw new BusinessException("Credenciales inválidas", "AUTH_INVALID");
         }
@@ -122,8 +116,7 @@ public class AuthService {
         verificarBloqueo(usuario);
 
         if (!passwordEncoder.matches(dto.password(), usuario.getPasswordHash())) {
-            registrarIntentoFallido(usuario);
-            int intentos = usuario.getIntentosFallidos();
+            int intentos = loginAttemptService.registrarIntentoFallido(usuario.getId());
             log.warn("Login fallido para: {} desde IP: {} (intento {}/{})", dto.email(), ip, intentos, MAX_INTENTOS);
             auditLoginFallido(dto.email(), usuario.getAgenciaId(), ip,
                 "PASSWORD_INCORRECTO (intento " + intentos + "/" + MAX_INTENTOS + ")");
@@ -169,14 +162,11 @@ public class AuthService {
 
     private void auditLoginFallido(String email, Long agenciaId, String ip, String motivo) {
         try {
-            auditoriaService.registrar(Auditoria.builder()
-                    .usuarioNombre(email)
-                    .agenciaId(agenciaId)
-                    .accion("LOGIN_FALLIDO")
-                    .modulo("AUTH").entidad("SESION")
-                    .datosDespues("motivo=" + motivo)
-                    .ip(ip).build());
-        } catch (Exception ignored) {}
+            // REQUIRES_NEW: el rollback del login no debe borrar el rastro de auditoría
+            loginAttemptService.auditarLoginFallido(email, agenciaId, ip, motivo);
+        } catch (Exception e) {
+            log.warn("No se pudo auditar login fallido de {}: {}", email, e.getMessage());
+        }
     }
 
     public void registrarLogout(String email, String ip) {

@@ -9,6 +9,7 @@ import {
   Settings, Shield, PackageSearch, Tag,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { useEmpresaStore } from '@/stores/empresaStore'
 
 type NavItem = {
   href: string
@@ -93,8 +94,10 @@ const rolBadgeColor: Record<string, string> = {
 export const Sidebar: React.FC = () => {
   const pathname = usePathname()
   const { user, logout } = useAuthStore()
+  const { logoBase64, loaded: empresaLoaded, fetchFromApi } = useEmpresaStore()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => { if (mounted && !empresaLoaded) fetchFromApi() }, [mounted, empresaLoaded, fetchFromApi])
 
   const modulosActivos = user?.modulosActivos ?? []
 
@@ -102,16 +105,28 @@ export const Sidebar: React.FC = () => {
     <aside className="flex flex-col h-full w-60 bg-sidebar text-white select-none">
 
       {/* Logo */}
-      <div className="px-5 py-4 border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center shrink-0">
-            <Bus size={18} className="text-white" />
+      <div className="px-4 py-4 border-b border-white/10 shrink-0">
+        {mounted && logoBase64 ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-full bg-white rounded-xl px-3 py-2.5 flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logoBase64} alt="Express Quinuapata VRAEM SAC" className="h-12 max-w-full object-contain" />
+            </div>
+            <p className="text-[10px] text-white/40 tracking-widest uppercase text-center">
+              Express Quinuapata · VRAEM SAC
+            </p>
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold leading-tight">Express Quinuapata</p>
-            <p className="text-xs text-white/40 tracking-widest uppercase mt-0.5">VRAEM SAC</p>
+        ) : (
+          <div className="flex items-center gap-3 px-1">
+            <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center shrink-0">
+              <Bus size={18} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold leading-tight">Express Quinuapata</p>
+              <p className="text-xs text-white/40 tracking-widest uppercase mt-0.5">VRAEM SAC</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Navegación */}

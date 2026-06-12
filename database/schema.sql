@@ -86,7 +86,7 @@ CREATE TABLE usuarios (
     telefono         VARCHAR(20),
     password_hash    TEXT         NOT NULL,
     rol              VARCHAR(20)  NOT NULL DEFAULT 'OPERADOR'
-                         CHECK (rol IN ('SUPER_ADMIN','GERENTE','OPERADOR','CONDUCTOR')),
+                         CHECK (rol IN ('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR')),
     activo              BOOLEAN      NOT NULL DEFAULT TRUE,
     ultimo_acceso       TIMESTAMPTZ,
     ip_ultimo_acceso    VARCHAR(45),
@@ -440,10 +440,10 @@ CREATE TABLE manifiestos (
 -- ============================================================
 CREATE TABLE auditoria (
     id              BIGSERIAL PRIMARY KEY,
-    agencia_id      BIGINT          NOT NULL REFERENCES agencias(id),
+    agencia_id      BIGINT          REFERENCES agencias(id),
     usuario_id      BIGINT          REFERENCES usuarios(id),
     usuario_nombre  VARCHAR(100),
-    accion          VARCHAR(20)     NOT NULL CHECK (accion IN ('INSERT','UPDATE','DELETE','LOGIN','LOGOUT','ACCESS_DENIED')),
+    accion          VARCHAR(20)     NOT NULL CHECK (accion IN ('INSERT','UPDATE','DELETE','LOGIN','LOGOUT','LOGIN_FALLIDO','ACCESS_DENIED')),
     modulo          VARCHAR(60),
     entidad         VARCHAR(60),
     registro_id     BIGINT,

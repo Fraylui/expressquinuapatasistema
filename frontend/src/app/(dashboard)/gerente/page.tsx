@@ -68,6 +68,12 @@ interface EstadoOperador {
   usuarioId: number; nombre: string; tieneCaja: boolean
   cajaId?: number; fechaApertura?: string; saldoActual?: number
 }
+
+/** Horas transcurridas desde la apertura de la caja; 0 si no aplica. */
+function horasCajaAbierta(op: EstadoOperador): number {
+  if (!op.tieneCaja || !op.fechaApertura) return 0
+  return (Date.now() - new Date(op.fechaApertura).getTime()) / 3_600_000
+}
 interface TopRuta {
   ruta: string; origen: string; destino: string; pasajes: number; ingresos: number
 }
@@ -642,35 +648,57 @@ export default function GerentePage() {
             <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
               <Users size={13} className="text-[#064e3b]" />
               Cajas de operadores
-              {estadoOperadores.filter(o => !o.tieneCaja).length > 0 && (
-                <span className="ml-auto px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
-                  {estadoOperadores.filter(o => !o.tieneCaja).length} sin caja
-                </span>
-              )}
+              <span className="ml-auto flex items-center gap-1.5">
+                {estadoOperadores.filter(o => horasCajaAbierta(o) > 24).length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
+                    {estadoOperadores.filter(o => horasCajaAbierta(o) > 24).length} +24 h
+                  </span>
+                )}
+                {estadoOperadores.filter(o => !o.tieneCaja).length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold">
+                    {estadoOperadores.filter(o => !o.tieneCaja).length} sin caja
+                  </span>
+                )}
+              </span>
             </h3>
+            {estadoOperadores.filter(o => horasCajaAbierta(o) > 24).length > 0 && (
+              <div className="mb-3 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-[11px] text-red-700">
+                Hay turnos de caja abiertos por más de 24 h. Pida al operador cerrar y cuadrar su caja: los
+                reportes diarios y el consolidado quedan desactualizados mientras sigan abiertos.
+              </div>
+            )}
             {estadoOperadores.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-6">Sin operadores registrados</p>
             ) : (
               <div className="space-y-2">
-                {estadoOperadores.map(op => (
+                {estadoOperadores.map(op => {
+                  const horas = horasCajaAbierta(op)
+                  const vencida = horas > 24
+                  return (
                   <div key={op.usuarioId} className={`flex items-center justify-between px-3 py-2 rounded-xl border ${
-                    op.tieneCaja ? 'border-emerald-100 bg-emerald-50' : 'border-gray-100 bg-gray-50'
+                    vencida ? 'border-red-200 bg-red-50'
+                    : op.tieneCaja ? 'border-emerald-100 bg-emerald-50' : 'border-gray-100 bg-gray-50'
                   }`}>
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${op.tieneCaja ? 'bg-emerald-400' : 'bg-gray-300'}`} />
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${
+                        vencida ? 'bg-red-500' : op.tieneCaja ? 'bg-emerald-400' : 'bg-gray-300'
+                      }`} />
                       <span className="text-xs font-medium text-gray-800 truncate">{op.nombre}</span>
                     </div>
                     <div className="text-right shrink-0 ml-2">
                       {op.tieneCaja
-                        ? <p className="text-xs font-mono text-emerald-700 font-semibold">S/ {Number(op.saldoActual ?? 0).toFixed(2)}</p>
+                        ? <p className={`text-xs font-mono font-semibold ${vencida ? 'text-red-700' : 'text-emerald-700'}`}>S/ {Number(op.saldoActual ?? 0).toFixed(2)}</p>
                         : <p className="text-[11px] text-gray-400">Sin caja</p>
                       }
                       {op.tieneCaja && op.fechaApertura && (
-                        <p className="text-[10px] text-gray-400">desde {format(new Date(op.fechaApertura), 'HH:mm')}</p>
+                        vencida
+                          ? <p className="text-[10px] font-semibold text-red-600">abierta hace {Math.floor(horas)} h</p>
+                          : <p className="text-[10px] text-gray-400">desde {format(new Date(op.fechaApertura), 'HH:mm')}</p>
                       )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

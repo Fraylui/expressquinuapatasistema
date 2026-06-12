@@ -90,7 +90,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/auditoria").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
 
                 // ── SUPER_ADMIN + GERENTE ────────────────────────────
-                .requestMatchers("/api/reportes/**").hasAnyRole("SUPER_ADMIN","GERENTE")
+                // Reportes: ADMIN_AGENCIA entra con módulo REPORTES y alcance
+                // forzado a su agencia (ver ReporteController)
+                .requestMatchers("/api/reportes/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
                 .requestMatchers("/api/configuracion/**").hasAnyRole("SUPER_ADMIN","GERENTE")
                 .requestMatchers(HttpMethod.POST, "/api/agencias").hasAnyRole("SUPER_ADMIN","GERENTE")
                 .requestMatchers(HttpMethod.PUT, "/api/agencias/**").hasAnyRole("SUPER_ADMIN","GERENTE")

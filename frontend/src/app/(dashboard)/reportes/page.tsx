@@ -1,5 +1,5 @@
 ﻿'use client'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import useSWR from 'swr'
 import {
   FileSpreadsheet, TrendingUp, Package,
@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import api from '@/services/api'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '@/stores/authStore'
 
 type TabType     = 'ventas' | 'encomiendas' | 'caja'
 type PeriodoType = '7' | '14' | '30'
@@ -114,8 +115,14 @@ function IngresosSection() {
   const [categoria, setCategoria]       = useState('')
   const [groupBy, setGroupBy]           = useState('categoria')
 
-  const { data: agencias } = useSWR<any[]>('/api/agencias')
-  const { data: usuarios } = useSWR<any[]>('/api/usuarios')
+  // ADMIN_AGENCIA: el backend fuerza su agencia — no mostrar filtros de agencia/usuario
+  const { user } = useAuthStore()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  const sinFiltroAgencia = mounted && (user?.rol === 'SUPER_ADMIN' || user?.rol === 'GERENTE')
+
+  const { data: agencias } = useSWR<any[]>(sinFiltroAgencia ? '/api/agencias' : null)
+  const { data: usuarios } = useSWR<any[]>(sinFiltroAgencia ? '/api/usuarios' : null)
 
   const qs = new URLSearchParams({ desde, hasta, groupBy })
   if (agenciaId)    qs.set('agenciaId', agenciaId)
@@ -167,24 +174,28 @@ function IngresosSection() {
           <label className="block text-[10px] font-semibold text-gray-500 mb-1">Hasta</label>
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={selectCls} />
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Agencia</label>
-          <select value={agenciaId} onChange={e => setAgenciaId(e.target.value)} className={selectCls}>
-            <option value="">Todas</option>
-            {(agencias ?? []).map((a: any) => (
-              <option key={a.id} value={a.id}>{a.nombre}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Usuario</label>
-          <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)} className={selectCls}>
-            <option value="">Todos</option>
-            {(usuarios ?? []).map((u: any) => (
-              <option key={u.id} value={u.id}>{`${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim() || u.email}</option>
-            ))}
-          </select>
-        </div>
+        {sinFiltroAgencia && (
+          <>
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-500 mb-1">Agencia</label>
+              <select value={agenciaId} onChange={e => setAgenciaId(e.target.value)} className={selectCls}>
+                <option value="">Todas</option>
+                {(agencias ?? []).map((a: any) => (
+                  <option key={a.id} value={a.id}>{a.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-500 mb-1">Usuario</label>
+              <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)} className={selectCls}>
+                <option value="">Todos</option>
+                {(usuarios ?? []).map((u: any) => (
+                  <option key={u.id} value={u.id}>{`${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim() || u.email}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
         <div>
           <label className="block text-[10px] font-semibold text-gray-500 mb-1">Tipo vehículo</label>
           <select value={tipoVehiculo} onChange={e => setTipoVehiculo(e.target.value)} className={selectCls}>

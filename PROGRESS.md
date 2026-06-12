@@ -53,6 +53,7 @@
 | maria.ccencho@quinuapata.com | Quinuapata2024! | OPERADOR | VENTAS, ENCOMIENDAS, CAJA |
 | juan.ccoyllo@quinuapata.com | Quinuapata2024! | CONDUCTOR | Solo viajes propios |
 | rosa.sulca@quinuapata.com | Quinuapata2024! | OPERADOR (Kimbiri) | VENTAS, ENCOMIENDAS, CAJA, MANIFIESTOS |
+| elena.paredes@quinuapata.com | Quinuapata2024! | ADMIN_AGENCIA (Kimbiri) | VENTAS, ENCOMIENDAS, CAJA, MANIFIESTOS, REPORTES |
 
 ---
 
@@ -337,6 +338,28 @@
 
 ---
 
+## Sesión 2026-06-11 (parte 3) — Mejoras pre-lanzamiento backend/frontend
+
+### Bugs críticos encontrados y corregidos
+- **El bloqueo por intentos fallidos NUNCA funcionó**: `login()` es `@Transactional` y lanza `BusinessException` justo después de guardar el contador → rollback lo borraba (siempre decía "restantes: 4" y nunca bloqueaba). Nuevo `LoginAttemptService` con `REQUIRES_NEW` para contador y auditoría. **Probado en vivo**: 5 intentos 1/5→5/5, bloqueo 30 min, clave correcta rechazada con `CUENTA_BLOQUEADA`
+- **La auditoría `LOGIN_FALLIDO` nunca se guardó**: el CHECK `auditoria_accion_check` no incluía esa acción, y `agencia_id NOT NULL` impedía auditar intentos sobre emails desconocidos → **Migración V8** (aplicada en dev). Verificado: filas con `motivo=PASSWORD_INCORRECTO (intento N/5)` y `agencia_id NULL` para email inexistente
+- **Era imposible crear usuarios ADMIN_AGENCIA**: el CHECK `usuarios_rol_check` en BD solo permitía 4 roles (el 5.º existe en todo el código) → **Migración V9** (aplicada en dev). Creada usuaria de prueba Elena Paredes (Kimbiri)
+- **Health check `DOWN` resuelto**: sin `MAIL_HOST` el bean de mail se creaba igual (host vacío) y su indicador tumbaba `/actuator/health` — el que Docker usa para reiniciar el contenedor. `management.health.mail.enabled=false` (una caída del SMTP no debe reiniciar el sistema). Verificado: `{"status":"UP"}`
+
+### Mejoras de interfaz (pendiente 4 — completado)
+- **Logo de la empresa en el sidebar**: usa `logoBase64` de Configuración → Empresa en tarjeta blanca centrada con caption "Express Quinuapata · VRAEM SAC" debajo; fallback al ícono si no hay logo (login ya lo hacía)
+- **Alerta "turno de caja abierto +24 h"** en `/gerente` → panel Cajas de operadores: badge rojo "N +24 h", banner explicando el impacto, fila del operador en rojo con "abierta hace X h" (probado con la caja de Carlos: 233 h)
+- **REPORTES para ADMIN_AGENCIA con alcance forzado**: `SecurityConfig` + `@PreAuthorize` + `@RequiereModulo("REPORTES")` por endpoint; `resolveAgencia()` ignora el `agenciaId` del query param si hay agencia en contexto (JWT). `/reportes` oculta selectores de Agencia/Usuario para ADMIN_AGENCIA. **Probado**: Elena pidió `agenciaId=1` (Huamanga S/280) y recibió solo Kimbiri (vacío); export de caja ajena bloqueado vía `verificarAcceso`
+- Capturas Playwright en claro/oscuro: `frontend/screenshot-prelanzamiento.js` y `screenshot-gerencial.js`
+
+### Estado de pendientes técnicos (pendiente 5)
+- [x] Health check `/actuator/health` → UP
+- [x] Bloqueo por `intentos_fallidos` verificado (con fix de raíz)
+- [ ] Push a GitHub (sigue sin remoto)
+- [ ] Migraciones **V5–V9** en producción al desplegar (V8 y V9 son nuevas de hoy)
+
+---
+
 ## PENDIENTES — Plan de pre-lanzamiento
 
 ### 1. Auditoría UX restante (capturas Playwright a detalle, claro/oscuro, por rol)
@@ -363,16 +386,16 @@ Simular **1 semana a 1 mes de trabajo** de la empresa con datos no reales, como 
 - [ ] Opcional: lector de código QR/barras (tracking de encomiendas), segunda pantalla para el mostrador
 - [ ] Definir dónde se aloja producción (VPS) y quién administra los backups
 
-### 4. Mejoras de interfaz anotadas
-- [ ] **Logo de la empresa en el sidebar**: arriba de "OPERACIÓN" hoy va un ícono fijo + nombre; usar el `logoBase64` que ya se configura en Configuración → Empresa (con fallback al ícono actual si no hay logo)
-- [ ] Alerta "turno de caja abierto +24 h" en el panel gerencial
-- [ ] Permitir REPORTES a ADMIN_AGENCIA con alcance forzado a su agencia
+### 4. Mejoras de interfaz anotadas — ✅ COMPLETADO (sesión parte 3)
+- [x] **Logo de la empresa en el sidebar** (con fallback al ícono si no hay logo)
+- [x] Alerta "turno de caja abierto +24 h" en el panel gerencial
+- [x] Permitir REPORTES a ADMIN_AGENCIA con alcance forzado a su agencia
 
 ### 5. Técnicos
 - [ ] **Push a GitHub** — el repo no tiene remoto configurado (crear repo privado y conectar)
-- [ ] **Health check `DOWN`** en `/actuator/health` (sospecha: componente mail sin SMTP) — producción usa ese check para reinicios
-- [ ] **Migraciones V5–V7 en producción** al desplegar (con backup previo; el deploy no las corre solo)
-- [ ] Verificar bloqueo por `intentos_fallidos` en login (columna agregada hoy, sin probar)
+- [x] **Health check `DOWN`** — era el indicador de mail sin SMTP; deshabilitado (no debe reiniciar el contenedor)
+- [ ] **Migraciones V5–V9 en producción** al desplegar (con backup previo; el deploy no las corre solo)
+- [x] Verificar bloqueo por `intentos_fallidos` en login — no funcionaba (rollback); corregido y probado
 
 ### 6. Limpieza de datos de prueba
 - [ ] Confirmar llegada de los 4 viajes EN_RUTA del 13 de mayo (ya tienen alerta roja en /viajes)
