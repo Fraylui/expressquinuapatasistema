@@ -51,6 +51,14 @@ public class EncomiendaExternaTicketPdfService {
                     enc.getConductorDni() != null ? enc.getConductorDni() : "",
                     fechaStr);
 
+            PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
+
+            // Descripción completa en varias líneas
+            int descLines = PdfUtils.wrapText(fontNorm, 7f, enc.getDescripcion(),
+                    PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Descripcion: ") / 1000f * 7f).size();
+
             float pageH = MARGIN + 20
                     + 40             // header empresa
                     + 6              // sep
@@ -61,7 +69,7 @@ public class EncomiendaExternaTicketPdfService {
                     + 6              // sep
                     + 8 * 4 + 6      // conductor
                     + 8 * 3 + 6      // destinatario
-                    + 8 * 2 + 6      // descripción
+                    + 8 * (1 + descLines) + 6 // descripción (multilínea) + obs
                     + 8 * 3 + 6      // cobro + operador
                     + 8 * 5 + 6      // control interno
                     + 20;
@@ -69,10 +77,6 @@ public class EncomiendaExternaTicketPdfService {
 
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
-
-            PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
-            PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
-            PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
@@ -123,8 +127,8 @@ public class EncomiendaExternaTicketPdfService {
                 }
                 y -= 2;
 
-                // ── Descripción ────────────────────────────────────────────────
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Descripcion:", enc.getDescripcion(), y); y -= 1;
+                // ── Descripción (completa, multilínea) ─────────────────────────
+                y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Descripcion:", enc.getDescripcion(), y); y -= 1;
                 if (enc.getObservaciones() != null && !enc.getObservaciones().isBlank()) {
                     y = drawLabel(cs, fontBold, fontNorm, 7f, "Obs.:", enc.getObservaciones(), y); y -= 1;
                 }
@@ -191,6 +195,22 @@ public class EncomiendaExternaTicketPdfService {
         cs.beginText(); cs.setFont(fontN, size);
         cs.newLineAtOffset(vx, y - size); cs.showText(sv); cs.endText();
         return y - size - 1;
+    }
+
+    /** Como drawLabel pero el valor se imprime completo, envuelto en varias líneas. */
+    private float drawWrappedLabel(PDPageContentStream cs, PDType1Font fontB, PDType1Font fontN,
+                                   float size, String label, String value, float y) throws Exception {
+        String sl = ascii(label) + " ";
+        float lw  = fontB.getStringWidth(sl) / 1000f * size;
+        float maxW = PAGE_W - MARGIN * 2 - lw;
+        cs.beginText(); cs.setFont(fontB, size);
+        cs.newLineAtOffset(MARGIN, y - size); cs.showText(sl); cs.endText();
+        for (String line : PdfUtils.wrapText(fontN, size, value, maxW)) {
+            cs.beginText(); cs.setFont(fontN, size);
+            cs.newLineAtOffset(MARGIN + lw, y - size); cs.showText(line); cs.endText();
+            y = y - size - 1;
+        }
+        return y;
     }
 
     private float drawDashes(PDPageContentStream cs, float y) throws Exception {

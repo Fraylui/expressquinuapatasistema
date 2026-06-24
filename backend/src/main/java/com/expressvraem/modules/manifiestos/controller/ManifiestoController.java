@@ -418,6 +418,8 @@ public class ManifiestoController {
                 fh = ts.toInstant().atOffset(java.time.ZoneOffset.of("-05:00"));
             } else if (viajeRow[0] instanceof java.time.OffsetDateTime odt) {
                 fh = odt;
+            } else if (viajeRow[0] instanceof java.time.Instant ins) {
+                fh = ins.atOffset(java.time.ZoneOffset.of("-05:00"));
             }
             if (fh != null) {
                 fecha = fh.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));

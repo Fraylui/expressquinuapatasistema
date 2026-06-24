@@ -80,13 +80,17 @@ public class ComprobanteEntregaPdfService {
                     enc.getRecibidoPorNombre() != null ? enc.getRecibidoPorNombre() : "",
                     fechaEntrega);
 
-            float pageH = 590f;
-            PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
-            doc.addPage(page);
-
             PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
+
+            // Altura extra si la descripción ocupa más de una línea
+            int descLines = com.expressvraem.shared.utils.PdfUtils.wrapText(fontNorm, 7f, enc.getDescripcion(),
+                    PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Contenido: ") / 1000f * 7f).size();
+
+            float pageH = 590f + 8f * (descLines - 1);
+            PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
+            doc.addPage(page);
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
@@ -121,7 +125,7 @@ public class ComprobanteEntregaPdfService {
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Remitente:",    remNombre, y);                       y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Destinatario:", desNombre, y);                       y -= 1;
                 if (!desTel.isEmpty()) { y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. dest.:", desTel, y); y -= 1; }
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Contenido:", enc.getDescripcion(), y);               y -= 1;
+                y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Contenido:", enc.getDescripcion(), y);        y -= 1;
                 if (enc.getPesoKg() != null) {
                     y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg() + " kg", y); y -= 1;
                 }
@@ -195,6 +199,22 @@ public class ComprobanteEntregaPdfService {
         return y - size - 1;
     }
 
+    /** Como drawLabel pero el valor se imprime completo, envuelto en varias líneas. */
+    private float drawWrappedLabel(PDPageContentStream cs, PDType1Font fontB, PDType1Font fontN,
+                                   float size, String label, String value, float y) throws Exception {
+        String safeLabel = ascii(label) + " ";
+        float labelW = fontB.getStringWidth(safeLabel) / 1000f * size;
+        float maxW   = PAGE_W - MARGIN * 2 - labelW;
+        cs.beginText(); cs.setFont(fontB, size);
+        cs.newLineAtOffset(MARGIN, y - size); cs.showText(safeLabel); cs.endText();
+        for (String line : com.expressvraem.shared.utils.PdfUtils.wrapText(fontN, size, value, maxW)) {
+            cs.beginText(); cs.setFont(fontN, size);
+            cs.newLineAtOffset(MARGIN + labelW, y - size); cs.showText(line); cs.endText();
+            y = y - size - 1;
+        }
+        return y;
+    }
+
     private float drawDashes(PDPageContentStream cs, float y) throws Exception {
         cs.setLineWidth(0.5f);
         cs.moveTo(MARGIN, y); cs.lineTo(PAGE_W - MARGIN, y); cs.stroke();
@@ -227,6 +247,6 @@ public class ComprobanteEntregaPdfService {
                 .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
                 .replace('ñ','n').replace('Ñ','N').replace('ü','u').replace('Ü','U')
                 .replace('→','>').replace('—','-').replace('–','-').replace('…','.')
-                .replace('¡','!').replace('¿','?').replaceAll("[^\\x00-\\x7E]", "?");
+                .replace('¡','!').replace('¿','?').replaceAll("[^\\x20-\\x7E]", " ");
     }
 }

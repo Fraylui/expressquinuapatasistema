@@ -246,7 +246,7 @@ function ModalRegistrar({ onClose, onSuccess }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg my-4">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <div>
-            <h3 className="font-semibold text-gray-900">Nueva encomienda externa</h3>
+            <h3 className="font-semibold text-gray-900">Nuevo envío externo</h3>
             <p className="text-xs text-gray-500">Depósito de conductor externo</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
@@ -659,7 +659,7 @@ export default function EncomiendaExternaPage() {
         <button
           onClick={() => setModalRegistrar(true)}
           className="flex items-center gap-2 px-4 py-2 bg-[#064e3b] text-white text-sm rounded-lg hover:bg-[#16294d] transition-colors">
-          <Plus size={16} /> Nueva encomienda
+          <Plus size={16} /> Nuevo Envío
         </button>
       </div>
 

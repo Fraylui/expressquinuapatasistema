@@ -79,6 +79,7 @@ interface SuccessData {
   remitenteNombre: string
   destinatarioNombre: string
   agenciaDestNombre: string
+  descripcion: string
 }
 
 function RegistroSuccessScreen({ data, onNueva, onPrint, onEtiqueta }: {
@@ -115,6 +116,7 @@ function RegistroSuccessScreen({ data, onNueva, onPrint, onEtiqueta }: {
         {[
           ['Remitente', data.remitenteNombre],
           ['Destinatario', data.destinatarioNombre],
+          ['Contenido', data.descripcion],
           ['Destino', data.agenciaDestNombre],
         ].map(([label, value]) => (
           <div key={label} className="flex gap-3 px-4 py-2.5">
@@ -203,7 +205,7 @@ function EntregaSuccessScreen({ enc, cobrado, onVolver, onPrint }: {
 }
 
 // ── Wizard helpers ─────────────────────────────────────────────────────────────
-const PASOS = ['Remitente', 'Destinatario', 'Paquete', 'Cobro', 'Obs.', 'Confirmar']
+const PASOS = ['Remitente', 'Destinatario', 'Paquete', 'Cobro', 'Confirmar']
 
 interface FormState {
   tipoRemitente: TipoEntidad; remitente: Cliente | null
@@ -1501,6 +1503,7 @@ export default function EncomiendaPage() {
         remitenteNombre: form.remitente.razonSocial ?? `${form.remitente.apellidos}, ${form.remitente.nombres}`,
         destinatarioNombre: form.destinatario.razonSocial ?? `${form.destinatario.apellidos}, ${form.destinatario.nombres}`,
         agenciaDestNombre: agDest ? `${agDest.nombre} — ${agDest.ciudad}` : '—',
+        descripcion: form.descripcion,
       })
       setForm(INIT); setPaso(0); setPromoSelEnc(null); setVista('exito-registro')
     } catch (err: any) {
@@ -1583,7 +1586,7 @@ export default function EncomiendaPage() {
         {vista === 'tabs' && (
           <button onClick={() => { setVista('nueva'); setPaso(0); setForm(INIT) }}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold shadow-sm">
-            <Plus size={15} /> Nueva encomienda
+            <Plus size={15} /> Nuevo Envío
           </button>
         )}
         {vista === 'nueva' && (
@@ -1811,19 +1814,19 @@ export default function EncomiendaPage() {
                     </div>
                   )}
                 </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Observaciones <span className="text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <textarea value={form.observaciones} onChange={sf('observaciones')} rows={2}
+                    placeholder="Frágil, requiere refrigeración, etc."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
+                </div>
               </div>
             )}
 
             {paso === 4 && (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-gray-800 text-sm">Observaciones (opcional)</h3>
-                <textarea value={form.observaciones} onChange={sf('observaciones')} rows={3}
-                  placeholder="Frágil, requiere refrigeración, etc."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
-              </div>
-            )}
-
-            {paso === 5 && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-800 text-sm">Confirmar registro</h3>
                 <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
@@ -1859,7 +1862,7 @@ export default function EncomiendaPage() {
                 <button onClick={registrar} disabled={guardando}
                   className="flex items-center gap-2 px-6 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors font-semibold">
                   {guardando && <Loader2 size={14} className="animate-spin" />}
-                  <Check size={14} /> Registrar encomienda
+                  <Check size={14} /> Registrar envío
                 </button>
               )}
             </div>

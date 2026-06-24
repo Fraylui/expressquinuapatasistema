@@ -77,17 +77,18 @@ public class TicketPdfService {
                 clienteApellidos = PdfUtils.ascii(String.valueOf(cr[1]));
                 clienteDni       = String.valueOf(cr[2]);
             } catch (Exception ignored) {}
+            // Consultas de una sola columna: Hibernate devuelve el escalar, no Object[]
             try {
-                Object[] or2 = (Object[]) em.createNativeQuery(
+                Object or2 = em.createNativeQuery(
                     "SELECT nombres || ' ' || apellidos FROM usuarios WHERE id=:uid")
                     .setParameter("uid", p.getVendedorId()).getSingleResult();
-                operadorNombre = PdfUtils.ascii(String.valueOf(or2[0]));
+                operadorNombre = PdfUtils.ascii(String.valueOf(or2));
             } catch (Exception ignored) {}
             try {
-                Object[] ar = (Object[]) em.createNativeQuery(
+                Object ar = em.createNativeQuery(
                     "SELECT nombre FROM agencias WHERE id=:aid")
                     .setParameter("aid", p.getAgenciaId()).getSingleResult();
-                agenciaNombre = PdfUtils.ascii(String.valueOf(ar[0]));
+                agenciaNombre = PdfUtils.ascii(String.valueOf(ar));
             } catch (Exception ignored) {}
 
             DateTimeFormatter dtfDate = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -99,6 +100,8 @@ public class TicketPdfService {
                 java.time.LocalDateTime ldt;
                 if (viajeRow[1] instanceof java.time.OffsetDateTime odt) ldt = odt.toLocalDateTime();
                 else if (viajeRow[1] instanceof java.sql.Timestamp ts)   ldt = ts.toLocalDateTime();
+                else if (viajeRow[1] instanceof java.time.Instant ins)
+                    ldt = java.time.LocalDateTime.ofInstant(ins, java.time.ZoneId.of("America/Lima"));
                 else                                                        ldt = null;
                 if (ldt != null) {
                     fechaViaje = ldt.format(dtfDate);
@@ -171,7 +174,7 @@ public class TicketPdfService {
                 y = lbl(cs, fontBold, fontNorm, 7f, "FECHA:",    fechaViaje, y);                y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "HORA SAL:", horaViaje, y);                 y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 7f, "VEHICULO:", tipoVeh + " - " + placa, y);  y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 8f, "ASIENTO N°:",
+                y = lbl(cs, fontBold, fontNorm, 8f, "ASIENTO Nro:",
                         String.valueOf(p.getAsientoNumero() != null ? p.getAsientoNumero() : "?"), y);
                 y -= 4;
 

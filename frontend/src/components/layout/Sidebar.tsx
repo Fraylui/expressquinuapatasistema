@@ -108,11 +108,14 @@ export const Sidebar: React.FC = () => {
       <div className="px-4 py-4 border-b border-white/10 shrink-0">
         {mounted && logoBase64 ? (
           <div className="flex flex-col items-center gap-2">
-            <div className="w-full bg-white rounded-xl px-3 py-2.5 flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoBase64} alt="Express Quinuapata VRAEM SAC" className="h-12 max-w-full object-contain" />
+            {/* Marco flotante con halo dorado */}
+            <div className="w-full rounded-2xl p-[1.5px] bg-gradient-to-br from-amber-200/70 via-white/20 to-white/5 shadow-[0_8px_28px_rgba(0,0,0,0.55),0_0_12px_rgba(255,220,100,0.12)]">
+              <div className="bg-gradient-to-b from-white to-gray-50 rounded-[14px] px-2 py-2 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoBase64} alt="Express Quinuapata VRAEM SAC" className="w-full h-auto object-contain drop-shadow-sm" />
+              </div>
             </div>
-            <p className="text-[10px] text-white/40 tracking-widest uppercase text-center">
+            <p className="text-[9px] text-white/30 tracking-[0.18em] uppercase text-center font-light">
               Express Quinuapata · VRAEM SAC
             </p>
           </div>

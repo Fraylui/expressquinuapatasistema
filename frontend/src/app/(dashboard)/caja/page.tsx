@@ -5,9 +5,11 @@ import {
   DollarSign, TrendingUp, TrendingDown, Lock, Unlock, Plus,
   Printer, RefreshCw, CheckCircle2, AlertCircle, Clock,
   Ticket, Package, ArrowDownCircle, ArrowUpCircle, Loader2, History,
-  Wallet, ChevronRight, Search, X, Building2, Users,
+  Wallet, ChevronRight, Search, X, Building2, Users, Banknote,
 } from 'lucide-react'
-import { cajaService, type TurnoActual } from '@/services/caja.service'
+import {
+  cajaService, type TurnoActual, type EntregaEfectivo, type ResumenRendicion,
+} from '@/services/caja.service'
 import type { MovimientoCaja } from '@/types'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/stores/authStore'
@@ -716,6 +718,427 @@ function ConsolidadoTab() {
   )
 }
 
+// ── Rendiciones: entregas de efectivo a gerencia ─────────────────────────────
+const ESTADO_ENTREGA: Record<string, { label: string; cls: string }> = {
+  PENDIENTE:  { label: 'En tránsito', cls: 'bg-amber-100 text-amber-700' },
+  CONFIRMADA: { label: 'Confirmada',  cls: 'bg-green-100 text-green-700' },
+  OBSERVADA:  { label: 'Observada',   cls: 'bg-red-100 text-red-700' },
+  ANULADA:    { label: 'Anulada',     cls: 'bg-gray-100 text-gray-500' },
+}
+
+function RendicionesTab({ rol }: { rol: string }) {
+  const esGerencia = rol === 'GERENTE' || rol === 'SUPER_ADMIN'
+  const [entregas, setEntregas]   = useState<EntregaEfectivo[]>([])
+  const [resumen, setResumen]     = useState<ResumenRendicion | null>(null)
+  const [panel, setPanel]         = useState<ResumenRendicion[]>([])
+  const [cargando, setCargando]   = useState(true)
+
+  // Modal declarar entrega
+  const [modalDeclarar, setModalDeclarar] = useState(false)
+  const [decl, setDecl] = useState({
+    monto: '', modalidad: 'ENTREGA_DIRECTA' as 'ENTREGA_DIRECTA' | 'DEPOSITO_BANCARIO',
+    nroOperacion: '', observaciones: '',
+  })
+  const [guardando, setGuardando] = useState(false)
+
+  // Modal confirmar recepción
+  const [confirmando, setConfirmando] = useState<EntregaEfectivo | null>(null)
+  const [conf, setConf] = useState({ monto: '', observacion: '' })
+  const [procesando, setProcesando] = useState(false)
+
+  const fmt = (n?: number | null) => `S/ ${Number(n ?? 0).toFixed(2)}`
+
+  const cargar = async () => {
+    setCargando(true)
+    try {
+      const [rEntregas, rResumen] = await Promise.all([
+        cajaService.getEntregas(),
+        esGerencia ? cajaService.getPendientePorAgencia() : cajaService.getResumenRendicion(),
+      ])
+      setEntregas((rEntregas.data ?? []) as EntregaEfectivo[])
+      if (esGerencia) setPanel((rResumen.data ?? []) as ResumenRendicion[])
+      else setResumen(rResumen.data as ResumenRendicion)
+    } catch { toast.error('Error cargando rendiciones') }
+    finally { setCargando(false) }
+  }
+
+  useEffect(() => { cargar() }, [])
+
+  const imprimir = async (id: number) => {
+    try {
+      const blob = await cajaService.getComprobanteEntregaPDF(id)
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')?.focus()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { toast.error('Error generando comprobante') }
+  }
+
+  const declarar = async () => {
+    const monto = parseFloat(decl.monto)
+    if (!decl.monto || isNaN(monto) || monto <= 0) { toast.error('Ingrese un monto válido'); return }
+    if (decl.modalidad === 'DEPOSITO_BANCARIO' && !decl.nroOperacion.trim()) {
+      toast.error('Indique el número de operación del depósito'); return
+    }
+    setGuardando(true)
+    try {
+      const r = await cajaService.declararEntrega({
+        monto,
+        modalidad: decl.modalidad,
+        nroOperacion: decl.nroOperacion.trim() || undefined,
+        observaciones: decl.observaciones.trim() || undefined,
+      })
+      toast.success(`Entrega ${r.data?.numero ?? ''} declarada`)
+      setModalDeclarar(false)
+      setDecl({ monto: '', modalidad: 'ENTREGA_DIRECTA', nroOperacion: '', observaciones: '' })
+      if (r.data?.id) imprimir(r.data.id)
+      await cargar()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al declarar la entrega')
+    } finally { setGuardando(false) }
+  }
+
+  const confirmar = async () => {
+    if (!confirmando) return
+    const monto = parseFloat(conf.monto)
+    if (conf.monto === '' || isNaN(monto) || monto < 0) { toast.error('Ingrese el monto recibido'); return }
+    const cuadra = Math.abs(monto - confirmando.montoDeclarado) < 0.005
+    if (!cuadra && !conf.observacion.trim()) {
+      toast.error('Si el monto no cuadra debe indicar una observación'); return
+    }
+    setProcesando(true)
+    try {
+      const r = await cajaService.confirmarEntrega(confirmando.id, monto, conf.observacion.trim() || undefined)
+      toast.success(r.message ?? 'Recepción registrada')
+      setConfirmando(null)
+      setConf({ monto: '', observacion: '' })
+      await cargar()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al confirmar')
+    } finally { setProcesando(false) }
+  }
+
+  const anular = async (e: EntregaEfectivo) => {
+    const motivo = window.prompt(`Anular ${e.numero} — indique el motivo:`)
+    if (motivo === null) return
+    if (!motivo.trim()) { toast.error('Debe indicar el motivo'); return }
+    try {
+      await cajaService.anularEntrega(e.id, motivo.trim())
+      toast.success('Entrega anulada')
+      await cargar()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Error al anular')
+    }
+  }
+
+  if (cargando && entregas.length === 0) {
+    return (
+      <div className="flex justify-center items-center py-20 text-gray-400">
+        <Loader2 size={22} className="animate-spin mr-2" /> Cargando rendiciones…
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Vista agencia: pendiente de rendir + botón entregar ── */}
+      {!esGerencia && resumen && (
+        <div className={`rounded-xl border p-5 flex flex-wrap items-center justify-between gap-4 ${
+          resumen.enAlerta ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+        }`}>
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              resumen.enAlerta ? 'bg-red-100' : 'bg-emerald-100'
+            }`}>
+              <Banknote size={24} className={resumen.enAlerta ? 'text-red-600' : 'text-emerald-600'} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Efectivo pendiente de rendir a gerencia
+              </p>
+              <p className={`text-2xl font-bold font-mono ${resumen.enAlerta ? 'text-red-700' : 'text-emerald-700'}`}>
+                {fmt(resumen.pendienteRendir)}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {resumen.ultimaEntrega
+                  ? `Última entrega hace ${resumen.diasSinRendir} día${resumen.diasSinRendir !== 1 ? 's' : ''}`
+                  : 'Sin entregas registradas todavía'}
+                {resumen.enAlerta && (
+                  <span className="ml-2 font-semibold text-red-600">
+                    ⚠ Supera el umbral (S/ {Number(resumen.umbralMonto).toFixed(0)} o {resumen.umbralDias} días)
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <button onClick={() => {
+            setDecl(d => ({ ...d, monto: resumen.pendienteRendir > 0 ? String(resumen.pendienteRendir) : '' }))
+            setModalDeclarar(true)
+          }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#064e3b] text-white text-sm rounded-xl hover:bg-[#065f46] transition-colors font-semibold">
+            <ArrowUpCircle size={16} /> Entregar efectivo
+          </button>
+        </div>
+      )}
+
+      {/* ── Vista gerencia: panel por agencia ── */}
+      {esGerencia && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {panel.map(ag => (
+            <div key={ag.agenciaId} className={`rounded-xl border overflow-hidden bg-white ${
+              ag.enAlerta ? 'border-red-300' : 'border-gray-200'
+            }`}>
+              <div className={`px-4 py-3 text-white ${
+                ag.enAlerta ? 'bg-gradient-to-r from-red-700 to-red-600' : 'bg-gradient-to-r from-[#064e3b] to-emerald-700'
+              }`}>
+                <p className="font-bold text-sm leading-tight">{ag.agenciaNombre}</p>
+                <p className="text-xs opacity-80 mt-0.5">
+                  {ag.ultimaEntrega
+                    ? `Última rendición hace ${ag.diasSinRendir} día${ag.diasSinRendir !== 1 ? 's' : ''}`
+                    : 'Nunca ha rendido'}
+                </p>
+              </div>
+              <div className="divide-y divide-gray-100 text-sm">
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-gray-500 text-xs">Pendiente de rendir</span>
+                  <span className={`font-mono font-bold ${ag.enAlerta ? 'text-red-700' : 'text-gray-800'}`}>
+                    {fmt(ag.pendienteRendir)}
+                  </span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-gray-500 text-xs">En tránsito (por confirmar)</span>
+                  <span className="font-mono text-amber-700">
+                    {ag.entregasEnTransito ? `${fmt(ag.montoEnTransito)} (${ag.entregasEnTransito})` : '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-gray-500 text-xs">Total ya entregado</span>
+                  <span className="font-mono text-xs text-gray-600">{fmt(ag.totalEntregado)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Historial de entregas ── */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-800">
+            {esGerencia ? 'Entregas de todas las agencias' : 'Entregas de mi agencia'}
+          </h3>
+          <button onClick={cargar} disabled={cargando} title="Actualizar"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40">
+            <RefreshCw size={14} className={cargando ? 'animate-spin' : ''} />
+          </button>
+        </div>
+        {entregas.length === 0 ? (
+          <div className="text-center py-14 text-gray-400">
+            <Banknote size={36} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-medium">Sin entregas registradas</p>
+            <p className="text-xs mt-1">Las rendiciones de efectivo aparecerán aquí</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+                  {['Número', ...(esGerencia ? ['Agencia'] : []), 'Entregó', 'Modalidad',
+                    'Declarado', 'Recibido', 'Dif.', 'Estado', 'Fecha', ''].map((h, i) => (
+                    <th key={i} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {entregas.map(e => {
+                  const badge = ESTADO_ENTREGA[e.estado] ?? ESTADO_ENTREGA.PENDIENTE
+                  const dif = e.diferencia != null ? Number(e.diferencia) : null
+                  return (
+                    <tr key={e.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2.5 font-mono text-xs font-semibold text-gray-800 whitespace-nowrap">{e.numero}</td>
+                      {esGerencia && (
+                        <td className="px-3 py-2.5 text-xs text-gray-600 max-w-[160px] truncate">{e.agenciaNombre}</td>
+                      )}
+                      <td className="px-3 py-2.5 text-xs text-gray-600 max-w-[140px] truncate">{e.entregaNombre}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                        {e.modalidad === 'DEPOSITO_BANCARIO'
+                          ? <>Depósito{e.nroOperacion && <span className="text-gray-400"> · {e.nroOperacion}</span>}</>
+                          : 'Directa'}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-xs font-semibold whitespace-nowrap">{fmt(e.montoDeclarado)}</td>
+                      <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">
+                        {e.montoConfirmado != null ? fmt(e.montoConfirmado) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">
+                        {dif == null ? <span className="text-gray-300">—</span>
+                          : Math.abs(dif) < 0.005 ? <span className="text-green-600">0.00 ✓</span>
+                          : <span className="text-red-600 font-bold">{dif > 0 ? '+' : ''}{dif.toFixed(2)}</span>}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${badge.cls}`}>{badge.label}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                        {format(new Date(e.fechaEntrega), 'dd/MM/yy HH:mm')}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1 justify-end">
+                          {esGerencia && e.estado === 'PENDIENTE' && (
+                            <button onClick={() => { setConfirmando(e); setConf({ monto: String(e.montoDeclarado), observacion: '' }) }}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-[#064e3b] text-white text-[11px] rounded-lg hover:bg-[#065f46] font-semibold">
+                              <CheckCircle2 size={11} /> Confirmar
+                            </button>
+                          )}
+                          <button onClick={() => imprimir(e.id)} title="Comprobante PDF"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100">
+                            <Printer size={14} />
+                          </button>
+                          {e.estado === 'PENDIENTE' && (
+                            <button onClick={() => anular(e)} title="Anular entrega"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50">
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modal: declarar entrega ── */}
+      {modalDeclarar && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="font-semibold text-gray-900">Entregar efectivo a gerencia</h3>
+                <p className="text-xs text-gray-500">Se genera un comprobante con QR para acompañar el dinero</p>
+              </div>
+              <button onClick={() => setModalDeclarar(false)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {resumen && (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+                  Acumulado pendiente de rendir: <strong className="font-mono">{fmt(resumen.pendienteRendir)}</strong>
+                  {' '}(cierres de turno {fmt(resumen.totalCierres)} − ya entregado {fmt(resumen.totalEntregado)})
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Monto a entregar (S/) *</label>
+                <input type="number" step="0.1" min="0" value={decl.monto}
+                  onChange={e => setDecl(d => ({ ...d, monto: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Modalidad *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([['ENTREGA_DIRECTA', 'Entrega directa'], ['DEPOSITO_BANCARIO', 'Depósito bancario']] as const).map(([k, v]) => (
+                    <button key={k} type="button"
+                      onClick={() => setDecl(d => ({ ...d, modalidad: k }))}
+                      className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                        decl.modalidad === k
+                          ? 'bg-[#064e3b] text-white border-[#064e3b]'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-[#064e3b]/40'
+                      }`}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {decl.modalidad === 'DEPOSITO_BANCARIO' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">N° de operación del depósito *</label>
+                  <input value={decl.nroOperacion}
+                    onChange={e => setDecl(d => ({ ...d, nroOperacion: e.target.value }))}
+                    placeholder="Ej: 00123456"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Observaciones <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <textarea value={decl.observaciones} rows={2}
+                  onChange={e => setDecl(d => ({ ...d, observaciones: e.target.value }))}
+                  placeholder="Ej: lo lleva el chofer Juan en el turno de las 14:00"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
+              </div>
+            </div>
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 justify-end">
+              <button onClick={() => setModalDeclarar(false)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={declarar} disabled={guardando}
+                className="flex items-center gap-2 px-5 py-2 text-sm bg-[#064e3b] text-white rounded-xl hover:bg-[#065f46] disabled:opacity-50 font-semibold">
+                {guardando && <Loader2 size={14} className="animate-spin" />}
+                <ArrowUpCircle size={14} /> Declarar entrega
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: confirmar recepción (gerencia) ── */}
+      {confirmando && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="font-semibold text-gray-900">Confirmar recepción — {confirmando.numero}</h3>
+                <p className="text-xs text-gray-500">{confirmando.agenciaNombre} · entregó {confirmando.entregaNombre}</p>
+              </div>
+              <button onClick={() => setConfirmando(null)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                Monto declarado por la agencia: <strong className="font-mono">{fmt(confirmando.montoDeclarado)}</strong>.
+                Cuente el dinero recibido y registre el monto real.
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Monto recibido (S/) *</label>
+                <input type="number" step="0.1" min="0" value={conf.monto}
+                  onChange={e => setConf(c => ({ ...c, monto: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none" />
+              </div>
+              {conf.monto !== '' && Math.abs(parseFloat(conf.monto) - confirmando.montoDeclarado) >= 0.005 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  <p className="font-semibold mb-1">
+                    Diferencia de S/ {(parseFloat(conf.monto || '0') - confirmando.montoDeclarado).toFixed(2)} — quedará OBSERVADA
+                  </p>
+                  <textarea value={conf.observacion} rows={2}
+                    onChange={e => setConf(c => ({ ...c, observacion: e.target.value }))}
+                    placeholder="Explique la diferencia (obligatorio)"
+                    className="w-full px-3 py-2 border border-red-200 rounded-lg text-xs resize-none bg-white focus:outline-none focus:ring-2 focus:ring-red-300" />
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 justify-end">
+              <button onClick={() => setConfirmando(null)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={confirmar} disabled={procesando}
+                className="flex items-center gap-2 px-5 py-2 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold">
+                {procesando && <Loader2 size={14} className="animate-spin" />}
+                <CheckCircle2 size={14} /> Confirmar recepción
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Filter pills ──────────────────────────────────────────────────────────────
 type TipoFiltro = 'TODOS' | 'PASAJE' | 'ENCOMIENDA' | 'PAGO_DESTINO' | 'ENC_EXTERNA' | 'CUOTA_SALIDA_COMBI' | 'EGRESO' | 'INGRESO'
 
@@ -738,7 +1161,7 @@ function filtrarMovimientos(movs: MovimientoCaja[], filtro: TipoFiltro): Movimie
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-type PageTab = 'turno' | 'historial' | 'consolidado'
+type PageTab = 'turno' | 'historial' | 'rendiciones' | 'consolidado'
 
 export default function CajaPage() {
   const { user } = useAuthStore()
@@ -1011,18 +1434,24 @@ export default function CajaPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {(['turno', 'historial', ...(rol === 'SUPER_ADMIN' || rol === 'GERENTE' ? ['consolidado'] : [])] as PageTab[]).map(t => (
+        {(['turno', 'historial', 'rendiciones', ...(rol === 'SUPER_ADMIN' || rol === 'GERENTE' ? ['consolidado'] : [])] as PageTab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t ? 'border-[#064e3b] text-[#064e3b]' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {t === 'turno' ? 'Turno actual' : t === 'historial' ? 'Historial de turnos' : 'Consolidado'}
+            {t === 'turno' ? 'Turno actual'
+              : t === 'historial' ? 'Historial de turnos'
+              : t === 'rendiciones' ? 'Rendiciones'
+              : 'Consolidado'}
           </button>
         ))}
       </div>
 
       {/* ── Historial tab ── */}
       {tab === 'historial' && <HistorialTab rol={rol ?? ''} />}
+
+      {/* ── Rendiciones tab ── */}
+      {tab === 'rendiciones' && <RendicionesTab rol={rol ?? ''} />}
 
       {/* ── Consolidado tab ── */}
       {tab === 'consolidado' && <ConsolidadoTab />}

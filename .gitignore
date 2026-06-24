@@ -16,6 +16,8 @@ node_modules/
 out/
 .npm/
 .cache/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Entorno — solo .env.example y .env.production (con placeholders) se versionan
 .env
@@ -58,5 +60,22 @@ backend;C/
 *.bak
 *.swp
 
-# Capturas de auditoría visual (regenerables con frontend/screenshot-*.js)
+# Capturas de auditoría/UAT (regenerables, no son código de producción)
 frontend/audit-*.png
+frontend/aud-*.png
+frontend/aud2-*.png
+frontend/cfg-*.png
+frontend/cfg2-*.png
+frontend/uat*.png
+frontend/ux-*.png
+frontend/ux2-*.png
+frontend/pre-*.png
+frontend/sim-*.png
+frontend/verify-*.png
+frontend/ingresos-*.png
+
+# Scripts de captura de pantalla local (herramientas de desarrollo, no de producción)
+frontend/screenshot-*.js
+
+# PDFs generados durante pruebas/UAT
+*.pdf

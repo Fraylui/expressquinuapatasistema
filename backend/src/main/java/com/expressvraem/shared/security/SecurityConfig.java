@@ -94,7 +94,11 @@ public class SecurityConfig {
                 // Reportes: ADMIN_AGENCIA entra con módulo REPORTES y alcance
                 // forzado a su agencia (ver ReporteController)
                 .requestMatchers("/api/reportes/**").hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA")
-                .requestMatchers("/api/configuracion/**").hasAnyRole("SUPER_ADMIN","GERENTE")
+                // Configuración: el control fino lo hacen los @PreAuthorize de cada
+                // método (POST/PUT exigen ADMIN_AGENCIA+; GET permite OPERADOR/CONDUCTOR
+                // para listar flota/rutas al programar viajes)
+                .requestMatchers("/api/configuracion/**")
+                    .hasAnyRole("SUPER_ADMIN","GERENTE","ADMIN_AGENCIA","OPERADOR","CONDUCTOR")
                 .requestMatchers(HttpMethod.POST, "/api/agencias").hasAnyRole("SUPER_ADMIN","GERENTE")
                 .requestMatchers(HttpMethod.PUT, "/api/agencias/**").hasAnyRole("SUPER_ADMIN","GERENTE")
 
