@@ -83,6 +83,9 @@ public class ComprobantePdfService {
                             viajeHora = ts.toLocalDateTime().format(hFmt);
                         else if (vRow[0] instanceof java.time.OffsetDateTime odt)
                             viajeHora = odt.format(hFmt);
+                        else if (vRow[0] instanceof java.time.Instant ins)
+                            viajeHora = java.time.LocalDateTime
+                                .ofInstant(ins, java.time.ZoneId.of("America/Lima")).format(hFmt);
                     }
                     viajePlaca = vRow[1] != null ? String.valueOf(vRow[1]) : "";
                     viajeRuta  = ascii(vRow[2] != null ? String.valueOf(vRow[2]) : "")
@@ -108,37 +111,48 @@ public class ComprobantePdfService {
                     : enc.getPrecioEnvio() != null ? enc.getPrecioEnvio().toPlainString() : "0";
             String hash = PdfUtils.sha256Short(enc.getCodigoTracking(), monto4hash, remDoc, fechaStr);
 
-            // ── Estimar altura total ───────────────────────────────────────────
-            // Sección CONTROL INTERNO (arriba): ~9 filas
-            float ciH = 8 + 2              // header empresa compact
-                      + 10 + 4            // tracking bold + gap
-                      + 8 * 6             // 6 filas de datos
-                      + 6;                // gap final
-            float cortH = 0f;
-            // Sección COMPROBANTE (abajo): cabecera + QR + datos
-            float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
-                      + 10 + 8 + 8 + 8    // header empresa
-                      + 6                 // dash
-                      + 12 + 14          // titulo + tracking
-                      + 72 + 10          // QR + nota
-                      + 6                // destino + dash
-                      + 8 * 9            // rem + des + paquete
-                      + (viajeHora.isEmpty() ? 0 : 8 * 3)
-                      + (hayDescuento ? 8 * 4 : 0) // precio + descuento en ambas secciones
-                      + 8 * 4            // cobro + emision
-                      + 6                // dash
-                      + 8 * 2            // footer
-                      + MARGIN * 2;
-
-            // Mínimo 330pt (~116mm) — suficiente para el contenido más compacto.
-            // Spec comprobante: 150-180mm. El cálculo dinámico domina para contenido normal.
-            float pageH = Math.max(ciH + cortH + cpH, 330f);
-            PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
-            doc.addPage(page);
-
             PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
+
+            // La descripción se imprime completa (multilínea) en ambas secciones
+            int descLinesCi = PdfUtils.wrapText(fontNorm, 6.5f, enc.getDescripcion(),
+                    PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Contenido: ") / 1000f * 6.5f).size();
+            int descLinesCp = PdfUtils.wrapText(fontNorm, 7f, enc.getDescripcion(),
+                    PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Descripcion: ") / 1000f * 7f).size();
+
+            // ── Estimar altura total (altos reales por fila: texto ≈ size+1 + gaps) ──
+            // Sección CONTROL INTERNO (arriba)
+            float ciH = 30f                  // header empresa + dash
+                      + 26f                  // titulo + tracking + serie
+                      + 8.5f * 8             // filas fijas (fecha..destino, monto, forma)
+                      + 8.5f * descLinesCi   // contenido (multilínea)
+                      + (viajeHora.isEmpty() ? 0 : 8.5f)
+                      + (hayDescuento ? 17f : 0)
+                      + 12f;                 // hash + gap final
+            float cortH = 0f;
+            // Sección COMPROBANTE (abajo): cabecera + QR + datos
+            float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
+                      + 40f                  // header empresa
+                      + 6f                   // dash
+                      + 27f                  // titulo + tracking
+                      + 84f                  // QR + nota
+                      + 18f                  // destino + dash
+                      + 9f * 8               // filas rem + des + peso + bultos
+                      + 8f * descLinesCp     // descripción (multilínea)
+                      + 9f                   // gaps entre bloques
+                      + (viajeHora.isEmpty() ? 0 : 27f)
+                      + (hayDescuento ? 18f : 0)
+                      + 9f * 4               // cobro + emision
+                      + 12f                  // gaps
+                      + 6f                   // dash
+                      + 16f                  // footer
+                      + MARGIN * 2;
+
+            // Mínimo 330pt (~116mm); margen de seguridad para que nada quede fuera de página.
+            float pageH = Math.max(ciH + cortH + cpH + 20f, 330f);
+            PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
+            doc.addPage(page);
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
@@ -170,6 +184,7 @@ public class ComprobantePdfService {
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Remitente:",   remNombre, y);               y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Doc rem.:",    remDoc, y);                  y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Destinatario:", desNombre, y);              y -= 1;
+                y = drawWrappedLabel(cs, fontBold, fontNorm, 6.5f, "Contenido:", enc.getDescripcion(), y); y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Destino:",     agenciaDestNombre + (agenciaDestCiudad.isEmpty() ? "" : " - " + agenciaDestCiudad), y); y -= 1;
                 if (!viajeHora.isEmpty()) {
                     y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Viaje:",   viajeRuta + "  " + viajeHora + "  " + viajePlaca, y); y -= 1;
@@ -230,8 +245,8 @@ public class ComprobantePdfService {
                 if (!desTel.isEmpty()) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. dest.:", desTel, y); }
                 y -= 3;
 
-                // Paquete
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Contenido:", enc.getDescripcion(), y);
+                // Paquete — descripción completa, multilínea
+                y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Descripcion:", enc.getDescripcion(), y);
                 if (enc.getPesoKg() != null) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg() + " kg", y); }
                 int bultos = enc.getNumBultos() != null ? enc.getNumBultos() : 1;
                 y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Bultos:", String.valueOf(bultos), y);
@@ -308,6 +323,22 @@ public class ComprobantePdfService {
         cs.beginText(); cs.setFont(fontN, size);
         cs.newLineAtOffset(MARGIN + labelW, y - size); cs.showText(display); cs.endText();
         return y - size - 1;
+    }
+
+    /** Como drawLabel pero el valor se imprime completo, envuelto en varias líneas. */
+    private float drawWrappedLabel(PDPageContentStream cs, PDType1Font fontB, PDType1Font fontN,
+                                   float size, String label, String value, float y) throws Exception {
+        String safeLabel = ascii(label) + " ";
+        float labelW = fontB.getStringWidth(safeLabel) / 1000f * size;
+        float maxW   = PAGE_W - MARGIN * 2 - labelW;
+        cs.beginText(); cs.setFont(fontB, size);
+        cs.newLineAtOffset(MARGIN, y - size); cs.showText(safeLabel); cs.endText();
+        for (String line : PdfUtils.wrapText(fontN, size, value, maxW)) {
+            cs.beginText(); cs.setFont(fontN, size);
+            cs.newLineAtOffset(MARGIN + labelW, y - size); cs.showText(line); cs.endText();
+            y = y - size - 1;
+        }
+        return y;
     }
 
     private float drawDashes(PDPageContentStream cs, float y) throws Exception {

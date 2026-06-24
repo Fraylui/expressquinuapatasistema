@@ -182,8 +182,12 @@ public class ManifiestoPdfService {
             y -= 12;
 
             // Datos del viaje
-            String fecha = m.getFechaHoraSal() != null ? m.getFechaHoraSal().format(FMT_FECHA) : "-";
-            String hora  = m.getFechaHoraSal() != null ? m.getFechaHoraSal().format(FMT_HORA)  : "-";
+            // timestamptz llega normalizado a UTC — mostrar siempre en hora local
+            java.time.OffsetDateTime salLocal = m.getFechaHoraSal() != null
+                    ? m.getFechaHoraSal().atZoneSameInstant(java.time.ZoneId.of("America/Lima")).toOffsetDateTime()
+                    : null;
+            String fecha = salLocal != null ? salLocal.format(FMT_FECHA) : "-";
+            String hora  = salLocal != null ? salLocal.format(FMT_HORA)  : "-";
             String[][] filas = {
                 {"Ruta:",    ascii(m.getRutaOrigen()) + " > " + ascii(m.getRutaDestino()),
                  "Fecha:",   fecha, "Hora:", hora},
@@ -419,8 +423,12 @@ public class ManifiestoPdfService {
     }
 
     private float drawDatosViaje(PDPageContentStream cs, ManifiestoDTO m, float y) throws IOException {
-        String fecha = m.getFechaHoraSal() != null ? m.getFechaHoraSal().format(FMT_FECHA) : "-";
-        String hora  = m.getFechaHoraSal() != null ? m.getFechaHoraSal().format(FMT_HORA)  : "-";
+        // timestamptz llega normalizado a UTC — mostrar siempre en hora local
+        java.time.OffsetDateTime salLocal = m.getFechaHoraSal() != null
+                ? m.getFechaHoraSal().atZoneSameInstant(java.time.ZoneId.of("America/Lima")).toOffsetDateTime()
+                : null;
+        String fecha = salLocal != null ? salLocal.format(FMT_FECHA) : "-";
+        String hora  = salLocal != null ? salLocal.format(FMT_HORA)  : "-";
 
         String[][] filas = {
             {"Ruta:",     ascii(m.getRutaOrigen()) + " > " + ascii(m.getRutaDestino()),
@@ -661,7 +669,7 @@ public class ManifiestoPdfService {
                 .replace('ñ','n').replace('Á','A').replace('É','E').replace('Í','I')
                 .replace('Ó','O').replace('Ú','U').replace('Ñ','N')
                 .replace('→','>').replace('—','-').replace('–','-')
-                .replaceAll("[^\\x00-\\x7E]", "?");
+                .replaceAll("[^\\x20-\\x7E]", " ");
     }
 
     public record TicketData(

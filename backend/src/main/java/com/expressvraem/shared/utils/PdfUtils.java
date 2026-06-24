@@ -6,6 +6,7 @@ import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
@@ -56,6 +57,43 @@ public final class PdfUtils {
             .replace('⚠','!').replace('¡','!').replace('¿','?')
             .replaceAll("[\\r\\n\\t]", " ")
             .replaceAll("[^\\x20-\\x7E]", "?");
+    }
+
+    // ── Texto multilínea ─────────────────────────────────────────────────────
+
+    /**
+     * Parte un texto en líneas que caben en maxW puntos (corte por palabras;
+     * palabras más anchas que maxW se trocean por caracteres). Nunca devuelve
+     * lista vacía: como mínimo ["-"].
+     */
+    public static java.util.List<String> wrapText(PDType1Font font, float size, String value, float maxW) {
+        String text = ascii(value != null && !value.isBlank() ? value : "-");
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        try {
+            StringBuilder cur = new StringBuilder();
+            for (String word : text.split(" ")) {
+                while (font.getStringWidth(word) / 1000f * size > maxW && word.length() > 1) {
+                    int cut = word.length() - 1;
+                    while (cut > 1 && font.getStringWidth(word.substring(0, cut)) / 1000f * size > maxW) cut--;
+                    if (cur.length() > 0) { lines.add(cur.toString()); cur.setLength(0); }
+                    lines.add(word.substring(0, cut));
+                    word = word.substring(cut);
+                }
+                String cand = cur.length() == 0 ? word : cur + " " + word;
+                if (cur.length() > 0 && font.getStringWidth(cand) / 1000f * size > maxW) {
+                    lines.add(cur.toString());
+                    cur = new StringBuilder(word);
+                } else {
+                    cur = new StringBuilder(cand);
+                }
+            }
+            if (cur.length() > 0) lines.add(cur.toString());
+        } catch (Exception e) {
+            lines.clear();
+            lines.add(text.length() > 38 ? text.substring(0, 38) : text);
+        }
+        if (lines.isEmpty()) lines.add("-");
+        return lines;
     }
 
     // ── Hash de verificación ─────────────────────────────────────────────────

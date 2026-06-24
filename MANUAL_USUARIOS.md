@@ -1,284 +1,378 @@
-# Manual de Trabajo por Rol — Express Quinuapata VRAEM SAC
-
-> Cómo trabaja cada persona en el sistema, qué puede hacer y en qué orden.
+# Manual de Trabajo — Express Quinuapata VRAEM SAC
+**Sistema de gestión de transporte y encomiendas**
+Versión: junio 2026
 
 ---
 
 ## Índice
 
-1. [Vista rápida de roles](#1-vista-rápida-de-roles)
-2. [OPERADOR — trabajo diario](#2-operador--trabajo-diario)
-3. [CONDUCTOR — su panel](#3-conductor--su-panel)
-4. [ADMIN_AGENCIA — gestión de sucursal](#4-admin_agencia--gestión-de-sucursal)
-5. [GERENTE — control y reportes](#5-gerente--control-y-reportes)
-6. [SUPER_ADMIN — administración total](#6-super_admin--administración-total)
-7. [Flujos transversales](#7-flujos-transversales)
-8. [Reglas importantes que todos deben conocer](#8-reglas-importantes-que-todos-deben-conocer)
+1. [Roles y accesos](#1-roles-y-accesos)
+2. [Inicio de sesión](#2-inicio-de-sesión)
+3. [Flujo diario del OPERADOR](#3-flujo-diario-del-operador)
+4. [Módulo Caja](#4-módulo-caja)
+5. [Módulo Pasajes (Ventas)](#5-módulo-pasajes-ventas)
+6. [Módulo Encomiendas](#6-módulo-encomiendas)
+7. [Módulo Encomiendas Externas](#7-módulo-encomiendas-externas)
+8. [Módulo Viajes](#8-módulo-viajes)
+9. [Módulo Manifiestos](#9-módulo-manifiestos)
+10. [Rendiciones de efectivo](#10-rendiciones-de-efectivo)
+11. [Módulo Reportes](#11-módulo-reportes)
+12. [Panel Gerente](#12-panel-gerente)
+13. [Configuración (ADMIN_AGENCIA / SUPER_ADMIN)](#13-configuración)
+14. [Reglas de negocio importantes](#14-reglas-de-negocio-importantes)
+15. [Errores frecuentes y soluciones](#15-errores-frecuentes-y-soluciones)
 
 ---
 
-## 1. Vista rápida de roles
+## 1. Roles y accesos
 
-| Rol | Quién es | Acceso principal |
-|---|---|---|
-| `OPERADOR` | Persona en ventanilla | Ventas, encomiendas, caja |
-| `CONDUCTOR` | Conductor de bus | Solo sus viajes asignados |
-| `ADMIN_AGENCIA` | Jefe de agencia/sucursal | Su agencia + usuarios de ella |
-| `GERENTE` | Gerencia general | Dashboard, reportes, configuración |
-| `SUPER_ADMIN` | Administrador del sistema | Todo + auditoría + empresa |
+| Rol | Descripción | Alcance |
+|-----|-------------|---------|
+| **SUPER_ADMIN** | Administrador total del sistema | Todo el sistema |
+| **GERENTE** | Gerencia general de la empresa | Todas las agencias |
+| **ADMIN_AGENCIA** | Administrador de una agencia/sucursal | Su agencia y sucursales dependientes |
+| **OPERADOR** | Personal de ventanilla | Solo su agencia o sucursal |
 
----
+> **Importante:** Un usuario nuevo no puede operar hasta que el GERENTE o SUPER_ADMIN le asigne los módulos correspondientes desde **Usuarios → [nombre] → Módulos**.
 
-## 2. OPERADOR — trabajo diario
+### Módulos disponibles
 
-El operador es quien atiende en ventanilla. Su día gira en torno a tres acciones: **vender pasajes, registrar encomiendas y manejar la caja**.
-
-### Inicio de turno
-
-1. Ingresar a `/login` con su usuario y contraseña.
-2. El sistema lo lleva al **Dashboard** (`/`) donde ve los viajes del día y los KPIs de su agencia.
-3. **Abrir la caja del día** en `/caja` → botón "Abrir Caja". Sin caja abierta no puede registrar movimientos de dinero.
-
----
-
-### Vender pasajes — `/pasajes`
-
-1. Ir a **Viajes** (`/viajes`) y buscar el viaje por fecha y ruta.
-2. Seleccionar el viaje → se abre el mapa de asientos del bus.
-3. Hacer clic en un asiento disponible (color verde).
-4. Ingresar datos del pasajero:
-   - DNI (8 dígitos) o RUC (11 dígitos) — el sistema valida automáticamente.
-   - Si el cliente ya existe en el sistema, sus datos se cargan solos.
-5. Elegir si aplica alguna **promoción** activa.
-6. Confirmar la venta → el sistema genera el **código QR del boleto**.
-7. Imprimir o mostrar el QR al pasajero.
-
-> **Regla importante:** Dos operadores no pueden vender el mismo asiento al mismo tiempo. El sistema bloquea el asiento en el momento de selección.
+| Módulo | Qué permite |
+|--------|-------------|
+| **VENTAS** | Vender pasajes, gestionar viajes |
+| **ENCOMIENDAS** | Registrar y entregar encomiendas |
+| **CAJA** | Abrir turno, ver movimientos, cerrar turno, rendiciones |
+| **MANIFIESTOS** | Crear y ver manifiestos de carga |
+| **REPORTES** | Ver reportes de ingresos |
+| **CONFIGURACION** | (Solo ADMIN_AGENCIA+) Gestionar flota, rutas, tarifas |
 
 ---
 
-### Registrar encomienda — `/encomiendas`
+## 2. Inicio de sesión
 
-1. Ir a **Encomiendas** y hacer clic en "Nueva Encomienda".
-2. Ingresar datos del remitente y destinatario (DNI/RUC).
-3. Describir el paquete: peso, descripción, valor declarado.
-4. Asociar al viaje que la transportará.
-5. El sistema genera un **código de rastreo** único.
-6. El cliente puede rastrear su encomienda en `/tracking` con ese código (sin necesidad de iniciar sesión).
+1. Ingrese a la dirección del sistema en su navegador.
+2. Escriba su **correo electrónico** y **contraseña**.
+3. Haga clic en **Iniciar sesión**.
 
-**Estados por los que pasa una encomienda:**
+> El sistema bloquea la cuenta después de **5 intentos fallidos** en un minuto. Si esto ocurre, espere 1 minuto o contacte al administrador.
+
+---
+
+## 3. Flujo diario del OPERADOR
+
+Este es el orden correcto de trabajo cada día:
 
 ```
-REGISTRADA → PAGADA → EN_AGENCIA_ORIGEN → CARGADA → EN_TRÁNSITO
-→ EN_AGENCIA_DESTINO → LISTA_PARA_ENTREGAR → ENTREGADA
-```
-
-Si hay problema: puede pasar a `DEVUELTA` o `PERDIDA`.
-
-**Encomiendas externas** (`/encomiendas-externas`): para paquetes que vienen de otras empresas y se reciben en la agencia para entrega final.
-
----
-
-### Manifiesto de viaje — `/manifiestos`
-
-Antes de que salga el bus, el operador debe **generar el manifiesto**:
-
-1. Ir a **Manifiestos** y buscar el viaje.
-2. Hacer clic en "Generar Manifiesto".
-3. El sistema consolida automáticamente pasajeros y encomiendas del viaje.
-4. Revisar y confirmar.
-5. Imprimir el PDF para entregarlo al conductor.
-
----
-
-### Cierre de caja — `/caja`
-
-Al terminar el turno:
-
-1. Ir a **Caja** y revisar todos los movimientos del día (ingresos por pasajes, encomiendas, egresos).
-2. Hacer clic en "Cerrar Caja".
-3. Ingresar el monto físico contado.
-4. El sistema calcula si hay diferencia (sobrante o faltante).
-5. El reporte queda guardado para que el gerente lo revise.
-
----
-
-## 3. CONDUCTOR — su panel
-
-El conductor tiene un panel simplificado en `/conductor`.
-
-### Qué puede hacer
-
-- **Ver sus viajes asignados**: fecha, ruta, origen, destino, hora de salida.
-- **Ver el manifiesto de cada viaje**: lista de pasajeros y encomiendas que lleva.
-- **No puede** vender, modificar datos ni acceder a caja.
-
-### Cómo trabaja
-
-1. Iniciar sesión → el sistema lo redirige automáticamente a `/conductor`.
-2. Ver el viaje del día o próximos viajes.
-3. Descargar o consultar el manifiesto antes de salir.
-4. Si hay un cambio de viaje, el operador o admin de agencia se lo notifica y él ve el cambio en su panel.
-
----
-
-## 4. ADMIN_AGENCIA — gestión de sucursal
-
-El administrador de agencia supervisa las operaciones de **su sucursal** y gestiona el personal.
-
-### Gestión de usuarios de su agencia
-
-1. Ir a **Usuarios** (`/usuarios`).
-2. Crear nuevos operadores o conductores asignados a su agencia.
-3. Asignar **módulos granulares** a cada usuario (ejemplo: darle acceso a VENTAS y ENCOMIENDAS pero no a CAJA).
-4. Desactivar usuarios que ya no trabajen.
-
-> Solo puede ver y gestionar usuarios de **su propia agencia**. No puede ver otras agencias.
-
-### Supervisión operativa
-
-- Revisar las **cajas del día** de sus operadores.
-- Consultar el estado de encomiendas de su agencia.
-- Ver los viajes programados desde/hacia su agencia.
-- Revisar el **Dashboard** con KPIs de su sucursal.
-
-### Gestión de clientes — `/clientes`
-
-- Registrar o buscar clientes por DNI/RUC.
-- Ver historial de compras de un cliente.
-- Corregir datos de clientes si hay errores.
-
----
-
-## 5. GERENTE — control y reportes
-
-El gerente tiene visión de toda la empresa pero **no puede tocar configuración crítica del sistema**.
-
-### Dashboard gerencial — `/gerente`
-
-Al entrar ve:
-- Ingresos del día/semana/mes comparados con períodos anteriores.
-- Viajes realizados vs. programados.
-- Encomiendas por estado.
-- Agencias con mejor/peor rendimiento.
-
-### Reportes — `/reportes`
-
-Puede generar y exportar reportes en **Excel o PDF**:
-
-| Reporte | Qué muestra |
-|---|---|
-| Ventas por período | Pasajes vendidos, ingresos, rutas más populares |
-| Encomiendas | Volumen, estados, ingresos por agencia |
-| Caja | Movimientos, cierres, diferencias por operador |
-| Conductores | Viajes realizados, rutas asignadas |
-
-Pasos:
-1. Ir a **Reportes** (`/reportes`).
-2. Seleccionar tipo de reporte y rango de fechas.
-3. Filtrar por agencia si necesita.
-4. Hacer clic en "Exportar Excel" o "Exportar PDF".
-
-### Configuración operativa — `/configuracion`
-
-El gerente puede ajustar:
-- **Rutas**: crear o desactivar rutas entre ciudades.
-- **Tarifas**: actualizar precios por ruta y tipo de asiento.
-- **Promociones** (`/promociones`): crear descuentos con fecha de vigencia.
-- **Vehículos**: registrar buses, capacidad, características.
-- **Conductores**: registrar conductores, licencias, datos de contacto.
-
-> **No puede** acceder a auditoría ni a configuración de empresa (eso es solo SUPER_ADMIN).
-
----
-
-## 6. SUPER_ADMIN — administración total
-
-Solo existe **un SUPER_ADMIN** en el sistema. Es el administrador técnico/dueño.
-
-### Configuración de empresa — `/configuracion`
-
-- Datos legales de la empresa (RUC, razón social, dirección).
-- Logo e imagen corporativa.
-- Configuraciones globales del sistema.
-
-### Gestión de agencias — `/agencias`
-
-- Crear nuevas agencias/sucursales con su dirección y datos.
-- Activar o desactivar agencias.
-- Asignar administradores a cada agencia.
-- Ver la **jerarquía completa**: empresa → agencias → usuarios.
-
-### Auditoría — `/auditoria`
-
-Registro completo de **quién hizo qué y cuándo**:
-- Cada acción importante queda registrada (ventas, cambios de precio, modificaciones de usuarios).
-- Se puede filtrar por usuario, tipo de acción, fecha y agencia.
-- Útil para investigar inconsistencias en caja o cambios no autorizados.
-
-### Gestión global de usuarios — `/usuarios`
-
-- Ver y gestionar usuarios de **todas las agencias**.
-- Cambiar roles.
-- Restablecer contraseñas.
-- Crear nuevos ADMIN_AGENCIA y asignarlos a sus sucursales.
-
----
-
-## 7. Flujos transversales
-
-### Ciclo completo de un viaje
-
-```
-SUPER_ADMIN/GERENTE crea la ruta y tarifa
-         ↓
-GERENTE programa el viaje (asigna bus y conductor)
-         ↓
-OPERADOR vende pasajes y registra encomiendas
-         ↓
-OPERADOR genera el manifiesto
-         ↓
-CONDUCTOR consulta el manifiesto y sale
-         ↓
-OPERADOR en destino recibe encomiendas y actualiza estados
-         ↓
-GERENTE revisa el reporte de cierre del viaje
+1. Abrir turno de caja
+       ↓
+2. Vender pasajes / registrar encomiendas
+       ↓
+3. Confirmar salida de vehículos (cuando el vehículo parte)
+       ↓
+4. Generar manifiesto de cada viaje
+       ↓
+5. Entregar encomiendas en destino (módulo Encomiendas → Entregar)
+       ↓
+6. Cerrar turno de caja al final del día (con arqueo)
+       ↓
+7. Declarar rendición si corresponde
 ```
 
 ---
 
-### Tracking público (sin login)
+## 4. Módulo Caja
 
-Cualquier persona puede ir a **`/tracking`** e ingresar el código de rastreo de su encomienda para ver en qué estado está. No necesita cuenta.
+### 4.1 Abrir turno
 
-También están disponibles sin login:
-- `/horarios` — horarios de salida por ruta
-- `/tarifas` — precios por ruta
-- `/sucursales` — direcciones y contacto de agencias
+**Debe hacerse lo primero, antes de cualquier otra operación del día.**
+
+1. Ir a **Caja** en el menú lateral.
+2. Si no hay turno abierto, aparece el botón **Abrir turno**.
+3. Ingresar el **monto de apertura** (dinero en caja al iniciar el día).
+4. Confirmar.
+
+> Solo puede haber **un turno abierto por usuario** a la vez.
+
+### 4.2 Ver movimientos del turno
+
+En la pestaña **Turno actual** verá todos los ingresos y egresos del día en tiempo real:
+
+| Etiqueta | Tipo de movimiento |
+|----------|--------------------|
+| Azul — PASAJE | Venta de pasaje |
+| Naranja — ENCOMIENDA | Encomienda cobrada en origen |
+| Ámbar — CONTRAENTREGA | Encomienda cobrada en destino (POR_COBRAR) |
+| Cian — EXTERNA | Encomienda del conductor (ingreso del conductor, no la empresa) |
+| Verde azulado — CUOTA COMBI | Cuota de salida de combi (S/ 10.00) |
+| Rojo — EGRESO | Salida de dinero registrada manualmente |
+
+### 4.3 Cerrar turno (arqueo)
+
+Al final del día:
+
+1. Hacer clic en **Cerrar turno**.
+2. Completar la **tabla de denominaciones**: ingresar cuántos billetes y monedas de cada tipo hay físicamente en caja.
+   - El sistema calcula el total contado automáticamente.
+3. Revisar si hay **diferencia** (faltante o sobrante) entre lo que dice el sistema y lo que contó físicamente.
+4. Confirmar el cierre.
+
+> **Atención:** Si hay un faltante de S/ 10.00, verifique que la cuota de salida de combi esté en físico — el sistema la carga automáticamente a su caja cuando usted confirma la salida del vehículo.
+
+### 4.4 Pestaña Rendiciones
+
+Ver sección [10. Rendiciones de efectivo](#10-rendiciones-de-efectivo).
 
 ---
 
-### Notificaciones en tiempo real
+## 5. Módulo Pasajes (Ventas)
 
-El sistema tiene **WebSocket activo**. Esto significa que:
-- Cuando un asiento se vende, el mapa de asientos de otros operadores se actualiza automáticamente.
-- Los cambios de estado de encomiendas se reflejan sin necesidad de recargar la página.
+### 5.1 Vender un pasaje
+
+**Requisito previo: tener el turno de caja abierto.**
+
+1. Ir a **Pasajes** en el menú.
+2. Hacer clic en **Nuevo pasaje**.
+3. Completar el formulario:
+   - **Viaje**: seleccionar el viaje programado.
+   - **Cliente**: buscar por DNI. Si el cliente no existe, ingresar sus datos y se crea automáticamente.
+   - **Asiento**: seleccionar el número de asiento disponible.
+   - **Tarifa**: el sistema la propone según la ruta y temporada vigente.
+   - **Descuento/Promoción**: si aplica, seleccionar la promoción activa.
+   - **Método de pago**: EFECTIVO, YAPE, PLIN o TRANSFERENCIA.
+4. Hacer clic en **Registrar pasaje**.
+5. El sistema genera automáticamente el comprobante PDF para imprimir.
+
+> **Nota sobre DNI:** Si un cliente ya existe por su DNI, sus datos se cargan automáticamente. El nombre no se actualiza aunque ingrese uno diferente — se usa el nombre ya registrado en el sistema.
+
+### 5.2 Imprimir comprobante
+
+El comprobante se genera en formato de **ticket 80mm** (compatible con impresoras térmicas). Haga clic en el ícono de impresora junto a cada pasaje para reimprimir.
 
 ---
 
-## 8. Reglas importantes que todos deben conocer
+## 6. Módulo Encomiendas
 
-| Regla | Detalle |
-|---|---|
-| **Un asiento, una venta** | El sistema bloquea asientos en tiempo real. No se puede duplicar. |
-| **Caja obligatoria** | El operador no puede registrar pagos sin tener la caja abierta del día. |
-| **DNI = 8 dígitos, RUC = 11** | El sistema valida esto al momento de ingresar. Si el dato está mal, no guarda. |
-| **Tracking censurado** | En la vista pública de tracking, los datos personales del destinatario están parcialmente ocultos (privacidad). |
-| **Módulos asignables** | Un usuario solo ve en el menú los módulos que su administrador le habilitó. Si no ve una opción, pedirle al ADMIN_AGENCIA que la active. |
-| **Sesión segura** | Después de inactividad, la sesión expira. Hay que volver a iniciar sesión. |
-| **Intentos de login** | Si se equivoca la contraseña 5 veces seguidas, el acceso se bloquea temporalmente (1 minuto). |
-| **Manifiesto antes de salida** | El manifiesto debe generarse antes de que el bus salga. Es requisito operativo. |
+### 6.1 Registrar una encomienda
+
+**Requisito previo: tener el turno de caja abierto si el pago es en origen.**
+
+1. Ir a **Encomiendas** → **Nueva encomienda**.
+2. Completar:
+   - **Remitente y Destinatario**: buscar por DNI o crear nuevo.
+   - **Descripción del paquete**: contenido, peso.
+   - **Ruta**: origen → destino.
+   - **Conductor**: quién transporta el paquete.
+   - **Modalidad de pago**:
+     - **EFECTIVO / YAPE / PLIN / TRANSFERENCIA** → se cobra ahora en origen y se registra en su caja.
+     - **POR_COBRAR** → se cobra al entregar en destino (contraentrega). En origen queda S/ 0.00 en caja.
+3. Registrar.
+4. Imprimir el comprobante de encomienda.
+
+### 6.2 Entregar una encomienda en destino
+
+Cuando llega un paquete para entregar:
+
+1. Ir a **Encomiendas** → buscar por número (EXP-XXXXX) o DNI del destinatario.
+2. Hacer clic en **Entregar**.
+3. Si era POR_COBRAR: confirmar el cobro al destinatario — el ingreso se registra en la caja de la agencia destino.
+4. El sistema genera el comprobante de entrega.
 
 ---
 
-*Documento generado el 2026-06-10 — Express Quinuapata VRAEM SAC*
+## 7. Módulo Encomiendas Externas
+
+Son encomiendas que transporta el **conductor por cuenta propia** (no de la empresa). El sistema las registra solo para control interno.
+
+1. Ir a **Encomiendas Externas**.
+2. Registrar: conductor, remitente, destinatario, descripción y monto.
+3. El comprobante indica explícitamente **"Pertenece al Conductor"**.
+
+> El dinero de estas encomiendas va al conductor, no a la empresa. En caja aparecen como tipo EXTERNA solo a efectos informativos.
+
+---
+
+## 8. Módulo Viajes
+
+### 8.1 Crear un viaje
+
+1. Ir a **Viajes** → **Nuevo viaje**.
+2. Seleccionar: vehículo, conductor, ruta, fecha y hora de salida programada.
+3. Guardar. El viaje queda en estado **PROGRAMADO**.
+
+### 8.2 Confirmar salida
+
+**Requisito previo obligatorio: tener el turno de caja abierto.**
+
+Cuando el vehículo va a partir:
+
+1. Ir a **Viajes** → localizar el viaje.
+2. Hacer clic en **Confirmar salida**.
+3. El sistema registra automáticamente la **cuota de salida de combi (S/ 10.00)** en la caja del usuario que confirma.
+4. El viaje cambia a estado **EN_RUTA**.
+
+> **Error frecuente:** Si aparece *"Debe tener un turno de caja abierto para registrar la cuota de salida"*, vaya primero a **Caja** y abra su turno del día.
+
+### 8.3 Estados de un viaje
+
+| Estado | Significado |
+|--------|-------------|
+| PROGRAMADO | Creado, aún no ha partido |
+| EN_RUTA | Salida confirmada, en camino |
+| COMPLETADO | Llegó a destino |
+| CANCELADO | Anulado |
+
+---
+
+## 9. Módulo Manifiestos
+
+El manifiesto es el registro oficial de pasajeros y encomiendas que lleva cada viaje.
+
+### 9.1 Generar manifiesto
+
+1. Ir a **Manifiestos** → **Nuevo manifiesto**.
+2. Seleccionar el viaje.
+3. El sistema lista automáticamente los pasajes y encomiendas asociados.
+4. Hacer clic en **Generar** → se crea el PDF oficial.
+
+### 9.2 Reimprimir
+
+Desde la lista de manifiestos busque por fecha, ruta o número y haga clic en el ícono de impresora.
+
+> La hora en el manifiesto se muestra en **hora Lima (GMT-5)**.
+
+---
+
+## 10. Rendiciones de efectivo
+
+Las rendiciones son la entrega periódica del efectivo acumulado en cada agencia a la gerencia general.
+
+### 10.1 ¿Cuándo rendir?
+
+El sistema genera una alerta cuando:
+- El efectivo pendiente de rendir supera **S/ 1,500**, o
+- Han pasado más de **7 días** desde la última rendición.
+
+No espere la alerta — si el gerente lo solicita antes, declare la rendición igualmente.
+
+### 10.2 Declarar una rendición (OPERADOR / ADMIN_AGENCIA)
+
+1. Ir a **Caja** → pestaña **Rendiciones**.
+2. Revise el monto **"Pendiente de rendir"** (suma de los cierres de turno no rendidos aún).
+3. Hacer clic en **Declarar rendición**.
+4. Completar:
+   - **Modalidad**: ENTREGA_DIRECTA (en mano al gerente) o DEPOSITO_BANCARIO.
+   - Si es depósito: ingresar el **número de operación bancaria**.
+   - **Monto declarado**: el monto que está entregando físicamente.
+5. Confirmar.
+6. El sistema genera el comprobante **REN-YYYY-NNNNN** en PDF con espacio para firma.
+
+La rendición queda en estado **PENDIENTE** hasta que gerencia la confirme.
+
+### 10.3 Confirmar una rendición (GERENTE / SUPER_ADMIN)
+
+1. Ir a **Caja** → pestaña **Rendiciones** → panel por agencia.
+2. Localizar la rendición en estado PENDIENTE.
+3. Hacer clic en **Confirmar**.
+4. Si el monto recibido no coincide con lo declarado:
+   - Debe ingresar una **observación** obligatoria explicando la diferencia.
+   - La rendición queda como **OBSERVADA** para seguimiento.
+5. Si todo cuadra: queda como **CONFIRMADA**.
+
+---
+
+## 11. Módulo Reportes
+
+| Rol | Lo que puede ver |
+|-----|-----------------|
+| OPERADOR | Solo ingresos de su agencia |
+| ADMIN_AGENCIA | Su agencia y sucursales dependientes |
+| GERENTE / SUPER_ADMIN | Todas las agencias |
+
+### 11.1 Filtros disponibles
+
+- **Rango de fechas**: desde / hasta.
+- **Agencia**: (GERENTE puede filtrar por cualquiera).
+- **Usuario**: ver solo los ingresos de un cajero específico.
+- **Tipo de vehículo**: COMBI o CAMIONETA (flujos separados).
+- **Categoría**: PASAJE, ENCOMIENDA, CUOTA_SALIDA_COMBI, etc.
+
+### 11.2 Reportes disponibles
+
+| Reporte | Descripción |
+|---------|-------------|
+| Ingresos por servicio | Totales agrupados por tipo de ingreso |
+| Evolución diaria | Ingresos día a día en el período seleccionado |
+| Por usuario | Desglose por cajero |
+| Por vehículo / conductor | Rendimiento por unidad o conductor |
+
+---
+
+## 12. Panel Gerente
+
+Acceso exclusivo para GERENTE y SUPER_ADMIN.
+
+Muestra en tiempo real:
+- **KPIs del día**: total ingresos, pasajes vendidos, encomiendas registradas.
+- **Ingresos por categoría**: pasajes vs. encomiendas vs. cuotas de combi.
+- **Resumen por agencia**: actividad de cada sede.
+- **Rendiciones pendientes**: agencias que deben entregar efectivo con alerta de monto o días.
+
+---
+
+## 13. Configuración
+
+Acceso para **ADMIN_AGENCIA** (su agencia) y **SUPER_ADMIN** (todo el sistema).
+
+| Sección | Qué se configura |
+|---------|-----------------|
+| **Empresa** | Nombre, RUC, dirección, logo, **cuota de salida de combi** |
+| **Vehículos** | Placa, tipo (COMBI/CAMIONETA), capacidad, estado |
+| **Conductores** | Nombre, licencia, agencia |
+| **Rutas** | Origen, destino, duración estimada |
+| **Tarifas** | Precio base por ruta y tipo de vehículo |
+| **Temporadas** | Períodos de tarifa especial (alta/baja temporada) |
+
+> **Restricción:** Solo se pueden registrar vehículos tipo **COMBI** o **CAMIONETA**. No existen otros tipos en el sistema.
+
+---
+
+## 14. Reglas de negocio importantes
+
+### Caja
+- Cada usuario tiene su **propia caja individual**. Dos operadores en la misma agencia tienen cajas completamente separadas.
+- La caja del **operador origen** registra: ventas de pasajes, encomiendas cobradas en origen, cuotas de salida de combi.
+- La caja del **operador destino** registra: cobro de encomiendas POR_COBRAR al entregarlas.
+- La **cuota de salida de combi (S/ 10.00)** se carga automáticamente a quien confirma la salida — ese dinero debe estar en el efectivo físico del turno.
+
+### Separación contable
+- Ingresos de **COMBI** y **CAMIONETA** son contablemente independientes — en reportes filtre por tipo de vehículo para verlos por separado.
+- Encomiendas externas (del conductor) **no son ingresos de la empresa**.
+
+### Clientes
+- Se identifican por **DNI**. Si ya existe, el registro se reutiliza sin actualizar el nombre.
+- Si un cliente viene con otro nombre al registrado, se opera igual — el sistema lo reconoce por DNI.
+
+### Alcance por agencia
+- Un OPERADOR de agencia A no puede ver datos de agencia B en ningún módulo.
+- Un ADMIN_AGENCIA ve su agencia y todas sus sucursales dependientes.
+- El GERENTE ve todo sin restricción.
+
+---
+
+## 15. Errores frecuentes y soluciones
+
+| Mensaje de error | Causa | Solución |
+|-----------------|-------|----------|
+| *"Debe tener un turno de caja abierto para registrar la cuota de salida"* | Intentó confirmar salida sin abrir caja | Ir a **Caja** → **Abrir turno** |
+| *"Ya tiene un turno abierto"* | Intentó abrir segunda caja sin cerrar la anterior | Cerrar el turno activo primero |
+| *"No tiene acceso a este módulo"* | El módulo no está asignado a su usuario | Contactar al GERENTE para que asigne el módulo |
+| *"Credenciales inválidas"* | Contraseña incorrecta (respetar mayúsculas) | Verificar la contraseña; tras 5 intentos esperar 1 minuto |
+| Arqueo muestra faltante de S/ 10.00 | La cuota de combi ya fue registrada pero el efectivo físico estaba separado | El sistema ya la contabilizó — es correcta, incluya ese billete en el conteo |
+| No aparece el módulo en el menú | El módulo no fue asignado | Contactar al GERENTE o SUPER_ADMIN |
+| El viaje no aparece para vender pasaje | El viaje está COMPLETADO o CANCELADO | Verificar estado del viaje; crear nuevo si corresponde |
+
+---
+
+*Para soporte técnico o problemas de acceso, comunicarse con el administrador del sistema.*
+
+> Cada usuario es responsable de los movimientos registrados bajo su cuenta. No comparta su contraseña.

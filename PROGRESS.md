@@ -506,3 +506,5 @@ Simular **1 semana a 1 mes de trabajo** de la empresa con datos no reales, como 
 
 ### Para continuar en la próxima sesión, decirle al asistente:
 > "Continúa desde PROGRESS.md — quiero trabajar en el pendiente [N]."
+
+

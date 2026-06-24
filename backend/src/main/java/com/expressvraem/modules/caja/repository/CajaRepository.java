@@ -26,4 +26,9 @@ public interface CajaRepository extends JpaRepository<Caja, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT c FROM Caja c WHERE c.id = :id")
     Optional<Caja> findByIdForUpdate(@Param("id") Long id);
+
+    /** Efectivo físico que quedó en la agencia: suma de cierres de todos los turnos cerrados. */
+    @Query("SELECT COALESCE(SUM(c.montoCierre), 0) FROM Caja c " +
+           "WHERE c.agenciaId = :agenciaId AND c.estado = 'CERRADA'")
+    java.math.BigDecimal sumMontoCierreByAgencia(@Param("agenciaId") Long agenciaId);
 }
