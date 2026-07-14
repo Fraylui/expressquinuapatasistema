@@ -135,8 +135,9 @@ services:
     networks:
       - express-pdn-network
     entrypoint: >
-      sh -c "chmod +x /backup.sh &&
-             echo '0 2 * * * /backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+      sh -c "cp /backup.sh /usr/local/bin/backup.sh &&
+             chmod +x /usr/local/bin/backup.sh &&
+             echo '0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
              crond -f -l 8"
     depends_on:
       postgres:
