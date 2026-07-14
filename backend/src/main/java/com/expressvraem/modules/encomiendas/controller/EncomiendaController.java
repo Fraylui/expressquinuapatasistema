@@ -304,7 +304,7 @@ public class EncomiendaController {
             hm.put("estadoAnterior", h.getEstadoAnterior());
             hm.put("estadoNuevo",    h.getEstadoNuevo());
             hm.put("observacion",    h.getObservacion());
-            hm.put("fecha",          h.getCreatedAt());
+            hm.put("createdAt",      h.getCreatedAt());
             return hm;
         }).toList());
 
