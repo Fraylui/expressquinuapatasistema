@@ -147,8 +147,12 @@ public class ComprobantePdfService {
             for (String t : TERMINOS)
                 termLines += PdfUtils.wrapText(fontNorm, TERMS_SIZE, t, PAGE_W - MARGIN * 2).size();
 
+            float headerEmpresaH = 15f
+                      + (RUC.isEmpty()    ? 0f : 8f)
+                      + (DIR.isEmpty()    ? 0f : 7f)
+                      + (CIUDAD.isEmpty() ? 0f : 7f);
             float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
-                      + 40f                  // header empresa
+                      + headerEmpresaH       // header empresa (solo líneas con contenido)
                       + 6f                   // dash
                       + 27f                  // titulo + tracking
                       + 84f                  // QR + nota
@@ -183,10 +187,12 @@ public class ComprobantePdfService {
                     cs.drawImage(logoImg, (PAGE_W - logoW) / 2f, y - logoH, logoW, logoH);
                     y -= (logoH + 4);
                 }
+                // Las líneas vacías no se dibujan ni ocupan alto (RUC/dirección pueden no estar configurados)
                 y = drawCenteredText(cs, fontBold, 9f, EMPRESA, y);  y -= 2;
-                y = drawCenteredText(cs, fontNorm, 7f, RUC, y);      y -= 1;
-                y = drawCenteredText(cs, fontNorm, 6f, DIR, y);      y -= 1;
-                y = drawCenteredText(cs, fontNorm, 6f, CIUDAD, y);   y -= 4;
+                if (!RUC.isEmpty())    { y = drawCenteredText(cs, fontNorm, 7f, RUC, y);    y -= 1; }
+                if (!DIR.isEmpty())    { y = drawCenteredText(cs, fontNorm, 6f, DIR, y);    y -= 1; }
+                if (!CIUDAD.isEmpty()) { y = drawCenteredText(cs, fontNorm, 6f, CIUDAD, y); y -= 1; }
+                y -= 3;
                 y = drawDashes(cs, y);                                y -= 3;
 
                 // Título + tracking
