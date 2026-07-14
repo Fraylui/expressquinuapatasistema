@@ -28,10 +28,13 @@ for host in $DOMAIN www.$DOMAIN sistema.$DOMAIN; do
 done
 
 echo "══ 2/4 Emitiendo certificado Let's Encrypt (3 dominios) ══"
-docker compose -f docker-compose.yml -f docker-compose.http.yml run --rm certbot certonly \
+# --entrypoint es OBLIGATORIO: el servicio certbot del compose tiene como
+# entrypoint el bucle de renovación; sin esto, certonly nunca se ejecuta
+docker compose -f docker-compose.yml -f docker-compose.http.yml run --rm -T \
+  --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
   -d "$DOMAIN" -d "www.$DOMAIN" -d "sistema.$DOMAIN" \
-  --email "$EMAIL" --agree-tos --no-eff-email
+  --email "$EMAIL" --agree-tos --no-eff-email --non-interactive
 
 echo "══ 3/4 Cambiando nginx a modo HTTPS ══"
 docker compose build nginx
