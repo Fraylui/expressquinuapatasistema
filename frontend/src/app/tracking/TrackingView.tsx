@@ -143,9 +143,9 @@ export default function TrackingView({ initialCodigo }: { initialCodigo?: string
             >
               <MapPin size={16} className="shrink-0" style={{ color: '#4ade80' }} />
               <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
-                <span>{resultado.agenciaOrigen || '—'}</span>
+                <span className="capitalize">{(resultado.agenciaOrigen || '—').toLowerCase()}</span>
                 <ArrowRight size={14} className="shrink-0 text-white/30" />
-                <span>{resultado.agenciaDestino || '—'}</span>
+                <span className="capitalize">{(resultado.agenciaDestino || '—').toLowerCase()}</span>
               </div>
             </div>
           )}
