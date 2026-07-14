@@ -109,6 +109,9 @@ http {
         listen 443 ssl default_server;
         server_name sistema.DOMAIN_PLACEHOLDER _;
 
+        # El panel es interno: fuera de Google (solo la web pública se indexa)
+        add_header X-Robots-Tag "noindex, nofollow" always;
+
         # Cabeceras de seguridad OWASP
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
         add_header X-Frame-Options          "SAMEORIGIN"                             always;
