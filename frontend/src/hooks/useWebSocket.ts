@@ -5,7 +5,12 @@ import { useAuthStore } from '@/stores/authStore'
 
 const WS_URL = (() => {
   const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
-  return base.replace(/^http/, 'ws') + '/ws-stomp'
+  // En producción NEXT_PUBLIC_API_URL="/" (mismo origen vía nginx): el broker
+  // STOMP necesita URL absoluta, así que se deriva del origen del navegador
+  const abs = base.startsWith('http')
+    ? base
+    : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080')
+  return abs.replace(/^http/, 'ws') + '/ws-stomp'
 })()
 
 export function useWebSocket() {
