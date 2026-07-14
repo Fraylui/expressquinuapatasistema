@@ -15,7 +15,7 @@ public class EmailService {
     @Value("${spring.mail.host:}")
     private String mailHost;
 
-    @Value("${spring.mail.username:noreply@expressvraem.pe}")
+    @Value("${spring.mail.username:noreply@expressquinuapata.com}")
     private String fromEmail;
 
     public EmailService(JavaMailSender mailSender) {
@@ -39,7 +39,7 @@ public class EmailService {
                 "  Email:      " + email + "\n" +
                 "  Contraseña: " + password + "\n\n" +
                 "Por seguridad, cambie su contraseña después del primer inicio de sesión.\n\n" +
-                "Ingrese en: http://sistema.expressvraem.pe\n\n" +
+                "Ingrese en: http://sistema.expressquinuapata.com\n\n" +
                 "Saludos,\nExpress Quinuapata VRAEM S.A.C."
             );
             mailSender.send(msg);

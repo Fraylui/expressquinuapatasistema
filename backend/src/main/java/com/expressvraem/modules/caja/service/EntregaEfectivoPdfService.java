@@ -31,7 +31,7 @@ public class EntregaEfectivoPdfService {
     private final EmpresaConfigService empresaConfigService;
     private final EntityManager entityManager;
 
-    @Value("${app.control.url:https://expressvraem.pe/control/}")
+    @Value("${app.control.url:https://sistema.expressquinuapata.com/control/}")
     private String controlUrl;
 
     private static final float PAGE_W = 226.77f; // 80 mm

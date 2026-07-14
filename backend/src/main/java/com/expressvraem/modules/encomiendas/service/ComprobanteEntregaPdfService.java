@@ -40,7 +40,7 @@ public class ComprobanteEntregaPdfService {
 
     private static final float  PAGE_W    = 226.77f;
     private static final float  MARGIN    = 10f;
-    private static final String TRACK_URL = "https://expressvraem.pe/tracking/";
+    private static final String TRACK_URL = "https://sistema.expressquinuapata.com/tracking/";
 
     public byte[] generarComprobanteEntrega(Encomienda enc, String operadorNombre) {
         EmpresaConfig emp = empresaConfigService.get();
@@ -142,7 +142,7 @@ public class ComprobanteEntregaPdfService {
 
                 // ── Footer ─────────────────────────────────────────────────────
                 y = drawCenteredText(cs, fontObliq, 6.5f, "Gracias por usar " + ascii(EMPRESA), y); y -= 1;
-                drawCenteredText(cs, fontNorm, 6f, "expressvraem.pe", y);
+                drawCenteredText(cs, fontNorm, 6f, "expressquinuapata.com", y);
             }
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();

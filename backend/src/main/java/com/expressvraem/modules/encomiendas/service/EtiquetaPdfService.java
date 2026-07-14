@@ -35,7 +35,7 @@ public class EtiquetaPdfService {
     private static final float H = 425.19f;
     private static final float M = 8f;   // margen
 
-    @Value("${app.tracking.url:https://expressvraem.pe/tracking/}")
+    @Value("${app.tracking.url:https://sistema.expressquinuapata.com/tracking/}")
     private String trackUrl;
 
     @Transactional(readOnly = true)

@@ -31,11 +31,25 @@ public class ComprobantePdfService {
     private final EntityManager entityManager;
     private final EmpresaConfigService empresaConfigService;
 
-    @Value("${app.tracking.url:https://expressvraem.pe/tracking/}")
+    @Value("${app.tracking.url:https://sistema.expressquinuapata.com/tracking/}")
     private String trackUrl;
 
     private static final float PAGE_W = 226.77f; // 80 mm
     private static final float MARGIN = 10f;
+
+    /** Términos y condiciones impresos al pie del comprobante (letra compacta). */
+    private static final String[] TERMINOS = {
+        "1. Identificacion obligatoria con DNI del remitente. La entrega es personal, previa identificacion del consignado.",
+        "2. El paquete debe estar debidamente embalado y rotulado.",
+        "3. Prohibida la remision de animales y productos peligrosos, ilicitos y/o fiscalizados; la responsabilidad sera atribuida al cliente.",
+        "4. Plazo de entrega: hasta 72 horas. Eventos impredecibles y/o de fuerza mayor que retrasen la entrega eximen de responsabilidad a la Empresa.",
+        "5. El cliente debe adjuntar la documentacion del producto exigida por SUNAT; su omision exime a la Empresa de responsabilidad administrativa y/o penal.",
+        "6. La Empresa no se hace responsable por merma o deterioro de productos perecibles, mal embalados o no declarados.",
+        "7. La encomienda no retirada en 30 dias sera enviada al almacen de abandono; el cliente dispone de 60 dias calendario adicionales para recuperarla pagando los costos de almacen.",
+        "8. Indemnizacion por deterioro o perdida: hasta 10 veces el flete pagado, conforme al Art. 146 del D.S. 032-2005-MTC. Clausula eximente de responsabilidad.",
+    };
+    private static final float TERMS_SIZE = 4.6f;   // letra chica para ahorrar papel
+    private static final float TERMS_LEAD = 5.2f;   // interlineado compacto
 
     @Transactional(readOnly = true)
     public byte[] generarComprobante(Encomienda enc, String operadorNombre) {
@@ -113,6 +127,10 @@ public class ComprobantePdfService {
             int descLinesCp = PdfUtils.wrapText(fontNorm, 7f, enc.getDescripcion(),
                     PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Descripcion: ") / 1000f * 7f).size();
 
+            int termLines = 0;
+            for (String t : TERMINOS)
+                termLines += PdfUtils.wrapText(fontNorm, TERMS_SIZE, t, PAGE_W - MARGIN * 2).size();
+
             float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
                       + 40f                  // header empresa
                       + 6f                   // dash
@@ -128,6 +146,8 @@ public class ComprobantePdfService {
                       + 12f                  // gaps
                       + 6f                   // dash
                       + 16f                  // footer
+                      + 14f                  // titulo terminos
+                      + TERMS_LEAD * termLines
                       + MARGIN * 2;
 
             float pageH = Math.max(cpH + 20f, 330f);
@@ -218,7 +238,18 @@ public class ComprobantePdfService {
 
                 // Footer cliente
                 y = drawCenteredText(cs, fontObliq, 6.5f, "Conserve este comprobante.", y); y -= 1;
-                drawCenteredText(cs, fontNorm, 6f, "Estado: " + enc.getEstado(), y);
+                y = drawCenteredText(cs, fontNorm, 6f, "Estado: " + enc.getEstado(), y); y -= 3;
+
+                // Términos y condiciones (compactos)
+                y = drawDashes(cs, y); y -= 2;
+                y = drawCenteredText(cs, fontBold, 5.5f, "TERMINOS Y CONDICIONES", y); y -= 1;
+                for (String termino : TERMINOS) {
+                    for (String line : PdfUtils.wrapText(fontNorm, TERMS_SIZE, termino, PAGE_W - MARGIN * 2)) {
+                        cs.beginText(); cs.setFont(fontNorm, TERMS_SIZE);
+                        cs.newLineAtOffset(MARGIN, y - TERMS_SIZE); cs.showText(ascii(line)); cs.endText();
+                        y -= TERMS_LEAD;
+                    }
+                }
             }
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
