@@ -59,7 +59,7 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ historial, e
               }`}>
                 {estado.label}
               </p>
-              {histItem && (
+              {histItem && !isNaN(new Date(histItem.createdAt).getTime()) && (
                 <p className="text-xs text-gray-400 text-center mt-1">
                   {format(new Date(histItem.createdAt), 'dd MMM HH:mm', { locale: es })}
                 </p>
