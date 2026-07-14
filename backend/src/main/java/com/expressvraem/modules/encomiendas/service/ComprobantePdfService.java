@@ -87,15 +87,17 @@ public class ComprobantePdfService {
 
             // Agencia de origen: la ciudad distingue a la agencia (todas comparten razón social)
             String agenciaOrigCiudad = "";
+            String agenciaOrigDir    = "";
             Long agenciaOrigId = enc.getAgenciaOrigenId() != null ? enc.getAgenciaOrigenId() : enc.getAgenciaId();
             if (agenciaOrigId != null) {
                 try {
                     Object[] ag = (Object[]) entityManager
-                        .createNativeQuery("SELECT nombre, ciudad FROM agencias WHERE id = :id")
+                        .createNativeQuery("SELECT nombre, ciudad, direccion FROM agencias WHERE id = :id")
                         .setParameter("id", agenciaOrigId).getSingleResult();
                     agenciaOrigCiudad = ag[1] != null && !String.valueOf(ag[1]).isBlank()
                             ? String.valueOf(ag[1])
                             : ag[0] != null ? String.valueOf(ag[0]) : "";
+                    agenciaOrigDir    = ag[2] != null ? String.valueOf(ag[2]) : "";
                 } catch (Exception ignored) {}
             }
 
@@ -156,7 +158,7 @@ public class ComprobantePdfService {
                       + 6f                   // dash
                       + 27f                  // titulo + tracking
                       + 84f                  // QR + nota
-                      + 18f                  // destino + dash
+                      + 36f                  // ruta origen/destino con direcciones + dash
                       + 9f * 8               // filas rem + des + peso + bultos
                       + 8f * descLinesCp     // descripción (multilínea)
                       + 9f                   // gaps entre bloques
@@ -206,11 +208,14 @@ public class ComprobantePdfService {
                 y -= (qrSize + 3);
                 y = drawCenteredText(cs, fontNorm, 5.5f, "Escanea para rastrear tu encomienda", y); y -= 2;
 
-                // Origen → Destino
+                // Ruta: origen → destino, cada uno con la dirección de su agencia
                 if (!agenciaOrigCiudad.isEmpty()) {
-                    y = drawCenteredText(cs, fontBold, 8f, "ORIGEN: " + agenciaOrigCiudad.toUpperCase(), y); y -= 1;
+                    y = drawCenteredText(cs, fontBold, 8f, "ORIGEN: " + agenciaOrigCiudad.toUpperCase(), y);
+                    if (!agenciaOrigDir.isEmpty()) y = drawCenteredText(cs, fontNorm, 6f, agenciaOrigDir, y);
+                    y -= 2;
                 }
                 y = drawCenteredText(cs, fontBold, 8f, "DESTINO: " + agenciaDestCiudad.toUpperCase(), y);
+                if (!agenciaDestDir.isEmpty()) y = drawCenteredText(cs, fontNorm, 6f, agenciaDestDir, y);
                 y -= 3;
                 y = drawDashes(cs, y); y -= 3;
 
@@ -221,16 +226,18 @@ public class ComprobantePdfService {
                 y -= 3;
 
                 // Destinatario
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y); y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Agencia dest.:",
-                        !agenciaDestCiudad.isEmpty() ? agenciaDestCiudad : agenciaDestNombre, y);
-                if (!agenciaDestDir.isEmpty()) { y -= 1; y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Direccion dest.:", agenciaDestDir, y); }
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y);
                 if (!desTel.isEmpty()) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. dest.:", desTel, y); }
+                y -= 1;
+                y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Recojo en:",
+                        (!agenciaDestCiudad.isEmpty() ? agenciaDestCiudad : agenciaDestNombre)
+                        + (agenciaDestDir.isEmpty() ? "" : " - " + agenciaDestDir), y);
                 y -= 3;
 
                 // Paquete — descripción completa, multilínea
                 y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Descripcion:", enc.getDescripcion(), y);
-                if (enc.getPesoKg() != null) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg() + " kg", y); }
+                // Peso opcional: solo se imprime cuando se registró un valor mayor a cero
+                if (enc.getPesoKg() != null && enc.getPesoKg().signum() > 0) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg().stripTrailingZeros().toPlainString() + " kg", y); }
                 int bultos = enc.getNumBultos() != null ? enc.getNumBultos() : 1;
                 y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Bultos:", String.valueOf(bultos), y);
                 if (enc.getObservaciones() != null && !enc.getObservaciones().isBlank()) {
