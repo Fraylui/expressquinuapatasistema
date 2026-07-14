@@ -1,12 +1,18 @@
 'use client'
 import React, { useEffect, useRef, useState } from 'react'
-import { Search, Package, Bus } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
+import { Search, PackageSearch, ArrowRight, MapPin, CalendarClock } from 'lucide-react'
 import { TrackingTimeline } from '@/components/modules/encomiendas/TrackingTimeline'
 import { encomiendaService } from '@/services/encomiendas.service'
-import Link from 'next/link'
-import toast from 'react-hot-toast'
+import PublicShell, { syne, glassCard, glassInput, EstadoChip, GREEN, GREEN_D } from '@/components/public/PublicShell'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+
+const fmtFechaHora = (iso?: string) => {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  return format(d, "dd 'de' MMMM yyyy, HH:mm", { locale: es })
+}
 
 /**
  * Vista de rastreo. Si llega initialCodigo (desde el QR del comprobante:
@@ -15,19 +21,21 @@ import toast from 'react-hot-toast'
 export default function TrackingView({ initialCodigo }: { initialCodigo?: string }) {
   const [codigo, setCodigo] = useState(initialCodigo ?? '')
   const [resultado, setResultado] = useState<any>(null)
+  const [noEncontrado, setNoEncontrado] = useState(false)
   const [loading, setLoading] = useState(false)
   const buscoInicial = useRef(false)
 
   const buscar = async (valor?: string) => {
     const cod = (valor ?? codigo).trim()
-    if (!cod) { toast.error('Ingrese un código de seguimiento'); return }
+    if (!cod) return
     setLoading(true)
+    setNoEncontrado(false)
     try {
       const res = await encomiendaService.getByTracking(cod.toUpperCase())
       setResultado(res.data)
     } catch {
-      toast.error('No se encontró la encomienda con ese código')
       setResultado(null)
+      setNoEncontrado(true)
     } finally {
       setLoading(false)
     }
@@ -41,85 +49,150 @@ export default function TrackingView({ initialCodigo }: { initialCodigo?: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCodigo])
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-primary-900 text-white py-4 px-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-accent-700 rounded-lg flex items-center justify-center">
-              <Bus size={18} className="text-white" />
-            </div>
-            <div>
-              <p className="font-bold text-sm">Express Quinuapata VRAEM SAC</p>
-              <p className="text-xs text-white/50">Seguimiento de encomiendas</p>
-            </div>
-          </div>
-          <nav className="flex gap-4 text-sm text-white/70">
-            <Link href="/horarios" className="hover:text-white transition-colors">Horarios</Link>
-            <Link href="/tarifas" className="hover:text-white transition-colors">Tarifas</Link>
-            <Link href="/sucursales" className="hover:text-white transition-colors">Sucursales</Link>
-            <Link href="/tracking" className="text-white font-medium">Rastrear</Link>
-          </nav>
-        </div>
-      </header>
+  const registrado = fmtFechaHora(resultado?.fechaRegistro)
+  const entregaEst = fmtFechaHora(resultado?.fechaEntregaEst)
 
-      <main className="max-w-4xl mx-auto px-4 py-10">
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Package size={28} className="text-primary-900" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Rastrear encomienda</h1>
-          <p className="text-sm text-gray-500 mt-2">
-            Ingresa el código de seguimiento para ver el estado de tu envío
+  return (
+    <PublicShell active="tracking" subtitle="Seguimiento de encomiendas">
+      {/* Hero */}
+      <div className="mb-8 text-center">
+        <div
+          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ background: 'rgba(22,163,74,0.14)', border: '1px solid rgba(22,163,74,0.3)' }}
+        >
+          <PackageSearch size={26} style={{ color: '#4ade80' }} />
+        </div>
+        <h1 className={`${syne.className} text-2xl font-extrabold text-white sm:text-[1.7rem]`}>
+          Rastrea tu encomienda
+        </h1>
+        <p className="mt-2 text-sm text-white/45">
+          Ingresa el código de seguimiento de tu comprobante para ver el estado de tu envío
+        </p>
+      </div>
+
+      {/* Buscador */}
+      <div className="mb-8 flex flex-col gap-2 sm:flex-row">
+        <input
+          value={codigo}
+          onChange={e => setCodigo(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && buscar()}
+          placeholder="Ej: EXP-2026-00001"
+          autoCapitalize="characters"
+          className="flex-1 rounded-xl px-4 py-3.5 font-mono text-sm uppercase tracking-wide text-white outline-none transition-all duration-200 placeholder:normal-case placeholder:text-white/25"
+          style={glassInput}
+          onFocus={e => {
+            e.currentTarget.style.border = '1.5px solid rgba(22,163,74,0.55)'
+            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(22,163,74,0.12)'
+          }}
+          onBlur={e => {
+            e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.09)'
+            e.currentTarget.style.boxShadow = 'none'
+          }}
+        />
+        <button
+          onClick={() => buscar()}
+          disabled={loading}
+          className="flex items-center justify-center gap-2 rounded-xl border-none px-6 py-3.5 text-sm font-bold text-white transition-all duration-200 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+          style={{ background: GREEN, boxShadow: '0 6px 20px rgba(22,163,74,0.3)', fontFamily: 'inherit' }}
+          onMouseEnter={e => { if (!loading) e.currentTarget.style.background = GREEN_D }}
+          onMouseLeave={e => { e.currentTarget.style.background = GREEN }}
+        >
+          {loading ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+          ) : (
+            <Search size={16} strokeWidth={2.5} />
+          )}
+          {loading ? 'Buscando…' : 'Buscar'}
+        </button>
+      </div>
+
+      {/* No encontrado */}
+      {noEncontrado && (
+        <div
+          className="rounded-2xl p-8 text-center"
+          style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)' }}
+        >
+          <p className="text-sm font-semibold" style={{ color: '#fca5a5' }}>
+            No encontramos ninguna encomienda con ese código
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Verifica que el código sea igual al de tu comprobante (ej. EXP-2026-00001)
           </p>
         </div>
+      )}
 
-        <div className="flex gap-2 mb-8">
-          <input
-            value={codigo}
-            onChange={e => setCodigo(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && buscar()}
-            placeholder="Ej: EXP-2026-00001"
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 uppercase"
-          />
-          <Button icon={Search} loading={loading} onClick={() => buscar()} size="lg">
-            Buscar
-          </Button>
-        </div>
+      {/* Resultado */}
+      {resultado && (
+        <div className="space-y-5 rounded-2xl p-5 sm:p-7" style={glassCard}>
+          {/* Código + estado */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-white/35">
+                Código de seguimiento
+              </p>
+              <p className="font-mono text-xl font-bold text-white">{resultado.codigo}</p>
+            </div>
+            <EstadoChip estado={resultado.estado} />
+          </div>
 
-        {resultado && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-500">Código de seguimiento</p>
-                <p className="text-lg font-bold text-gray-900 font-mono">{resultado.codigo}</p>
+          {/* Ruta origen → destino */}
+          {(resultado.agenciaOrigen || resultado.agenciaDestino) && (
+            <div
+              className="flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              <MapPin size={16} className="shrink-0" style={{ color: '#4ade80' }} />
+              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
+                <span>{resultado.agenciaOrigen || '—'}</span>
+                <ArrowRight size={14} className="shrink-0 text-white/30" />
+                <span>{resultado.agenciaDestino || '—'}</span>
               </div>
-              <Badge estado={resultado.estado} />
             </div>
+          )}
 
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Descripción</p>
-              <p className="text-sm text-gray-800">{resultado.descripcion}</p>
-            </div>
+          {/* Descripción */}
+          <div className="border-t pt-4" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+            <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-white/35">
+              Descripción
+            </p>
+            <p className="text-sm text-white/80">{resultado.descripcion}</p>
+          </div>
 
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Historial de estados</p>
-              <TrackingTimeline
-                historial={resultado.historial || []}
-                estadoActual={resultado.estado}
-              />
-            </div>
+          {/* Timeline */}
+          <div className="border-t pt-4" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+            <p className="mb-3 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-white/35">
+              Historial de estados
+            </p>
+            <TrackingTimeline
+              historial={resultado.historial || []}
+              estadoActual={resultado.estado}
+            />
+          </div>
 
-            {resultado.fechaEntregaEst && (
-              <div className="bg-blue-50 rounded-xl p-3 text-center">
-                <p className="text-xs text-blue-600 font-medium">
-                  Entrega estimada: {resultado.fechaEntregaEst}
-                </p>
-              </div>
+          {/* Fechas */}
+          <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+            {registrado && (
+              <p className="flex items-center gap-2 text-xs text-white/40">
+                <CalendarClock size={13} className="shrink-0" />
+                Registrado el {registrado}
+              </p>
+            )}
+            {entregaEst && (
+              <p className="text-xs font-medium" style={{ color: '#4ade80' }}>
+                Entrega estimada: {entregaEst}
+              </p>
             )}
           </div>
-        )}
-      </main>
-    </div>
+        </div>
+      )}
+
+      {/* Estado inicial (sin búsqueda aún) */}
+      {!resultado && !noEncontrado && !loading && (
+        <div className="py-10 text-center text-white/25">
+          <PackageSearch size={40} className="mx-auto mb-3 opacity-40" />
+          <p className="text-sm">El código aparece en tu comprobante, junto al QR</p>
+        </div>
+      )}
+    </PublicShell>
   )
 }

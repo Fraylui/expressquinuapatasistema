@@ -297,6 +297,9 @@ public class EncomiendaController {
         result.put("codigo",           enc.getCodigoTracking());
         result.put("estado",           enc.getEstado());
         result.put("descripcion",      enc.getDescripcion());
+        result.put("agenciaOrigen",    nombreAgencia(enc.getAgenciaOrigenId() != null
+                                            ? enc.getAgenciaOrigenId() : enc.getAgenciaId()));
+        result.put("agenciaDestino",   nombreAgencia(enc.getAgenciaDestinoId()));
         result.put("fechaRegistro",    enc.getFechaRegistro());
         result.put("fechaEntregaEst",  enc.getFechaEntregaEst() != null ? enc.getFechaEntregaEst() : "");
         result.put("historial", historial.stream().map(h -> {
@@ -312,6 +315,11 @@ public class EncomiendaController {
     }
 
     // ─── Private helpers ────────────────────────────────────────────────────────
+
+    private String nombreAgencia(Long id) {
+        if (id == null) return null;
+        return agenciaRepository.findById(id).map(a -> a.getNombre()).orElse(null);
+    }
 
     private Map<Long, Cliente> buildClienteMap(List<Encomienda> lista) {
         Set<Long> ids = lista.stream()
