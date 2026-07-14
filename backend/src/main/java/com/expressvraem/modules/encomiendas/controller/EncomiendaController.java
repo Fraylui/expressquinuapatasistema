@@ -316,9 +316,12 @@ public class EncomiendaController {
 
     // ─── Private helpers ────────────────────────────────────────────────────────
 
+    /** Para el cliente la ciudad distingue mejor la agencia (todas comparten razón social). */
     private String nombreAgencia(Long id) {
         if (id == null) return null;
-        return agenciaRepository.findById(id).map(a -> a.getNombre()).orElse(null);
+        return agenciaRepository.findById(id)
+                .map(a -> a.getCiudad() != null && !a.getCiudad().isBlank() ? a.getCiudad() : a.getNombre())
+                .orElse(null);
     }
 
     private Map<Long, Cliente> buildClienteMap(List<Encomienda> lista) {
