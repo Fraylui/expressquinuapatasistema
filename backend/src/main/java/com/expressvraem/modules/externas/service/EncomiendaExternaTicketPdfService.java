@@ -24,7 +24,7 @@ public class EncomiendaExternaTicketPdfService {
 
     private final EmpresaConfigService empresaConfigService;
 
-    @Value("${app.control.url:https://expressvraem.pe/control/}")
+    @Value("${app.control.url:https://sistema.expressquinuapata.com/control/}")
     private String controlUrl;
 
     private static final float PAGE_W = 226.77f; // 80 mm

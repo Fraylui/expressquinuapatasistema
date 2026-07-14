@@ -34,7 +34,7 @@ public class TicketPdfService {
     private final EntityManager em;
     private final EmpresaConfigService empresaConfigService;
 
-    @Value("${app.verificacion.url:https://expressvraem.pe/verificar/}")
+    @Value("${app.verificacion.url:https://sistema.expressquinuapata.com/verificar/}")
     private String verificacionUrl;
 
     // Dimensiones 80 mm de ancho, sin alto fijo — se calcula por contenido
