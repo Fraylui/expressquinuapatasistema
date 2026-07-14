@@ -56,13 +56,16 @@ public class ComprobanteEntregaPdfService {
             String desNombre = des != null ? nombreDisplay(des) : "—";
             String desTel    = des != null && des.getTelefono() != null ? des.getTelefono() : "";
 
+            // La ciudad distingue a la agencia (todas comparten razón social)
             String agenciaDestNombre = "—";
             if (enc.getAgenciaDestinoId() != null) {
                 try {
                     Object[] ag = (Object[]) entityManager
                             .createNativeQuery("SELECT nombre, ciudad FROM agencias WHERE id = :id")
                             .setParameter("id", enc.getAgenciaDestinoId()).getSingleResult();
-                    agenciaDestNombre = ag[0] != null ? String.valueOf(ag[0]) : "—";
+                    agenciaDestNombre = ag[1] != null && !String.valueOf(ag[1]).isBlank()
+                            ? String.valueOf(ag[1])
+                            : ag[0] != null ? String.valueOf(ag[0]) : "—";
                 } catch (Exception ignored) {}
             }
 

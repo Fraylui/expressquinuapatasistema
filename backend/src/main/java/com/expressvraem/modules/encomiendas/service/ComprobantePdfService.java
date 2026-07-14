@@ -73,13 +73,29 @@ public class ComprobantePdfService {
 
             String agenciaDestNombre = "—";
             String agenciaDestCiudad = "";
+            String agenciaDestDir    = "";
             if (enc.getAgenciaDestinoId() != null) {
                 try {
                     Object[] ag = (Object[]) entityManager
-                        .createNativeQuery("SELECT nombre, ciudad FROM agencias WHERE id = :id")
+                        .createNativeQuery("SELECT nombre, ciudad, direccion FROM agencias WHERE id = :id")
                         .setParameter("id", enc.getAgenciaDestinoId()).getSingleResult();
                     agenciaDestNombre = ag[0] != null ? String.valueOf(ag[0]) : "—";
                     agenciaDestCiudad = ag[1] != null ? String.valueOf(ag[1]) : "";
+                    agenciaDestDir    = ag[2] != null ? String.valueOf(ag[2]) : "";
+                } catch (Exception ignored) {}
+            }
+
+            // Agencia de origen: la ciudad distingue a la agencia (todas comparten razón social)
+            String agenciaOrigCiudad = "";
+            Long agenciaOrigId = enc.getAgenciaOrigenId() != null ? enc.getAgenciaOrigenId() : enc.getAgenciaId();
+            if (agenciaOrigId != null) {
+                try {
+                    Object[] ag = (Object[]) entityManager
+                        .createNativeQuery("SELECT nombre, ciudad FROM agencias WHERE id = :id")
+                        .setParameter("id", agenciaOrigId).getSingleResult();
+                    agenciaOrigCiudad = ag[1] != null && !String.valueOf(ag[1]).isBlank()
+                            ? String.valueOf(ag[1])
+                            : ag[0] != null ? String.valueOf(ag[0]) : "";
                 } catch (Exception ignored) {}
             }
 
@@ -184,7 +200,10 @@ public class ComprobantePdfService {
                 y -= (qrSize + 3);
                 y = drawCenteredText(cs, fontNorm, 5.5f, "Escanea para rastrear tu encomienda", y); y -= 2;
 
-                // Destino
+                // Origen → Destino
+                if (!agenciaOrigCiudad.isEmpty()) {
+                    y = drawCenteredText(cs, fontBold, 8f, "ORIGEN: " + agenciaOrigCiudad.toUpperCase(), y); y -= 1;
+                }
                 y = drawCenteredText(cs, fontBold, 8f, "DESTINO: " + agenciaDestCiudad.toUpperCase(), y);
                 y -= 3;
                 y = drawDashes(cs, y); y -= 3;
@@ -197,7 +216,9 @@ public class ComprobantePdfService {
 
                 // Destinatario
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y); y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "Agencia dest.:", agenciaDestNombre, y);
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "Agencia dest.:",
+                        !agenciaDestCiudad.isEmpty() ? agenciaDestCiudad : agenciaDestNombre, y);
+                if (!agenciaDestDir.isEmpty()) { y -= 1; y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Direccion dest.:", agenciaDestDir, y); }
                 if (!desTel.isEmpty()) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. dest.:", desTel, y); }
                 y -= 3;
 
