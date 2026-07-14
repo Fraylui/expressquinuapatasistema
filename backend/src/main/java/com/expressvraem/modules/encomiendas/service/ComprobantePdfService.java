@@ -227,6 +227,9 @@ public class ComprobantePdfService {
                 if (enc.getPesoKg() != null) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Peso:", enc.getPesoKg() + " kg", y); }
                 int bultos = enc.getNumBultos() != null ? enc.getNumBultos() : 1;
                 y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Bultos:", String.valueOf(bultos), y);
+                if (enc.getObservaciones() != null && !enc.getObservaciones().isBlank()) {
+                    y -= 1; y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Observaciones:", enc.getObservaciones(), y);
+                }
                 y -= 3;
 
                 // Viaje asignado
