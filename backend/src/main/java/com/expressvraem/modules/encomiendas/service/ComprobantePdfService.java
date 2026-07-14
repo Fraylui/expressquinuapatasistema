@@ -106,32 +106,13 @@ public class ComprobantePdfService {
             boolean hayDescuento  = descuento.compareTo(BigDecimal.ZERO) > 0;
             String montoStr       = montoFinal != null ? "S/ " + montoFinal.toPlainString() : "—";
 
-            String monto4hash   = enc.getMonto() != null
-                    ? enc.getMonto().toPlainString()
-                    : enc.getPrecioEnvio() != null ? enc.getPrecioEnvio().toPlainString() : "0";
-            String hash = PdfUtils.sha256Short(enc.getCodigoTracking(), monto4hash, remDoc, fechaStr);
-
             PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
 
-            // La descripción se imprime completa (multilínea) en ambas secciones
-            int descLinesCi = PdfUtils.wrapText(fontNorm, 6.5f, enc.getDescripcion(),
-                    PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Contenido: ") / 1000f * 6.5f).size();
             int descLinesCp = PdfUtils.wrapText(fontNorm, 7f, enc.getDescripcion(),
                     PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Descripcion: ") / 1000f * 7f).size();
 
-            // ── Estimar altura total (altos reales por fila: texto ≈ size+1 + gaps) ──
-            // Sección CONTROL INTERNO (arriba)
-            float ciH = 30f                  // header empresa + dash
-                      + 26f                  // titulo + tracking + serie
-                      + 8.5f * 8             // filas fijas (fecha..destino, monto, forma)
-                      + 8.5f * descLinesCi   // contenido (multilínea)
-                      + (viajeHora.isEmpty() ? 0 : 8.5f)
-                      + (hayDescuento ? 17f : 0)
-                      + 12f;                 // hash + gap final
-            float cortH = 0f;
-            // Sección COMPROBANTE (abajo): cabecera + QR + datos
             float cpH = (LOGO_B64 != null && !LOGO_B64.isBlank() ? 38f : 0f) // logo
                       + 40f                  // header empresa
                       + 6f                   // dash
@@ -149,59 +130,14 @@ public class ComprobantePdfService {
                       + 16f                  // footer
                       + MARGIN * 2;
 
-            // Mínimo 330pt (~116mm); margen de seguridad para que nada quede fuera de página.
-            float pageH = Math.max(ciH + cortH + cpH + 20f, 330f);
+            float pageH = Math.max(cpH + 20f, 330f);
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float y = pageH - MARGIN;
 
-                // ════════════════════════════════════════════════════════════════
-                //  SECCIÓN 1: CONTROL INTERNO  (copia del operador)
-                // ════════════════════════════════════════════════════════════════
-
-                // Cabecera compacta
-                y = drawCenteredText(cs, fontBold, 7f, EMPRESA, y); y -= 1;
-                y = drawCenteredText(cs, fontNorm, 6f, RUC, y);     y -= 3;
-
-                y = drawDashes(cs, y); y -= 2;
-
-                y = drawCenteredText(cs, fontBold, 7.5f, "CONTROL INTERNO", y); y -= 2;
-
-                // Tracking en grande
-                y = drawCenteredText(cs, fontBold, 10f, enc.getCodigoTracking(), y); y -= 4;
-
-                // Serie/correlativo
-                if (enc.getSerie() != null && enc.getCorrelativo() != null) {
-                    y = drawCenteredText(cs, fontNorm, 6.5f, enc.getSerie() + " - " + enc.getCorrelativo(), y); y -= 3;
-                }
-
-                // Datos de control
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Fecha:",       fechaStr, y);               y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Operador:",    operadorNombre, y);          y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Estado:",      enc.getEstado(), y);         y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Remitente:",   remNombre, y);               y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Doc rem.:",    remDoc, y);                  y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Destinatario:", desNombre, y);              y -= 1;
-                y = drawWrappedLabel(cs, fontBold, fontNorm, 6.5f, "Contenido:", enc.getDescripcion(), y); y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Destino:",     agenciaDestNombre + (agenciaDestCiudad.isEmpty() ? "" : " - " + agenciaDestCiudad), y); y -= 1;
-                if (!viajeHora.isEmpty()) {
-                    y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Viaje:",   viajeRuta + "  " + viajeHora + "  " + viajePlaca, y); y -= 1;
-                }
-                if (hayDescuento) {
-                    y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Precio:",    "S/ " + montoBase.toPlainString(), y); y -= 1;
-                    y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Descuento:", "- S/ " + descuento.toPlainString(), y); y -= 1;
-                }
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Monto:",       montoStr + (esPorCobrar ? " (EN DESTINO)" : ""), y); y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Forma pago:",  esPorCobrar ? "POR COBRAR" : (enc.getFormaCobro() != null ? enc.getFormaCobro() : "EFECTIVO"), y); y -= 2;
-                y = drawLabel(cs, fontBold, fontNorm, 6f,   "Hash ctrl:",   hash, y); y -= 4;
-
-                // ════════════════════════════════════════════════════════════════
-                //  SECCIÓN 2: COMPROBANTE DE ENCOMIENDA (copia del cliente)
-                // ════════════════════════════════════════════════════════════════
-
-                // Encabezado completo
+                // Encabezado
                 PDImageXObject logoImg = buildLogoImage(doc, LOGO_B64);
                 if (logoImg != null) {
                     float maxLogoH = 34f;

@@ -35,6 +35,8 @@ http {
     upstream frontend { server frontend:3000; keepalive 16; }
 
     # ── Configuración SSL compartida ────────────────────────────────────────
+    # El certificado debe emitirse para: DOMAIN_PLACEHOLDER, www.DOMAIN_PLACEHOLDER
+    # y sistema.DOMAIN_PLACEHOLDER (un solo cert multi-dominio).
     ssl_certificate      /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
     ssl_certificate_key  /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
     ssl_trusted_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/chain.pem;
@@ -48,10 +50,10 @@ http {
     ssl_stapling        on;
     ssl_stapling_verify on;
 
-    # ── HTTP → HTTPS redirect + ACME challenge ──────────────────────────────
+    # ── HTTP → HTTPS redirect + ACME challenge (todos los nombres) ──────────
     server {
-        listen 80;
-        server_name DOMAIN_PLACEHOLDER;
+        listen 80 default_server;
+        server_name DOMAIN_PLACEHOLDER www.DOMAIN_PLACEHOLDER sistema.DOMAIN_PLACEHOLDER _;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -63,10 +65,49 @@ http {
         }
     }
 
-    # ── HTTPS principal ─────────────────────────────────────────────────────
+    # ════════════════════════════════════════════════════════════════════════
+    # PÁGINA WEB PÚBLICA — https://DOMAIN_PLACEHOLDER (y www)
+    # Estática, montada en /var/www/web. El /api se proxea aquí también para
+    # que el login de la web funcione en el mismo origen (sin CORS).
+    # ════════════════════════════════════════════════════════════════════════
     server {
         listen 443 ssl;
-        server_name DOMAIN_PLACEHOLDER;
+        server_name DOMAIN_PLACEHOLDER www.DOMAIN_PLACEHOLDER;
+
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+        add_header X-Frame-Options          "SAMEORIGIN"                             always;
+        add_header X-Content-Type-Options   "nosniff"                                always;
+        add_header Referrer-Policy          "strict-origin-when-cross-origin"         always;
+
+        root /var/www/web;
+        index index.html;
+
+        location /api/ {
+            proxy_pass         http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header   Host              $host;
+            proxy_set_header   X-Real-IP         $remote_addr;
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto $scheme;
+            limit_req zone=api burst=20 nodelay;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location ~* \.(css|js|png|jpg|jpeg|webp|svg|ico|mp4|woff2?)$ {
+            expires 7d;
+            add_header Cache-Control "public";
+        }
+    }
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SISTEMA (PANEL) — https://sistema.DOMAIN_PLACEHOLDER
+    # ════════════════════════════════════════════════════════════════════════
+    server {
+        listen 443 ssl default_server;
+        server_name sistema.DOMAIN_PLACEHOLDER _;
 
         # Cabeceras de seguridad OWASP
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;

@@ -19,7 +19,7 @@ docker run --rm \
   -v "$HOME/.m2:/root/.m2" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -w /app \
-  maven:3.9-eclipse-temurin-17-alpine \
+  maven:3.9.9-eclipse-temurin-21-alpine \
   mvn test -Dspring.profiles.active=test 2>&1
 
 echo ""

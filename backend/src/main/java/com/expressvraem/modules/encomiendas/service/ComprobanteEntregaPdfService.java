@@ -73,13 +73,6 @@ public class ComprobanteEntregaPdfService {
             boolean esPorCobrar = "POR_COBRAR".equals(enc.getFormaCobro());
             String qrContent    = TRACK_URL + enc.getCodigoTracking();
 
-            // Hash de control: codigo + receptor DNI + receptor nombre + fecha entrega
-            String hash = computeHash(
-                    enc.getCodigoTracking(),
-                    enc.getRecibidoPorDni() != null ? enc.getRecibidoPorDni() : "",
-                    enc.getRecibidoPorNombre() != null ? enc.getRecibidoPorNombre() : "",
-                    fechaEntrega);
-
             PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
@@ -88,7 +81,7 @@ public class ComprobanteEntregaPdfService {
             int descLines = com.expressvraem.shared.utils.PdfUtils.wrapText(fontNorm, 7f, enc.getDescripcion(),
                     PAGE_W - MARGIN * 2 - fontBold.getStringWidth("Contenido: ") / 1000f * 7f).size();
 
-            float pageH = 590f + 8f * (descLines - 1);
+            float pageH = 540f + 8f * (descLines - 1);
             PDPage page = new PDPage(new PDRectangle(PAGE_W, pageH));
             doc.addPage(page);
 
@@ -146,15 +139,6 @@ public class ComprobanteEntregaPdfService {
                 // ── Operador ───────────────────────────────────────────────────
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Operador:", operadorNombre, y);        y -= 1;
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Agencia:",  agenciaDestNombre, y);     y -= 3;
-
-                // ── CONTROL INTERNO ────────────────────────────────────────────
-                y = drawDashes(cs, y); y -= 2;
-                y = drawCenteredText(cs, fontBold, 7f, "[ CONTROL INTERNO ]", y); y -= 3;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Tracking:", enc.getCodigoTracking(), y);           y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Estado:", "ENTREGADO", y);                         y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Entregado:", fechaEntrega, y);                     y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Hash:", hash, y);                                   y -= 3;
-                y = drawDashes(cs, y);                                                                           y -= 3;
 
                 // ── Footer ─────────────────────────────────────────────────────
                 y = drawCenteredText(cs, fontObliq, 6.5f, "Gracias por usar " + ascii(EMPRESA), y); y -= 1;
