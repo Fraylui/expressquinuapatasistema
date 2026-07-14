@@ -1,12 +1,10 @@
 'use client'
-import React, { useState } from 'react'
-import { Bus, Clock, MapPin, Search, ArrowRight } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
-import Link from 'next/link'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Clock, MapPin, ArrowRight, CalendarDays } from 'lucide-react'
 import api from '@/services/api'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import PublicShell, { syne, glassCard, glassInput, EstadoChip } from '@/components/public/PublicShell'
 
 interface ViajePublico {
   id: number
@@ -16,159 +14,191 @@ interface ViajePublico {
   vehiculo?: { placa: string; tipo: string; numAsientos: number }
 }
 
-const AGENCIAS = ['Quinuapata', 'Kimbiri', 'Pichari', 'Llochegua', 'Sivia']
+const fmtHora = (iso: string) => {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? '—' : format(d, 'HH:mm')
+}
+const fmtFecha = (iso: string) => {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? '—' : format(d, "EEEE dd 'de' MMMM", { locale: es })
+}
+const mismaFecha = (iso: string, yyyymmdd: string) => {
+  const d = new Date(iso)
+  return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === yyyymmdd
+}
 
 export default function HorariosPage() {
+  const [viajes, setViajes] = useState<ViajePublico[]>([])
+  const [loading, setLoading] = useState(true)
   const [origen, setOrigen] = useState('')
   const [destino, setDestino] = useState('')
-  const [fecha, setFecha] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [viajes, setViajes] = useState<ViajePublico[]>([])
-  const [buscado, setBuscado] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [fecha, setFecha] = useState('')
 
-  const buscar = async () => {
-    setLoading(true)
-    setBuscado(true)
-    try {
-      const res = await api.get('/api/viajes/publico', { params: { origen, destino, fecha } })
-      setViajes(res.data?.data || res.data || [])
-    } catch {
-      setViajes([])
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    api.get('/api/viajes/publico')
+      .then((r: any) => setViajes(r.data?.data || r.data || []))
+      .catch(() => setViajes([]))
+      .finally(() => setLoading(false))
+  }, [])
 
-  const formatHora = (iso: string) => {
-    try { return format(new Date(iso), 'HH:mm') } catch { return '—' }
-  }
+  /* Los orígenes/destinos salen de las rutas realmente programadas — nada hardcodeado */
+  const origenes = useMemo(
+    () => Array.from(new Set(viajes.map(v => v.ruta?.origen).filter(Boolean) as string[])).sort(),
+    [viajes]
+  )
+  const destinos = useMemo(
+    () => Array.from(new Set(viajes.map(v => v.ruta?.destino).filter(Boolean) as string[])).sort(),
+    [viajes]
+  )
 
-  const formatFecha = (iso: string) => {
-    try { return format(new Date(iso), "EEEE dd 'de' MMMM", { locale: es }) } catch { return '—' }
-  }
+  const filtrados = useMemo(() =>
+    viajes
+      .filter(v =>
+        (!origen  || v.ruta?.origen  === origen) &&
+        (!destino || v.ruta?.destino === destino) &&
+        (!fecha   || mismaFecha(v.fechaHoraSal, fecha))
+      )
+      .sort((a, b) => (a.fechaHoraSal ?? '').localeCompare(b.fechaHoraSal ?? '')),
+    [viajes, origen, destino, fecha]
+  )
+
+  const selectStyle: React.CSSProperties = { ...glassInput }
+  const hayFiltro = !!(origen || destino || fecha)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-primary-900 text-white py-4 px-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-accent-700 rounded-lg flex items-center justify-center">
-              <Bus size={18} className="text-white" />
-            </div>
-            <div>
-              <p className="font-bold text-sm">Express Quinuapata VRAEM SAC</p>
-              <p className="text-xs text-white/50">Consulta de horarios</p>
-            </div>
-          </div>
-          <nav className="flex gap-4 text-sm text-white/70">
-            <Link href="/horarios" className="text-white font-medium">Horarios</Link>
-            <Link href="/tarifas" className="hover:text-white transition-colors">Tarifas</Link>
-            <Link href="/sucursales" className="hover:text-white transition-colors">Sucursales</Link>
-            <Link href="/tracking" className="hover:text-white transition-colors">Rastrear</Link>
-          </nav>
+    <PublicShell active="horarios" subtitle="Consulta de horarios">
+      {/* Hero */}
+      <div className="mb-8 text-center">
+        <div
+          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ background: 'rgba(22,163,74,0.14)', border: '1px solid rgba(22,163,74,0.3)' }}
+        >
+          <Clock size={26} style={{ color: '#4ade80' }} />
         </div>
-      </header>
+        <h1 className={`${syne.className} text-2xl font-extrabold text-white sm:text-[1.7rem]`}>
+          Próximas salidas
+        </h1>
+        <p className="mt-2 text-sm text-white/45">
+          Consulta los horarios programados y elige tu viaje
+        </p>
+      </div>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* Buscador */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
-          <h1 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-            <Clock size={20} className="text-primary-900" />
-            Consultar horarios
-          </h1>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Origen</label>
-              <select
-                value={origen}
-                onChange={e => setOrigen(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="">Todos</option>
-                {AGENCIAS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Destino</label>
-              <select
-                value={destino}
-                onChange={e => setDestino(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="">Todos</option>
-                {AGENCIAS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Fecha</label>
-              <input
-                type="date"
-                value={fecha}
-                onChange={e => setFecha(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button icon={Search} loading={loading} onClick={buscar} className="w-full justify-center">
-                Buscar
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Resultados */}
-        {buscado && (
+      {/* Filtros */}
+      <div className="mb-6 rounded-2xl p-4 sm:p-5" style={glassCard}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <p className="text-sm text-gray-500 mb-3">
-              {viajes.length > 0
-                ? `${viajes.length} viaje${viajes.length > 1 ? 's' : ''} encontrado${viajes.length > 1 ? 's' : ''}`
-                : 'No se encontraron viajes para los filtros seleccionados'}
-            </p>
-            <div className="space-y-3">
-              {viajes.map(v => (
-                <div key={v.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-                  <div className="w-14 h-14 bg-primary-900 rounded-xl flex flex-col items-center justify-center shrink-0 text-white">
-                    <span className="text-xl font-bold leading-none">{formatHora(v.fechaHoraSal)}</span>
-                    <span className="text-[10px] text-white/60 mt-0.5">hrs</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-base font-semibold text-gray-900">
-                      <span>{v.ruta?.origen || '—'}</span>
-                      <ArrowRight size={14} className="text-gray-400 shrink-0" />
-                      <span>{v.ruta?.destino || '—'}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 mt-1">
-                      <span className="text-xs text-gray-500 capitalize">{formatFecha(v.fechaHoraSal)}</span>
-                      {v.vehiculo && (
-                        <span className="text-xs text-gray-500">{v.vehiculo.tipo} · {v.vehiculo.placa}</span>
-                      )}
-                      {v.ruta?.distanciaKm && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <MapPin size={10} />
-                          {v.ruta.distanciaKm} km
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <Badge estado={v.estado} />
+            <label className="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-white/40">
+              Origen
+            </label>
+            <select
+              value={origen}
+              onChange={e => setOrigen(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none"
+              style={selectStyle}
+            >
+              <option value="">Todos</option>
+              {origenes.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-white/40">
+              Destino
+            </label>
+            <select
+              value={destino}
+              onChange={e => setDestino(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none"
+              style={selectStyle}
+            >
+              <option value="">Todos</option>
+              {destinos.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-white/40">
+              Fecha
+            </label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={e => setFecha(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none"
+              style={selectStyle}
+            />
+          </div>
+        </div>
+        {hayFiltro && (
+          <button
+            onClick={() => { setOrigen(''); setDestino(''); setFecha('') }}
+            className="mt-3 text-xs font-medium text-white/40 transition-colors duration-150 hover:text-white/70"
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
+      {/* Resultados */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-20 animate-pulse rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }} />
+          ))}
+        </div>
+      ) : filtrados.length === 0 ? (
+        <div className="rounded-2xl p-12 text-center" style={glassCard}>
+          <CalendarDays size={36} className="mx-auto mb-3 text-white/20" />
+          <p className="text-sm text-white/60">
+            {hayFiltro
+              ? 'No hay salidas programadas para los filtros seleccionados'
+              : 'Por el momento no hay salidas programadas'}
+          </p>
+          <p className="mt-1 text-xs text-white/35">
+            Consulta en nuestras agencias o vuelve a revisar más tarde
+          </p>
+        </div>
+      ) : (
+        <div>
+          <p className="mb-3 text-xs text-white/40">
+            {filtrados.length} salida{filtrados.length !== 1 ? 's' : ''} programada{filtrados.length !== 1 ? 's' : ''}
+          </p>
+          <div className="space-y-3">
+            {filtrados.map(v => (
+              <div key={v.id} className="flex items-center gap-4 rounded-xl p-4" style={glassCard}>
+                <div
+                  className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl"
+                  style={{ background: 'rgba(22,163,74,0.14)', border: '1px solid rgba(22,163,74,0.3)' }}
+                >
+                  <span className="font-mono text-lg font-bold leading-none" style={{ color: '#4ade80' }}>
+                    {fmtHora(v.fechaHoraSal)}
+                  </span>
+                  <span className="mt-0.5 text-[9px] uppercase tracking-wider text-white/35">hrs</span>
                 </div>
-              ))}
-            </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 text-[0.95rem] font-semibold text-white">
+                    <span>{v.ruta?.origen || '—'}</span>
+                    <ArrowRight size={14} className="shrink-0 text-white/30" />
+                    <span>{v.ruta?.destino || '—'}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span className="text-xs capitalize text-white/40">{fmtFecha(v.fechaHoraSal)}</span>
+                    {v.vehiculo && (
+                      <span className="text-xs text-white/40">{v.vehiculo.tipo} · {v.vehiculo.placa}</span>
+                    )}
+                    {v.ruta?.distanciaKm && (
+                      <span className="flex items-center gap-1 text-xs text-white/40">
+                        <MapPin size={10} />
+                        {v.ruta.distanciaKm} km
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <EstadoChip estado={v.estado} />
+              </div>
+            ))}
           </div>
-        )}
-
-        {!buscado && (
-          <div className="text-center py-16 text-gray-400">
-            <Clock size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Selecciona origen, destino y fecha para ver los horarios disponibles</p>
-          </div>
-        )}
-      </main>
-
-      <footer className="text-center text-xs text-gray-400 py-6 border-t border-gray-200 mt-8">
-        Express Quinuapata VRAEM S.A.C. · Quinuapata, Ayacucho · © {new Date().getFullYear()}
-      </footer>
-    </div>
+        </div>
+      )}
+    </PublicShell>
   )
 }

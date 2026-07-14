@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { CheckCircle, Circle, Loader } from 'lucide-react'
+import { CheckCircle2, Circle, Loader } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -25,6 +25,15 @@ const ESTADOS_ALTERNATIVOS = [
   { key: 'PERDIDO',  label: 'Perdido' },
 ]
 
+/* Color del estado actual: verde en el flujo normal, alerta en los alternativos */
+const COLOR_ACTUAL: Record<string, string> = {
+  DEVUELTO: '#ea580c',
+  PERDIDO:  '#dc2626',
+}
+
+const GREEN = '#16a34a'
+
+/** Timeline de la página pública de rastreo — estilado sobre fondo navy. */
 export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ historial, estadoActual }) => {
   const completados = historial.map(h => h.estadoNuevo)
   const esAlternativo = ESTADOS_ALTERNATIVOS.some(e => e.key === estadoActual)
@@ -34,46 +43,58 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ historial, e
     : ESTADOS_ORDEN
 
   return (
-    <div className="flex items-start gap-0 overflow-x-auto py-4">
+    <div className="flex items-start gap-0 overflow-x-auto py-3">
       {estados.map((estado, i) => {
         const completado = completados.includes(estado.key)
         const esActual = estadoActual === estado.key
         const histItem = historial.find(h => h.estadoNuevo === estado.key)
+        const fecha = histItem ? new Date(histItem.createdAt) : null
+        const fechaValida = fecha && !isNaN(fecha.getTime())
+        const colorActual = COLOR_ACTUAL[estado.key] ?? GREEN
 
         return (
           <React.Fragment key={estado.key}>
-            <div className="flex flex-col items-center min-w-[100px]">
-              <div className="flex items-center justify-center w-8 h-8 mb-2">
+            <div className="flex min-w-[100px] flex-col items-center">
+              <div className="mb-2 flex h-8 w-8 items-center justify-center">
                 {completado && !esActual ? (
-                  <CheckCircle size={28} className="text-primary-900 fill-primary-900 text-white" />
+                  <CheckCircle2 size={28} strokeWidth={2} style={{ color: '#4ade80' }} />
                 ) : esActual ? (
-                  <div className="w-7 h-7 rounded-full bg-accent-700 flex items-center justify-center animate-pulse">
-                    <Loader size={14} className="text-white animate-spin" />
+                  <div
+                    className="flex h-7 w-7 animate-pulse items-center justify-center rounded-full"
+                    style={{ background: colorActual, boxShadow: `0 0 16px ${colorActual}66` }}
+                  >
+                    <Loader size={14} className="animate-spin text-white" />
                   </div>
                 ) : (
-                  <Circle size={28} className="text-gray-300" />
+                  <Circle size={28} style={{ color: 'rgba(255,255,255,0.18)' }} />
                 )}
               </div>
-              <p className={`text-xs font-semibold text-center leading-tight ${
-                completado || esActual ? 'text-gray-800' : 'text-gray-400'
-              }`}>
+              <p
+                className="text-center text-xs font-semibold leading-tight"
+                style={{ color: completado || esActual ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.32)' }}
+              >
                 {estado.label}
               </p>
-              {histItem && !isNaN(new Date(histItem.createdAt).getTime()) && (
-                <p className="text-xs text-gray-400 text-center mt-1">
-                  {format(new Date(histItem.createdAt), 'dd MMM HH:mm', { locale: es })}
+              {fechaValida && (
+                <p className="mt-1 text-center text-xs" style={{ color: 'rgba(255,255,255,0.38)' }}>
+                  {format(fecha!, 'dd MMM HH:mm', { locale: es })}
                 </p>
               )}
               {histItem?.usuarioNombre && (
-                <p className="text-xs text-gray-400 text-center">{histItem.usuarioNombre}</p>
+                <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {histItem.usuarioNombre}
+                </p>
               )}
             </div>
             {i < estados.length - 1 && (
-              <div className={`flex-1 h-0.5 mt-4 min-w-[30px] ${
-                completados.includes(estados[i + 1].key) || completado
-                  ? 'bg-primary-900'
-                  : 'bg-gray-200'
-              }`} />
+              <div
+                className="mt-4 h-0.5 min-w-[30px] flex-1 rounded-full"
+                style={{
+                  background: completados.includes(estados[i + 1].key) || completado
+                    ? GREEN
+                    : 'rgba(255,255,255,0.1)',
+                }}
+              />
             )}
           </React.Fragment>
         )

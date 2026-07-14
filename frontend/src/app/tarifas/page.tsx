@@ -1,8 +1,8 @@
 'use client'
 import React, { useEffect, useState } from 'react'
-import { Bus, DollarSign, ArrowRight, Tag } from 'lucide-react'
-import Link from 'next/link'
+import { Tag, ArrowRight } from 'lucide-react'
 import api from '@/services/api'
+import PublicShell, { syne, glassCard } from '@/components/public/PublicShell'
 
 interface TarifaPublica {
   id: number
@@ -13,110 +13,97 @@ interface TarifaPublica {
   descripcion?: string
 }
 
+const TIPO_CHIP: Record<string, React.CSSProperties> = {
+  COMBI:     { background: 'rgba(59,130,246,0.12)', color: '#93c5fd', border: '1px solid rgba(59,130,246,0.35)' },
+  CAMIONETA: { background: 'rgba(250,204,21,0.10)', color: '#fde047', border: '1px solid rgba(250,204,21,0.30)' },
+}
+const TIPO_CHIP_DEFAULT: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.15)',
+}
+
 export default function TarifasPage() {
   const [tarifas, setTarifas] = useState<TarifaPublica[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     api.get('/api/tarifas/publico')
-      .then(r => setTarifas(r.data?.data || r.data || []))
+      .then((r: any) => setTarifas(r.data?.data || r.data || []))
       .catch(() => setTarifas([]))
       .finally(() => setLoading(false))
   }, [])
 
-  const TIPO_COLOR: Record<string, string> = {
-    COMBI:     'bg-blue-50 text-blue-700 border-blue-200',
-    CAMIONETA: 'bg-amber-50 text-amber-700 border-amber-200',
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-primary-900 text-white py-4 px-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-accent-700 rounded-lg flex items-center justify-center">
-              <Bus size={18} className="text-white" />
-            </div>
-            <div>
-              <p className="font-bold text-sm">Express Quinuapata VRAEM SAC</p>
-              <p className="text-xs text-white/50">Tarifas y precios</p>
-            </div>
-          </div>
-          <nav className="flex gap-4 text-sm text-white/70">
-            <Link href="/horarios" className="hover:text-white transition-colors">Horarios</Link>
-            <Link href="/tarifas" className="text-white font-medium">Tarifas</Link>
-            <Link href="/sucursales" className="hover:text-white transition-colors">Sucursales</Link>
-            <Link href="/tracking" className="hover:text-white transition-colors">Rastrear</Link>
-          </nav>
+    <PublicShell active="tarifas" subtitle="Tarifas y precios">
+      {/* Hero */}
+      <div className="mb-8 text-center">
+        <div
+          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ background: 'rgba(22,163,74,0.14)', border: '1px solid rgba(22,163,74,0.3)' }}
+        >
+          <Tag size={26} style={{ color: '#4ade80' }} />
         </div>
-      </header>
+        <h1 className={`${syne.className} text-2xl font-extrabold text-white sm:text-[1.7rem]`}>
+          Tarifas de pasaje
+        </h1>
+        <p className="mt-2 text-sm text-white/45">
+          Precios vigentes por ruta y tipo de vehículo. Sujetos a cambio sin previo aviso.
+        </p>
+      </div>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Tag size={20} className="text-primary-900" />
-            Tarifas de pasaje
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Precios vigentes de pasajes por ruta y tipo de vehículo. Sujetos a cambio sin previo aviso.
-          </p>
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-20 animate-pulse rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }} />
+          ))}
         </div>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="bg-white rounded-xl border border-gray-200 h-20 animate-pulse" />
-            ))}
-          </div>
-        ) : tarifas.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-            <Tag size={36} className="mx-auto mb-3 text-gray-300" />
-            <p className="text-sm text-gray-500">Las tarifas serán publicadas próximamente</p>
-            <p className="text-xs text-gray-400 mt-1">Consulte en nuestras oficinas o comuníquese por teléfono</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {tarifas.map(t => (
-              <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-                <div className="w-12 h-12 bg-primary-900 rounded-xl flex items-center justify-center shrink-0">
-                  <DollarSign size={20} className="text-white" />
+      ) : tarifas.length === 0 ? (
+        <div className="rounded-2xl p-12 text-center" style={glassCard}>
+          <Tag size={36} className="mx-auto mb-3 text-white/20" />
+          <p className="text-sm text-white/60">Las tarifas serán publicadas próximamente</p>
+          <p className="mt-1 text-xs text-white/35">Consulta en nuestras oficinas o comunícate por teléfono</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tarifas.map(t => (
+            <div key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl p-4" style={glassCard}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 text-[0.95rem] font-semibold text-white">
+                  <span>{t.rutaOrigen || '—'}</span>
+                  <ArrowRight size={14} className="shrink-0 text-white/30" />
+                  <span>{t.rutaDestino || '—'}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 font-semibold text-gray-900">
-                    <span>{t.rutaOrigen || '—'}</span>
-                    <ArrowRight size={13} className="text-gray-400 shrink-0" />
-                    <span>{t.rutaDestino || '—'}</span>
-                  </div>
-                  {t.descripcion && (
-                    <p className="text-xs text-gray-500 mt-0.5">{t.descripcion}</p>
-                  )}
-                </div>
-                {t.tipoVehiculo && (
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full border ${TIPO_COLOR[t.tipoVehiculo] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                    {t.tipoVehiculo}
-                  </span>
+                {t.descripcion && (
+                  <p className="mt-0.5 text-xs text-white/40">{t.descripcion}</p>
                 )}
-                <div className="text-right shrink-0">
-                  <p className="text-xs text-gray-400">Desde</p>
-                  <p className="text-xl font-bold text-primary-900">S/ {Number(t.precio).toFixed(2)}</p>
-                </div>
               </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-          <p className="font-semibold mb-1">¿Tienes dudas sobre las tarifas?</p>
-          <p className="text-xs text-blue-600">
-            Comunícate con nuestras agencias o visítanos en nuestras oficinas. Los precios pueden variar según temporada y disponibilidad.
-          </p>
+              {t.tipoVehiculo && (
+                <span
+                  className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                  style={TIPO_CHIP[t.tipoVehiculo] ?? TIPO_CHIP_DEFAULT}
+                >
+                  {t.tipoVehiculo}
+                </span>
+              )}
+              <div className="shrink-0 text-right">
+                <p className="text-[0.65rem] uppercase tracking-wider text-white/30">Desde</p>
+                <p className={`${syne.className} text-xl font-extrabold`} style={{ color: '#4ade80' }}>
+                  S/ {Number(t.precio).toFixed(2)}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
-      </main>
+      )}
 
-      <footer className="text-center text-xs text-gray-400 py-6 border-t border-gray-200 mt-8">
-        Express Quinuapata VRAEM S.A.C. · Quinuapata, Ayacucho · © {new Date().getFullYear()}
-      </footer>
-    </div>
+      <div
+        className="mt-8 rounded-xl p-4"
+        style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.22)' }}
+      >
+        <p className="text-sm font-semibold" style={{ color: '#4ade80' }}>¿Tienes dudas sobre las tarifas?</p>
+        <p className="mt-0.5 text-xs text-white/45">
+          Comunícate con nuestras agencias o visítanos en nuestras oficinas. Los precios pueden variar según temporada y disponibilidad.
+        </p>
+      </div>
+    </PublicShell>
   )
 }
