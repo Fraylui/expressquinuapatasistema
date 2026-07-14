@@ -111,8 +111,9 @@ services:
     networks:
       - express-pdn-network
     healthcheck:
-      # En modo HTTPS el puerto 80 redirige (301) — se prueba https con cert del dominio
-      test: ["CMD-SHELL", "wget -qO- http://localhost/actuator/health 2>/dev/null | grep -q UP || wget --no-check-certificate -qO- https://localhost/actuator/health 2>/dev/null | grep -q UP || exit 1"]
+      # 127.0.0.1 (no localhost: nginx solo escucha IPv4). Prueba https (modo SSL)
+      # y cae a http (modo inicial sin certificado).
+      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://127.0.0.1/actuator/health 2>/dev/null | grep -q UP || wget -qO- http://127.0.0.1/actuator/health 2>/dev/null | grep -q UP || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
