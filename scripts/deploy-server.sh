@@ -42,8 +42,9 @@ echo "══ 4/5 Levantando servicios ══"
 $COMPOSE up -d
 
 echo "══ 5/5 Verificando salud ══"
+# -L: en modo HTTPS nginx redirige http→https (301); -k: el cert es del dominio, no de localhost
 for i in $(seq 1 30); do
-  if curl -sf http://localhost/actuator/health | grep -q UP; then
+  if curl -skfL http://localhost/actuator/health | grep -q UP; then
     echo "   Backend UP tras $((i*5))s"
     docker compose ps --format 'table {{.Name}}\t{{.Status}}'
     echo "✅ Despliegue completado"
