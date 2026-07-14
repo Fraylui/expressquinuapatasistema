@@ -45,12 +45,6 @@ public class EncomiendaExternaTicketPdfService {
             String  qrContent = controlUrl + enc.getCorrelativo();
             String  montoStr  = "S/ " + enc.getMonto().toPlainString();
 
-            String hash = PdfUtils.sha256Short(
-                    enc.getCorrelativo(),
-                    enc.getMonto().toPlainString(),
-                    enc.getConductorDni() != null ? enc.getConductorDni() : "",
-                    fechaStr);
-
             PDType1Font fontBold  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontNorm  = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             PDType1Font fontObliq = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
@@ -71,7 +65,6 @@ public class EncomiendaExternaTicketPdfService {
                     + 8 * 3 + 6      // destinatario
                     + 8 * (1 + descLines) + 6 // descripción (multilínea) + obs
                     + 8 * 3 + 6      // cobro + operador
-                    + 8 * 5 + 6      // control interno
                     + 20;
             pageH = Math.max(pageH, 320f); // mínimo ~113mm — suficiente para contenido básico
 
@@ -145,16 +138,6 @@ public class EncomiendaExternaTicketPdfService {
                 }
                 y -= 2;
                 y = drawLabel(cs, fontBold, fontNorm, 7f, "Operador:", ascii(operadorNombre), y); y -= 3;
-
-                // ── CONTROL INTERNO ────────────────────────────────────────────
-                y = drawDashes(cs, y); y -= 2;
-                y = drawCentered(cs, fontBold, 7f, "[ CONTROL INTERNO ]", y); y -= 3;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Correlativo:", enc.getCorrelativo(), y);     y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Estado pago:",
-                        cobrarAlDestinatario ? "PENDIENTE" : "PAGADO", y);                                y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Verificacion:", qrContent, y);               y -= 1;
-                y = drawLabel(cs, fontBold, fontNorm, 6.5f, "Hash:", hash, y);                             y -= 3;
-                y = drawDashes(cs, y); y -= 3;
 
                 // ── Footer ─────────────────────────────────────────────────────
                 y = drawCentered(cs, fontObliq, 6.5f, "Conserve este ticket para reclamar.", y);   y -= 1;

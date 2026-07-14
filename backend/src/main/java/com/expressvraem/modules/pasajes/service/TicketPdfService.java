@@ -112,9 +112,6 @@ public class TicketPdfService {
             String cb      = p.getCodigoBoleta() != null ? p.getCodigoBoleta() : "VTA-" + p.getId();
             String qrUrl   = verificacionUrl + cb;
             String emitido = p.getFechaVenta() != null ? p.getFechaVenta().format(dtfFull) : "";
-            String serie   = p.getSerie()      != null ? p.getSerie()      : "T001";
-            String correl  = p.getCorrelativo()!= null ? p.getCorrelativo() : String.format("%08d", p.getId());
-            String hash    = PdfUtils.sha256Short(cb, p.getPrecioFinal().toPlainString(), clienteDni, emitido);
 
             boolean hasLogo     = logoB64 != null && !logoB64.isBlank();
             boolean hasDiscount = p.getMontoDescuento() != null
@@ -125,7 +122,7 @@ public class TicketPdfService {
             //   header(45) + boleta-title(23) + QR(QR_SZ+11.5) + trip(55) +
             //   pasajero(38.5) + precio(39) + agencia(34.5) + ctrl(58) + footer(27)
             // + márgenes top+bottom (2×MARGIN)
-            float baseH = 45f + 23f + QR_SZ + 11.5f + 55f + 38.5f + 39f + 34.5f + 58f + 27f
+            float baseH = 45f + 23f + QR_SZ + 11.5f + 55f + 38.5f + 39f + 34.5f + 27f
                         + (MARGIN * 2);
             float pageH = baseH
                         + (hasLogo ? 40f : 0f)
@@ -200,15 +197,6 @@ public class TicketPdfService {
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Atendido por:", operadorNombre, y);  y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Agencia:", agenciaNombre, y);         y -= 1;
                 y = lbl(cs, fontBold, fontNorm, 6.5f, "Emitido:", emitido, y);               y -= 4;
-
-                // Control interno
-                y = dashes(cs, y); y -= 2;
-                y = ctext(cs, fontBold, 7f, "[ CONTROL INTERNO ]", y); y -= 3;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Serie/Correl.:", serie + "-" + correl, y); y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Estado:", p.getEstado(), y);                y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Verificacion:", qrUrl, y);                  y -= 1;
-                y = lbl(cs, fontBold, fontNorm, 6.5f, "Hash:", hash, y);                           y -= 3;
-                y = dashes(cs, y); y -= 3;
 
                 // Footer
                 y = ctext(cs, fontBold, 8f, "Buen viaje!", y); y -= 2;

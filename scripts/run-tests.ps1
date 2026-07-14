@@ -19,7 +19,7 @@ docker run --rm `
   -e "DOCKER_HOST=npipe:////./pipe/docker_engine" `
   -e "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=//./pipe/docker_engine" `
   -w /app `
-  maven:3.9-eclipse-temurin-17-alpine `
+  maven:3.9.9-eclipse-temurin-21-alpine `
   mvn test -Dspring.profiles.active=test
 
 Write-Host ""

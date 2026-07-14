@@ -98,11 +98,14 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8081:8081"
     environment:
       DOMAIN: ${DOMAIN}
     volumes:
       - certbot_conf:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro
+      # Página web pública (repo PaginaWebExpressQuinuapata clonado en el servidor)
+      - /opt/paginaweb:/var/www/web:ro
     depends_on:
       - frontend
     networks:
