@@ -90,7 +90,7 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ historial, e
               <div
                 className="mt-4 h-0.5 min-w-[30px] flex-1 rounded-full"
                 style={{
-                  background: completados.includes(estados[i + 1].key) || completado
+                  background: completados.includes(estados[i + 1].key)
                     ? GREEN
                     : 'rgba(255,255,255,0.1)',
                 }}
