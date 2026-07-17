@@ -40,8 +40,16 @@ interface ViajeHistorial {
   duracionMinutos?: number
 }
 interface RutaOpt { id: number; origen: string; destino: string; distanciaKm?: number }
-interface VehOpt  { id: number; placa: string; tipo: string; numAsientos?: number; conductorHabitualId?: number | null }
-interface CondOpt { id: number; nombres: string; apellidos: string; licencia: string }
+interface VehOpt  { id: number; placa: string; tipo: string; numAsientos?: number; conductorHabitualId?: number | null; ubicacionActual?: string | null }
+interface CondOpt { id: number; nombres: string; apellidos: string; licencia: string; ubicacionActual?: string | null }
+
+/** Aviso si la flota quedó en otra ciudad según su último viaje (no bloquea) */
+function descuadreUbicacion(ubicacion: string | null | undefined, origenRuta: string | undefined): string | null {
+  if (!ubicacion || !origenRuta) return null
+  if (ubicacion.toLowerCase().startsWith('en ruta')) return `aún está ${ubicacion.toLowerCase()}`
+  if (ubicacion.trim().toLowerCase() !== origenRuta.trim().toLowerCase()) return `quedó en ${ubicacion} según su último viaje`
+  return null
+}
 
 const emptyForm     = { rutaId: '', vehiculoId: '', conductorId: '', fechaHoraSal: '', observaciones: '' }
 const emptyEditForm = { conductorId: '', vehiculoId: '', fechaHoraSal: '', observaciones: '' }
@@ -1198,7 +1206,9 @@ export default function ViajesPage() {
                       className="w-full px-4 py-3 border border-gray-200 dark:border-[#293548] bg-white dark:bg-[#1e293b] rounded-xl text-sm text-gray-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition-colors cursor-pointer hover:border-gray-300 dark:hover:border-[#334155]">
                       <option value="">— Selecciona —</option>
                       {vehiculos.map(v => (
-                        <option key={v.id} value={v.id}>{v.placa} — {v.tipo}</option>
+                        <option key={v.id} value={v.id}>
+                          {v.placa} — {v.tipo}{v.ubicacionActual ? ` (${v.ubicacionActual})` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1210,11 +1220,31 @@ export default function ViajesPage() {
                       className="w-full px-4 py-3 border border-gray-200 dark:border-[#293548] bg-white dark:bg-[#1e293b] rounded-xl text-sm text-gray-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition-colors cursor-pointer hover:border-gray-300 dark:hover:border-[#334155]">
                       <option value="">— Selecciona —</option>
                       {conductores.map(c => (
-                        <option key={c.id} value={c.id}>{c.nombres} {c.apellidos} — {c.licencia}</option>
+                        <option key={c.id} value={c.id}>
+                          {c.nombres} {c.apellidos} — {c.licencia}{c.ubicacionActual ? ` (${c.ubicacionActual})` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
                 </div>
+                {(() => {
+                  const origenRuta = rutas.find(r => String(r.id) === form.rutaId)?.origen
+                  const vehSel     = vehiculos.find(v => String(v.id) === form.vehiculoId)
+                  const condSelU   = conductores.find(c => String(c.id) === form.conductorId)
+                  const avisos: string[] = []
+                  const av = descuadreUbicacion(vehSel?.ubicacionActual, origenRuta)
+                  const ac = descuadreUbicacion(condSelU?.ubicacionActual, origenRuta)
+                  if (av && vehSel) avisos.push(`El vehículo ${vehSel.placa} ${av}`)
+                  if (ac && condSelU) avisos.push(`El conductor ${condSelU.nombres} ${condSelU.apellidos} ${ac}`)
+                  return avisos.length > 0 ? (
+                    <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-xl px-3 py-2 text-[11px] text-amber-800 dark:text-amber-300">
+                      <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                      <div>
+                        {avisos.map((a, i) => <p key={i}>{a}. Verifica antes de programar.</p>)}
+                      </div>
+                    </div>
+                  ) : null
+                })()}
               </div>
 
               {/* ── Paso 3: Horario ── */}

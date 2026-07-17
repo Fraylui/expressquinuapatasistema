@@ -30,6 +30,7 @@ public class ConfiguracionVehiculoController {
 
     private final VehiculoRepository vehiculoRepository;
     private final ConductorRepository conductorRepository;
+    private final com.expressvraem.modules.vehiculos.service.UbicacionFlotaService ubicacionFlotaService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR')")
@@ -40,7 +41,15 @@ public class ConfiguracionVehiculoController {
         conductorRepository.findAll().forEach(c -> nombres.put(c.getId(),
                 ((c.getNombres() != null ? c.getNombres() : "") + " "
                  + (c.getApellidos() != null ? c.getApellidos() : "")).trim()));
-        return ResponseEntity.ok(ApiResponse.ok(lista.stream().map(v -> toMap(v, nombres)).toList()));
+
+        Map<Long, String> ubicaciones = ubicacionFlotaService.ubicacionVehiculos();
+        String sede = ubicacionFlotaService.ciudadSedePrincipal();
+
+        return ResponseEntity.ok(ApiResponse.ok(lista.stream().map(v -> {
+            Map<String, Object> m = toMap(v, nombres);
+            m.put("ubicacionActual", ubicaciones.getOrDefault(v.getId(), sede));
+            return m;
+        }).toList()));
     }
 
     @PostMapping

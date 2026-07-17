@@ -52,6 +52,7 @@ interface Vehiculo {
   estado: string
   conductorHabitualId: number | null
   conductorHabitualNombre: string | null
+  ubicacionActual: string | null
 }
 
 interface Conductor {
@@ -862,6 +863,7 @@ function VehiculosTab() {
                 <th className="px-4 py-3 text-left font-medium">Tipo</th>
                 <th className="px-4 py-3 text-left font-medium">Marca / Modelo</th>
                 <th className="px-4 py-3 text-left font-medium">Conductor habitual</th>
+                <th className="px-4 py-3 text-left font-medium">Ubicación</th>
                 <th className="px-4 py-3 text-center font-medium">Asientos</th>
                 <th className="px-4 py-3 text-center font-medium">Estado</th>
                 <th className="px-4 py-3 text-center font-medium">Acciones</th>
@@ -885,6 +887,16 @@ function VehiculosTab() {
                           <UserCircle size={12} className="text-gray-400" />{v.conductorHabitualNombre}
                         </span>
                       : <span className="text-gray-300">Sin asignar</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {v.ubicacionActual ? (
+                      <span className={`inline-flex items-center gap-1 ${
+                        v.ubicacionActual.toLowerCase().startsWith('en ruta')
+                          ? 'text-blue-600 font-medium' : 'text-gray-600'
+                      }`}>
+                        <MapPin size={11} className="shrink-0" />{v.ubicacionActual}
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-center font-semibold text-gray-900">{v.numAsientos}</td>
                   <td className="px-4 py-3 text-center">
