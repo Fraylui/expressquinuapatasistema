@@ -195,9 +195,13 @@ function UsuarioModal({
       open
       onClose={onClose}
       title={modo === 'crear' ? 'Nuevo usuario' : 'Editar usuario'}
-      size="md"
+      size="lg"
     >
-      <div className="space-y-3">
+      <div className="space-y-4">
+        {/* ── Datos personales ── */}
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1">
+          Datos personales
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Nombres *" error={errors.nombres}>
             <input value={form.nombres} onChange={sf('nombres')} placeholder="Juan" className={inputCls()} />
@@ -205,14 +209,6 @@ function UsuarioModal({
           <Field label="Apellidos *" error={errors.apellidos}>
             <input value={form.apellidos} onChange={sf('apellidos')} placeholder="Quispe" className={inputCls()} />
           </Field>
-        </div>
-
-        <Field label="Email *" error={errors.email}>
-          <input type="email" value={form.email} onChange={sf('email')}
-            placeholder="usuario@ejemplo.com" className={inputCls()} />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
           <Field label="DNI (8 dígitos) *" error={errors.dni}>
             <input value={form.dni} onChange={e => {
               const v = e.target.value.replace(/\D/g, '').slice(0, 8)
@@ -227,18 +223,32 @@ function UsuarioModal({
           </Field>
         </div>
 
-        <Field label={modo === 'crear' ? 'Contraseña temporal *' : 'Nueva contraseña (vacío = sin cambio)'} error={errors.password}>
-          <div className="relative">
-            <input type={showPass ? 'text' : 'password'} value={form.password} onChange={sf('password')}
-              placeholder={modo === 'crear' ? 'Mínimo 8 caracteres' : '••••••••'}
-              className={inputCls('pr-9')} />
-            <button type="button" onClick={() => setShowPass(v => !v)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-        </Field>
+        {/* ── Cuenta de acceso ── */}
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 pt-1">
+          Cuenta de acceso
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Email *" error={errors.email}>
+            <input type="email" value={form.email} onChange={sf('email')}
+              placeholder="usuario@ejemplo.com" className={inputCls()} />
+          </Field>
+          <Field label={modo === 'crear' ? 'Contraseña temporal *' : 'Nueva contraseña (vacío = sin cambio)'} error={errors.password}>
+            <div className="relative">
+              <input type={showPass ? 'text' : 'password'} value={form.password} onChange={sf('password')}
+                placeholder={modo === 'crear' ? 'Mínimo 8 caracteres' : '••••••••'}
+                className={inputCls('pr-9')} />
+              <button type="button" onClick={() => setShowPass(v => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </Field>
+        </div>
 
+        {/* ── Rol y agencia ── */}
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 pt-1">
+          Rol y agencia
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Rol *" error={errors.rol}>
             <select value={form.rol} onChange={sf('rol')} className={inputCls('bg-white')}>
