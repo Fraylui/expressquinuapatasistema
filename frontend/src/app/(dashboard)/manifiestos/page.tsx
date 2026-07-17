@@ -199,6 +199,28 @@ function ManifiestoPanel({ viajeId, result, onGenerado }: ManifiestosPanelProps)
     finally { setDescargando(null) }
   }
 
+  // Agencias donde baja carga: una hoja de descarga firmable por cada parada
+  const [descargandoAgencia, setDescargandoAgencia] = useState<number | null>(null)
+  const agenciasDestino = React.useMemo(() => {
+    const m = new Map<number, { nombre: string; cant: number }>()
+    for (const e of datos.encomiendas ?? []) {
+      if (e.agenciaDestinoId == null) continue
+      const cur = m.get(e.agenciaDestinoId)
+      if (cur) cur.cant++
+      else m.set(e.agenciaDestinoId, { nombre: e.agenciaDestino ?? `Agencia #${e.agenciaDestinoId}`, cant: 1 })
+    }
+    return Array.from(m.entries()).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre))
+  }, [datos.encomiendas])
+
+  const descargarHojaDescarga = async (agenciaId: number, nombre: string) => {
+    setDescargandoAgencia(agenciaId)
+    try {
+      openBlob(await manifiestoService.descargarPdfDescarga(viajeId, agenciaId), `descarga-${viajeId}-${nombre}.pdf`)
+      toast.success(`Hoja de descarga de ${nombre} lista`)
+    } catch { toast.error('Error al generar la hoja de descarga') }
+    finally { setDescargandoAgencia(null) }
+  }
+
   const descargarTicket = async (pasajeId: number, correlativo: string) => {
     setDescargando(pasajeId)
     try {
@@ -322,6 +344,33 @@ function ManifiestoPanel({ viajeId, result, onGenerado }: ManifiestosPanelProps)
           </div>
         </div>
       </div>
+
+      {/* ── Hojas de descarga por agencia (una por parada, con firma del receptor) ── */}
+      {agenciasDestino.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Printer size={13} className="text-[#064e3b]" />
+            <h3 className="text-sm font-semibold text-gray-800">Hojas de descarga por agencia</h3>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-3">
+            Imprime una por parada: el chofer la entrega y la agencia que recibe firma lo que le bajó.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {agenciasDestino.map(([agId, info]) => (
+              <button key={agId}
+                onClick={() => descargarHojaDescarga(agId, info.nombre)}
+                disabled={descargandoAgencia === agId}
+                className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 text-xs rounded-xl hover:bg-emerald-50 hover:border-emerald-200 disabled:opacity-50 transition-colors font-medium">
+                {descargandoAgencia === agId
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <Package size={12} className="text-amber-500" />}
+                {info.nombre}
+                <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full text-[10px] font-bold">{info.cant}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Tabla pasajeros ── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -448,6 +497,7 @@ function ManifiestoPanel({ viajeId, result, onGenerado }: ManifiestosPanelProps)
                   <tr className="bg-amber-50/70 border-b border-amber-100">
                     <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">#</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tracking</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Baja en</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Descripción</th>
                     <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Kg / Bultos</th>
                     <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Flete</th>
@@ -461,6 +511,11 @@ function ManifiestoPanel({ viajeId, result, onGenerado }: ManifiestosPanelProps)
                     <tr key={ei.encomiendaId} className="hover:bg-amber-50/30 transition-colors">
                       <td className="px-3 py-2.5 text-gray-400 font-mono">{ei.item}</td>
                       <td className="px-3 py-2.5 font-mono text-[#064e3b] font-bold">{ei.codigoTracking}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="inline-block bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {ei.agenciaDestino ?? '—'}
+                        </span>
+                      </td>
                       <td className="px-3 py-2.5 text-gray-700 max-w-[150px] truncate">{ei.descripcion}</td>
                       <td className="px-3 py-2.5 text-center text-gray-600 tabular-nums">
                         {ei.pesoKg != null ? `${ei.pesoKg} kg` : '—'}
@@ -482,7 +537,7 @@ function ManifiestoPanel({ viajeId, result, onGenerado }: ManifiestosPanelProps)
                 {(datos.encomiendas?.length ?? 0) > 0 && (
                   <tfoot>
                     <tr className="bg-amber-50/50 border-t border-amber-100">
-                      <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-500 text-right">
+                      <td colSpan={5} className="px-3 py-2 text-xs font-semibold text-gray-500 text-right">
                         Total flete:
                       </td>
                       <td className="px-3 py-2 text-right font-black text-gray-900 tabular-nums">

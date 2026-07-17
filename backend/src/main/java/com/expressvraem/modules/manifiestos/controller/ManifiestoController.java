@@ -172,6 +172,67 @@ public class ManifiestoController {
     }
 
 
+    /**
+     * Manifiesto de DESCARGA: solo los paquetes que bajan en una agencia concreta,
+     * con firma del receptor. Cada parada intermedia imprime el suyo y deja
+     * constancia firmada de lo que recibió.
+     */
+    @GetMapping("/{viajeId}/descarga-pdf/{agenciaDestinoId}")
+    @RequiereModulo("MANIFIESTOS")
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> descargaPdf(
+            @PathVariable Long viajeId,
+            @PathVariable Long agenciaDestinoId) {
+        try {
+            // Acceso: agencia de origen del viaje, la agencia que recibe, o gerencia
+            Long agenciaCtx = AgenciaContext.getAgenciaId();
+            if (agenciaCtx != null) {
+                Viaje viaje = viajeRepository.findById(viajeId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Viaje", viajeId));
+                if (!agenciaCtx.equals(viaje.getAgenciaId()) && !agenciaCtx.equals(agenciaDestinoId)) {
+                    throw new BusinessException("No tiene acceso a este manifiesto de descarga", "ACCESO_DENEGADO");
+                }
+            }
+
+            ManifiestoDTO dto = buildManifiesto(viajeId);
+
+            List<ManifiestoDTO.EncomiendaItem> propias = dto.getEncomiendas().stream()
+                    .filter(ei -> agenciaDestinoId.equals(ei.getAgenciaDestinoId()))
+                    .collect(Collectors.toList());
+            for (int i = 0; i < propias.size(); i++) propias.get(i).setItem(i + 1);
+
+            BigDecimal total = propias.stream()
+                    .map(ManifiestoDTO.EncomiendaItem::getPrecioEnvio)
+                    .filter(pr -> pr != null)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            String agenciaNombre = propias.isEmpty()
+                    ? String.valueOf(entityManager.createNativeQuery(
+                            "SELECT nombre FROM agencias WHERE id = :id")
+                            .setParameter("id", agenciaDestinoId).getSingleResult())
+                    : propias.get(0).getAgenciaDestino();
+
+            dto.setEncomiendas(propias);
+            dto.setTotalEncomiendas(propias.size());
+            dto.setTotalMontoEncomiendas(total);
+            dto.setTituloDocumento("MANIFIESTO DE DESCARGA - " + agenciaNombre.toUpperCase());
+            dto.setFirmaDerecha("Firma del Receptor - " + agenciaNombre);
+
+            byte[] bytes = pdfService.generarManifiestoEncomiendas(dto);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"descarga-viaje-" + viajeId + "-agencia-" + agenciaDestinoId + ".pdf\"")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                    .body(bytes);
+        } catch (BusinessException | ResourceNotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error generando PDF descarga viaje {} agencia {}: {}", viajeId, agenciaDestinoId, e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+
     @GetMapping("/ticket/{pasajeId}/pdf")
     @RequiereModulo("MANIFIESTOS")
     public ResponseEntity<byte[]> ticketPdf(@PathVariable Long pasajeId) {
@@ -361,6 +422,28 @@ public class ManifiestoController {
         dto.setTotalPasajeros(pasajeroItems.size());
         dto.setTotalRecaudado(totalRec);
 
+        // Nombres de las agencias destino (para agrupar la carga por parada)
+        Set<Long> agDestIds = encomiendas.stream()
+                .map(Encomienda::getAgenciaDestinoId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Map<Long, String> agDestMap = new HashMap<>();
+        if (!agDestIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, nombre FROM agencias WHERE id IN :ids")
+                    .setParameter("ids", agDestIds)
+                    .getResultList();
+            rows.forEach(r -> agDestMap.put(((Number) r[0]).longValue(), str(r[1])));
+        }
+
+        // El vehículo para en varias agencias: la carga se lista agrupada por destino
+        java.util.Comparator<Encomienda> porDestino = java.util.Comparator.comparing(
+                e -> agDestMap.getOrDefault(e.getAgenciaDestinoId(), "zzz"));
+        java.util.Comparator<Encomienda> porCodigo = java.util.Comparator.comparing(
+                e -> e.getCodigoTracking() != null ? e.getCodigoTracking() : "");
+        encomiendas = encomiendas.stream().sorted(porDestino.thenComparing(porCodigo)).toList();
+
         List<ManifiestoDTO.EncomiendaItem> encItems = new ArrayList<>();
         BigDecimal totalEnc = BigDecimal.ZERO;
 
@@ -369,6 +452,8 @@ public class ManifiestoController {
             ManifiestoDTO.EncomiendaItem ei = new ManifiestoDTO.EncomiendaItem();
             ei.setItem(i + 1);
             ei.setEncomiendaId(enc.getId());
+            ei.setAgenciaDestinoId(enc.getAgenciaDestinoId());
+            ei.setAgenciaDestino(agDestMap.getOrDefault(enc.getAgenciaDestinoId(), "Sin agencia"));
             ei.setCodigoTracking(enc.getCodigoTracking());
             ei.setDescripcion(enc.getDescripcion());
             ei.setPesoKg(enc.getPesoKg());

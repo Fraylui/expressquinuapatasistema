@@ -36,6 +36,11 @@ public class ManifiestoDTO {
     private int totalEncomiendas;
     private BigDecimal totalMontoEncomiendas;
 
+    /** Título alternativo del PDF (null = manifiesto normal) */
+    private String tituloDocumento;
+    /** Etiqueta de la firma derecha (null = "Firma del Administrador") */
+    private String firmaDerecha;
+
     @Data
     public static class PasajeroItem {
         private int item;
@@ -55,6 +60,8 @@ public class ManifiestoDTO {
     public static class EncomiendaItem {
         private int item;
         private Long encomiendaId;
+        private Long agenciaDestinoId;
+        private String agenciaDestino;
         private String codigoTracking;
         private String descripcion;
         private BigDecimal pesoKg;

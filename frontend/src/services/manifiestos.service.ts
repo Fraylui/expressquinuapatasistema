@@ -29,6 +29,8 @@ export interface PasajeroItem {
 export interface EncomiendaItem {
   item: number
   encomiendaId: number
+  agenciaDestinoId: number | null
+  agenciaDestino: string | null
   codigoTracking: string
   descripcion: string
   pesoKg: number | null
@@ -105,6 +107,12 @@ export const manifiestoService = {
 
   descargarTicket: async (pasajeId: number): Promise<Blob> => {
     const res = await api.get(`/api/manifiestos/ticket/${pasajeId}/pdf`, { responseType: 'blob' })
+    return res as unknown as Blob
+  },
+
+  /** Manifiesto de descarga: solo los paquetes que bajan en una agencia, con firma del receptor */
+  descargarPdfDescarga: async (viajeId: number, agenciaDestinoId: number): Promise<Blob> => {
+    const res = await api.get(`/api/manifiestos/${viajeId}/descarga-pdf/${agenciaDestinoId}`, { responseType: 'blob' })
     return res as unknown as Blob
   },
 }
