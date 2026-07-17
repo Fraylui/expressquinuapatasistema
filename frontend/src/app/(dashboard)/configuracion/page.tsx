@@ -109,6 +109,24 @@ function RutasTab() {
   const { data: rutasData, isLoading } = useSWR<Ruta[]>('/api/configuracion/rutas')
   const rutas = rutasData ?? []
 
+  // Las rutas conectan agencias: las ciudades se eligen de las agencias existentes
+  // (nada de tipear a mano — así nunca se desalinean los nombres)
+  const { data: agenciasData } = useSWR<any>('/api/agencias')
+  const ciudades = useMemo(() => {
+    const lista = Array.isArray(agenciasData) ? agenciasData : agenciasData?.data ?? []
+    const set = new Map<string, string>()
+    for (const a of lista) {
+      if (a.ciudad && a.activo !== false) set.set(a.ciudad.trim().toLowerCase(), a.ciudad.trim())
+    }
+    return Array.from(set.values()).sort()
+  }, [agenciasData])
+
+  // Código sugerido: 3 letras de cada ciudad (HUA-KIM)
+  const sugerirCodigo = (origen: string, destino: string) =>
+    origen && destino
+      ? `${origen.slice(0, 3)}-${destino.slice(0, 3)}`.toUpperCase().replace(/\s/g, '')
+      : ''
+
   const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Ruta | null>(null)
   const [form, setForm]         = useState<RutaFormState>(emptyRuta)
@@ -276,14 +294,31 @@ function RutasTab() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad origen *</label>
-            <input value={form.origen} onChange={e => setForm(f => ({ ...f, origen: e.target.value }))}
-              placeholder="Huamanga" className={inputCls()} />
+            <label className="block text-xs font-medium text-gray-700 mb-1">Agencia/ciudad origen *</label>
+            <select value={form.origen}
+              onChange={e => setForm(f => ({
+                ...f, origen: e.target.value,
+                codigo: f.codigo || sugerirCodigo(e.target.value, f.destino),
+              }))}
+              className={inputCls()}>
+              <option value="">Seleccionar ciudad…</option>
+              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad destino *</label>
-            <input value={form.destino} onChange={e => setForm(f => ({ ...f, destino: e.target.value }))}
-              placeholder="Kimbiri" className={inputCls()} />
+            <label className="block text-xs font-medium text-gray-700 mb-1">Agencia/ciudad destino *</label>
+            <select value={form.destino}
+              onChange={e => setForm(f => ({
+                ...f, destino: e.target.value,
+                codigo: f.codigo || sugerirCodigo(f.origen, e.target.value),
+              }))}
+              className={inputCls()}>
+              <option value="">Seleccionar ciudad…</option>
+              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Las ciudades salen de tus agencias — crea primero la agencia si falta su ciudad
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Duración estimada (min)</label>

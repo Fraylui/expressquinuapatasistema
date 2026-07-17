@@ -45,6 +45,7 @@ interface TicketInfo {
   codigoBoleta: string
   pasajeId: number
   viaje: ViajeDisponible
+  destino?: string | null
   asientoNumero: number
   clienteNombres: string
   clienteApellidos: string
@@ -104,7 +105,7 @@ function TicketPreview({ t, onClose }: { t: TicketInfo; onClose: () => void }) {
       <div class="c sm">Emitido: ${t.emitidoEn}</div>
       <hr/>
       <div class="c sm">RUTA</div>
-      <div class="c b" style="font-size:14px">${t.viaje.ruta?.origen ?? '—'} → ${t.viaje.ruta?.destino ?? '—'}</div>
+      <div class="c b" style="font-size:14px">${t.viaje.ruta?.origen ?? '—'} → ${t.destino ?? t.viaje.ruta?.destino ?? '—'}</div>
       <div class="row"><span>Fecha:</span><span class="v">${fechaViaje}</span></div>
       <div class="row"><span>Hora salida:</span><span class="v b">${horaViaje}</span></div>
       <div class="row"><span>Vehículo:</span><span class="v">${t.viaje.vehiculo?.tipo ?? '—'}</span></div>
@@ -146,7 +147,7 @@ function TicketPreview({ t, onClose }: { t: TicketInfo; onClose: () => void }) {
         <div className="text-center text-[9px] text-gray-400">{t.emitidoEn}</div>
         <hr className="border-dashed border-gray-400 my-1.5" />
         <div className="text-center font-bold text-[13px]">
-          {t.viaje.ruta?.origen ?? '—'} → {t.viaje.ruta?.destino ?? '—'}
+          {t.viaje.ruta?.origen ?? '—'} → {t.destino ?? t.viaje.ruta?.destino ?? '—'}
         </div>
         <div className="flex justify-between mt-0.5 text-[10px]">
           <span>Fecha:</span><span>{fechaViaje}</span>
@@ -464,6 +465,9 @@ export default function PasajesPage() {
   // Tarifa
   const [precioBase, setPrecioBase]   = useState('')
   const [descuento, setDescuento]     = useState('0')
+  // Destino del pasajero: '' = destino final de la ruta del viaje
+  const [destinoSel, setDestinoSel]   = useState('')
+  const { data: rutasCatalogo } = useSWR<any>('/api/configuracion/rutas', fetcher)
   const [formaPago, setFormaPago]     = useState('EFECTIVO')
   const [motivoDesc, setMotivoDesc]   = useState('')
 
@@ -528,6 +532,7 @@ export default function PasajesPage() {
   const seleccionarViaje = async (v: ViajeDisponible) => {
     setViaje(v)
     setAsientoNum(null)
+    setDestinoSel('')
     setPrecioBase('')
     setDescuento('0')
     setFormaPago('EFECTIVO')
@@ -576,6 +581,7 @@ export default function PasajesPage() {
       formaPago: tipoOp === 'RESERVA' ? 'EFECTIVO' : formaPago,
       motivoDescuento: desc > 0 ? motivoDesc.trim() || undefined : undefined,
       promocionId: promoSel?.id ?? undefined,
+      rutaDestinoId: destinoSel ? parseInt(destinoSel) : undefined,
       tipo: tipoOp,
     }
 
@@ -679,6 +685,7 @@ export default function PasajesPage() {
     codigoBoleta:   resultado.codigoBoleta,
     pasajeId:       resultado.id,
     viaje,
+    destino:        (resultado as any).destino ?? null,
     asientoNumero:  resultado.asientoNumero,
     clienteNombres: resultado.clienteNombres,
     clienteApellidos: resultado.clienteApellidos,
@@ -829,6 +836,42 @@ export default function PasajesPage() {
                   selectedNumero={asientoNum ?? undefined}
                   onSelect={n => setAsientoNum(n)}
                 />
+
+                {/* Destino del pasajero: puede bajar en una agencia intermedia del corredor.
+                    El precio se precarga con la tarifa de la ruta elegida (editable después). */}
+                {(() => {
+                  const opciones = (Array.isArray(rutasCatalogo) ? rutasCatalogo : rutasCatalogo?.data ?? [])
+                    .filter((r: any) => r.activo && viaje.ruta?.origen
+                      && r.origen?.toLowerCase() === viaje.ruta.origen.toLowerCase()
+                      && r.id !== viaje.ruta?.id)
+                  if (opciones.length === 0) return null
+                  return (
+                    <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold tracking-wider mb-1">
+                        ¿Hasta dónde viaja el pasajero?
+                      </label>
+                      <select value={destinoSel}
+                        onChange={async e => {
+                          const val = e.target.value
+                          setDestinoSel(val)
+                          const rutaId = val ? parseInt(val) : viaje.ruta?.id
+                          if (rutaId && viaje.vehiculo?.tipo) {
+                            try {
+                              const res = await api.get(`/api/tarifas/buscar?rutaId=${rutaId}&tipoVehiculo=${viaje.vehiculo.tipo}`)
+                              const d = (res as any)?.data
+                              if (d?.precio) setPrecioBase(String(Number(d.precio).toFixed(2)))
+                            } catch { /* sin tarifa: el operador pone el precio */ }
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500">
+                        <option value="">{viaje.ruta?.destino} (destino final del viaje)</option>
+                        {opciones.map((r: any) => (
+                          <option key={r.id} value={r.id}>{r.destino} (baja en el camino)</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })()}
 
                 {asientoNum && (
                   <div className="bg-gray-50 rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between">

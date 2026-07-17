@@ -14,12 +14,15 @@ export interface VentaPasajeDTO {
   formaPago: string
   motivoDescuento?: string
   promocionId?: number
+  /** Ruta del destino del pasajero (baja en agencia intermedia). Opcional. */
+  rutaDestinoId?: number
   tipo?: 'VENTA' | 'RESERVA'
 }
 
 export interface PasajeResponseDTO {
   id: number
   codigoBoleta: string
+  destino?: string | null
   viajeId: number
   asientoNumero: number
   clienteId: number

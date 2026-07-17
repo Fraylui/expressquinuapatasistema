@@ -50,6 +50,13 @@ public record VentaPasajeDTO(
         /** ID de la promoción seleccionada por el cajero (opcional). */
         Long promocionId,
 
+        /**
+         * Ruta del destino del pasajero (opcional). Si viene, el precio sale de la
+         * TARIFA de esa ruta y la boleta imprime su destino. Null = el pasajero va
+         * al destino final de la ruta del viaje.
+         */
+        Long rutaDestinoId,
+
         /* ── VENTA | RESERVA ───────────────────── */
         @Pattern(regexp = "^(VENTA|RESERVA)$", message = "Tipo debe ser VENTA o RESERVA")
         String tipo

@@ -325,6 +325,7 @@ CREATE TABLE pasajes (
     precio_base     NUMERIC(8,2)    NOT NULL,
     monto_descuento NUMERIC(8,2)    NOT NULL DEFAULT 0,
     precio_final    NUMERIC(8,2)    NOT NULL,
+    destino         VARCHAR(80),  -- destino del pasajero (NULL = destino final de la ruta)
     forma_pago      VARCHAR(20)     NOT NULL DEFAULT 'EFECTIVO',
     estado          VARCHAR(20)     NOT NULL DEFAULT 'VENDIDO'
                         CHECK (estado IN ('VENDIDO','RESERVADO','ANULADO')),

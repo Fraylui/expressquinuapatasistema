@@ -55,6 +55,10 @@ public class Pasaje {
     @Column(name = "motivo_descuento", length = 200)
     private String motivoDescuento;
 
+    /** Destino del pasajero; NULL = destino final de la ruta del viaje */
+    @Column(length = 80)
+    private String destino;
+
     @Builder.Default
     @Column(name = "forma_pago", length = 20)
     private String formaPago = "EFECTIVO";
