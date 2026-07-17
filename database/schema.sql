@@ -78,7 +78,7 @@ CREATE TABLE roles (
 -- ============================================================
 CREATE TABLE usuarios (
     id               BIGSERIAL PRIMARY KEY,
-    agencia_id       BIGINT       NOT NULL REFERENCES agencias(id),
+    agencia_id       BIGINT       REFERENCES agencias(id),  -- NULL = toda la empresa (GERENTE, CONDUCTOR)
     nombres          VARCHAR(80)  NOT NULL,
     apellidos        VARCHAR(80)  NOT NULL,
     dni              VARCHAR(8)   NOT NULL UNIQUE,
@@ -159,7 +159,7 @@ CREATE TABLE rol_permisos (
 -- ============================================================
 CREATE TABLE vehiculos (
     id              BIGSERIAL PRIMARY KEY,
-    agencia_id      BIGINT       NOT NULL REFERENCES agencias(id),
+    agencia_id      BIGINT       REFERENCES agencias(id),  -- NULL = flota de la empresa
     placa           VARCHAR(10)  NOT NULL UNIQUE,
     tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('COMBI','CAMIONETA')),
     marca           VARCHAR(50),
@@ -168,6 +168,7 @@ CREATE TABLE vehiculos (
     capacidad       INT          NOT NULL,
     color           VARCHAR(30),
     num_asientos    INT          NOT NULL,
+    conductor_habitual_id BIGINT,  -- FK a conductores; se agrega al final (orden de creacion)
     estado          VARCHAR(20)  NOT NULL DEFAULT 'OPERATIVO'
                         CHECK (estado IN ('OPERATIVO','MANTENIMIENTO','BAJA')),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -179,7 +180,8 @@ CREATE TABLE vehiculos (
 -- ============================================================
 CREATE TABLE conductores (
     id              BIGSERIAL PRIMARY KEY,
-    agencia_id      BIGINT       NOT NULL REFERENCES agencias(id),
+    agencia_id      BIGINT       REFERENCES agencias(id),  -- NULL = trabaja para toda la empresa
+    usuario_id      BIGINT       UNIQUE REFERENCES usuarios(id),  -- cuenta de login del conductor
     nombres         VARCHAR(80)  NOT NULL,
     apellidos       VARCHAR(80)  NOT NULL,
     dni             VARCHAR(8)   NOT NULL UNIQUE,
@@ -192,6 +194,9 @@ CREATE TABLE conductores (
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ
 );
+
+ALTER TABLE vehiculos ADD CONSTRAINT fk_vehiculos_conductor_habitual
+    FOREIGN KEY (conductor_habitual_id) REFERENCES conductores(id);
 
 -- ============================================================
 -- 11. RUTAS
@@ -250,7 +255,7 @@ CREATE TABLE viajes (
     fecha_hora_sal  TIMESTAMPTZ  NOT NULL,
     fecha_hora_arr  TIMESTAMPTZ,
     estado          VARCHAR(20)  NOT NULL DEFAULT 'PROGRAMADO'
-                        CHECK (estado IN ('PROGRAMADO','EN_RUTA','COMPLETADO','CANCELADO')),
+                        CHECK (estado IN ('PROGRAMADO','ATRASADO','EN_RUTA','COMPLETADO','CANCELADO')),
     observaciones   TEXT,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -481,11 +486,8 @@ CREATE INDEX idx_clientes_doc           ON clientes(tipo_doc, num_doc);
 
 -- Índices de rendimiento — batch queries y filtros frecuentes
 CREATE INDEX idx_viajes_agencia_estado  ON viajes(agencia_id, estado);
-CREATE INDEX idx_viajes_estado          ON viajes(estado);
 CREATE INDEX idx_viajes_fecha_sal       ON viajes(fecha_hora_sal);
 CREATE INDEX idx_asientos_viaje_estado  ON asientos(viaje_id, estado);
-CREATE INDEX idx_encomiendas_viaje      ON encomiendas(viaje_id);
-CREATE INDEX idx_pasajes_viaje          ON pasajes(viaje_id);
 CREATE INDEX idx_pasajes_agencia_fecha  ON pasajes(agencia_id, fecha_emision);
 CREATE INDEX idx_caja_usuario_estado    ON caja(usuario_id, estado);
 CREATE INDEX idx_caja_agencia           ON caja(agencia_id);

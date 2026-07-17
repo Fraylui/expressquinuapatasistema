@@ -36,18 +36,10 @@ public class ConfiguracionConductorController {
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listar(
             @RequestParam(required = false, defaultValue = "false") boolean soloActivos) {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-
-        List<Conductor> lista;
-        if (agenciaId != null) {
-            lista = soloActivos
-                    ? conductorRepository.findByAgenciaIdAndActivo(agenciaId, true)
-                    : conductorRepository.findByAgenciaId(agenciaId);
-        } else {
-            lista = soloActivos
-                    ? conductorRepository.findAll().stream().filter(Conductor::isActivo).toList()
-                    : conductorRepository.findAll();
-        }
+        // Los conductores son de la empresa: todas las agencias ven la lista completa
+        List<Conductor> lista = soloActivos
+                ? conductorRepository.findByActivo(true)
+                : conductorRepository.findAll();
 
         return ResponseEntity.ok(ApiResponse.ok(lista.stream().map(this::toMap).toList()));
     }
@@ -68,10 +60,9 @@ public class ConfiguracionConductorController {
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
     @Transactional
     public ResponseEntity<ApiResponse<Map<String, Object>>> crear(@Valid @RequestBody ConductorDTO dto) {
+        // Los conductores pertenecen a la empresa: la agencia es opcional
+        // (GERENTE/SUPER_ADMIN no llevan agencia en el contexto)
         Long agenciaId = AgenciaContext.getAgenciaId();
-        if (agenciaId == null) {
-            throw new BusinessException("No se pudo determinar la agencia del usuario", "AGENCIA_REQUERIDA");
-        }
 
         String dni      = dto.getDni().trim();
         String licencia = dto.getLicencia().toUpperCase().trim();
@@ -209,6 +200,7 @@ public class ConfiguracionConductorController {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id",           c.getId());
         m.put("agenciaId",    c.getAgenciaId());
+        m.put("usuarioId",    c.getUsuarioId());
         m.put("nombres",      c.getNombres());
         m.put("apellidos",    c.getApellidos());
         String n = c.getNombres() != null ? c.getNombres() : "";

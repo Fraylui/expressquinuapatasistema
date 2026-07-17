@@ -59,6 +59,7 @@ public class ViajeController {
     private final com.expressvraem.modules.caja.service.CajaService cajaService;
     private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
     private final com.expressvraem.modules.auth.repository.UsuarioRepository usuarioRepository;
+    private final com.expressvraem.modules.agencias.repository.AgenciaRepository agenciaRepository;
 
     /**
      * Programa un nuevo viaje y genera los asientos según la capacidad del vehículo.
@@ -75,6 +76,13 @@ public class ViajeController {
             // el viaje se programa en la agencia del propio usuario
             agenciaId = usuarioRepository.findByEmail(auth.getName())
                     .map(u -> u.getAgenciaId()).orElse(null);
+        }
+        if (agenciaId == null) {
+            // Usuario de empresa sin agencia asignada: el viaje se registra en la sede principal
+            agenciaId = agenciaRepository.findByEsSedePrincipalTrue().stream()
+                    .findFirst()
+                    .map(com.expressvraem.modules.agencias.entity.Agencia::getId)
+                    .orElse(null);
         }
         if (agenciaId == null) {
             throw new BusinessException("No se pudo determinar la agencia del usuario", "AGENCIA_REQUERIDA");
@@ -261,11 +269,11 @@ public class ViajeController {
                     .setParameter("ids", vehIds).getResultList())
                     .forEach(r -> vehs.put(((Number) r[0]).longValue(), r));
 
-        // Conductores
+        // Conductores (tabla conductores: viajes.conductor_id referencia a conductores.id)
         Map<Long, String> conds = new HashMap<>();
         if (!condIds.isEmpty())
             ((List<Object[]>) entityManager.createNativeQuery(
-                    "SELECT id, COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM usuarios WHERE id IN :ids")
+                    "SELECT id, COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM conductores WHERE id IN :ids")
                     .setParameter("ids", condIds).getResultList())
                     .forEach(r -> conds.put(((Number) r[0]).longValue(), String.valueOf(r[1])));
 
@@ -515,6 +523,8 @@ public class ViajeController {
         }
 
         viaje.setEstado("COMPLETADO");
+        viaje.setFechaHoraArr(OffsetDateTime.now());
+        viaje.setUpdatedAt(OffsetDateTime.now());
         viajeRepository.save(viaje);
 
         List<Encomienda> llegadas = encomiendaRepository.findByViajeId(id).stream()
@@ -697,7 +707,7 @@ public class ViajeController {
         Map<Long, String> conds = new HashMap<>();
         if (!condIds.isEmpty())
             ((List<Object[]>) entityManager.createNativeQuery(
-                    "SELECT id, COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM usuarios WHERE id IN :ids")
+                    "SELECT id, COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM conductores WHERE id IN :ids")
                     .setParameter("ids", condIds).getResultList())
                     .forEach(r -> conds.put(((Number) r[0]).longValue(), String.valueOf(r[1])));
 
@@ -783,7 +793,7 @@ public class ViajeController {
         dto.setConductorId(v.getConductorId());
         try {
             Object[] condRow = (Object[]) entityManager
-                    .createNativeQuery("SELECT nombres, apellidos FROM usuarios WHERE id = :cid")
+                    .createNativeQuery("SELECT nombres, apellidos FROM conductores WHERE id = :cid")
                     .setParameter("cid", v.getConductorId()).getSingleResult();
             String cn = condRow[0] != null ? condRow[0].toString() : "";
             String ca = condRow[1] != null ? condRow[1].toString() : "";

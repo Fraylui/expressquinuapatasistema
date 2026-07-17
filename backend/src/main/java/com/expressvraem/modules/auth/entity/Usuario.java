@@ -17,7 +17,8 @@ public class Usuario {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "agencia_id", nullable = false)
+    /** NULL = toda la empresa (GERENTE, CONDUCTOR) */
+    @Column(name = "agencia_id")
     private Long agenciaId;
 
     @Column(nullable = false, length = 80)

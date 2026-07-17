@@ -10,7 +10,6 @@ import com.expressvraem.modules.viajes.repository.ViajeRepository;
 import com.expressvraem.shared.exceptions.ApiResponse;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
-import com.expressvraem.shared.middleware.AgenciaContext;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -36,16 +35,15 @@ public class ConductorQueryController {
     private final AsientoRepository   asientoRepository;
     private final UsuarioRepository   usuarioRepository;
     private final EntityManager       entityManager;
+    private final com.expressvraem.modules.encomiendas.repository.EncomiendaRepository encomiendaRepository;
+    private final com.expressvraem.shared.websocket.WebSocketEventPublisher wsPublisher;
 
     // ── Lista de conductores para selects ────────────────────────────────────
 
     @GetMapping("/lista")
     public ResponseEntity<ApiResponse<List<Conductor>>> listar() {
-        Long agenciaId = AgenciaContext.getAgenciaId();
-        List<Conductor> lista = agenciaId != null
-                ? conductorRepository.findByAgenciaIdAndActivo(agenciaId, true)
-                : conductorRepository.findAll().stream().filter(Conductor::isActivo).toList();
-        return ResponseEntity.ok(ApiResponse.ok(lista));
+        // Los conductores trabajan para toda la empresa: lista completa para cualquier agencia
+        return ResponseEntity.ok(ApiResponse.ok(conductorRepository.findByActivo(true)));
     }
 
     // ── Mis viajes (uso exclusivo del CONDUCTOR autenticado) ─────────────────
@@ -128,6 +126,25 @@ public class ConductorQueryController {
         viaje.setEstado("EN_RUTA");
         viaje.setUpdatedAt(OffsetDateTime.now());
         viajeRepository.save(viaje);
+
+        // Igual que cuando confirma el operador: las encomiendas del viaje pasan
+        // a EN_TRANSITO y se avisa a las agencias destino (tracking coherente)
+        java.util.Set<String> preTransito = java.util.Set.of(
+                "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
+        var encomiendas = encomiendaRepository.findByViajeId(viajeId);
+        var aActualizar = encomiendas.stream()
+                .filter(enc -> preTransito.contains(enc.getEstado()))
+                .peek(enc -> enc.setEstado("EN_TRANSITO"))
+                .toList();
+        if (!aActualizar.isEmpty()) encomiendaRepository.saveAll(aActualizar);
+
+        encomiendas.stream()
+                .map(com.expressvraem.modules.encomiendas.entity.Encomienda::getAgenciaDestinoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(agDestId -> wsPublisher.publicarEncomiendaEnCamino(agDestId,
+                        Map.of("viajeId", viajeId, "tipo", "EN_CAMINO")));
+
         return ResponseEntity.ok(ApiResponse.ok("Salida confirmada — en ruta", enriquecerViaje(viaje)));
     }
 
@@ -158,18 +175,23 @@ public class ConductorQueryController {
 
     /**
      * Resuelve el conductorId a partir del usuario autenticado.
-     * Busca en conductores por DNI del usuario; fallback al usuario.id si no hay registro.
+     * Primero por el vínculo explícito usuario_id, luego por DNI;
+     * fallback al usuario.id si no hay registro de conductor.
      */
     private Long resolverConductorId(Authentication auth) {
         Usuario usuario = usuarioRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
 
-        if (usuario.getDni() != null && !usuario.getDni().isBlank()) {
-            return conductorRepository.findByDni(usuario.getDni())
-                    .map(Conductor::getId)
-                    .orElse(usuario.getId());
-        }
-        return usuario.getId();
+        return conductorRepository.findByUsuarioId(usuario.getId())
+                .map(Conductor::getId)
+                .orElseGet(() -> {
+                    if (usuario.getDni() != null && !usuario.getDni().isBlank()) {
+                        return conductorRepository.findByDni(usuario.getDni())
+                                .map(Conductor::getId)
+                                .orElse(usuario.getId());
+                    }
+                    return usuario.getId();
+                });
     }
 
     private Map<String, Object> enriquecerViaje(Viaje v) {

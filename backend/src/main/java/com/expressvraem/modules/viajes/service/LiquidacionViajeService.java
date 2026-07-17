@@ -62,10 +62,10 @@ public class LiquidacionViajeService {
 
         String conductorNombre = "—";
         try {
-            Object[] condRow = (Object[]) entityManager
-                    .createNativeQuery("SELECT COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM usuarios WHERE id = :id")
+            Object condRow = entityManager
+                    .createNativeQuery("SELECT COALESCE(nombres,'') || ' ' || COALESCE(apellidos,'') FROM conductores WHERE id = :id")
                     .setParameter("id", viaje.getConductorId()).getSingleResult();
-            conductorNombre = String.valueOf(condRow[0]).trim();
+            conductorNombre = String.valueOf(condRow).trim();
         } catch (Exception ignored) {}
 
         // ── Pasajes activos ───────────────────────────────────────────────────

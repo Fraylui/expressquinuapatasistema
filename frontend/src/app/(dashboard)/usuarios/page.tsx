@@ -47,7 +47,7 @@ interface UsuarioRow {
   dni: string
   telefono?: string
   rol: string
-  agenciaId: number
+  agenciaId: number | null
   agenciaNombre?: string
   activo: boolean
   ultimoAcceso?: string
@@ -57,12 +57,19 @@ interface UsuarioRow {
 interface UsuarioForm {
   nombres: string; apellidos: string; email: string; dni: string
   telefono: string; password: string; rol: string; agenciaId: string
+  licencia: string; categoriaLic: string; fechaVencLic: string
 }
 
 const FORM_INIT: UsuarioForm = {
   nombres: '', apellidos: '', email: '', dni: '',
   telefono: '', password: '', rol: 'OPERADOR', agenciaId: '',
+  licencia: '', categoriaLic: '', fechaVencLic: '',
 }
+
+/** GERENTE y CONDUCTOR trabajan con toda la empresa: agencia opcional */
+const ROLES_SIN_AGENCIA = ['GERENTE', 'CONDUCTOR']
+
+const CATEGORIAS_LIC = ['A-I','A-IIa','A-IIb','A-IIIa','A-IIIb','A-IIIc','B-I','B-IIa','B-IIb','B-IIc']
 
 function inputCls(extra = '') {
   return `w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${extra}`
@@ -103,14 +110,14 @@ function UsuarioModal({
     : agencias
 
   const agenciaIdInicial = modo === 'editar' && usuario
-    ? String(usuario.agenciaId)
+    ? (usuario.agenciaId != null ? String(usuario.agenciaId) : '')
     : isAdminAgencia && currentUser?.agenciaId
       ? String(currentUser.agenciaId)
       : ''
 
   const [form, setForm] = useState<UsuarioForm>(() =>
     modo === 'editar' && usuario
-      ? { ...FORM_INIT, ...usuario, agenciaId: String(usuario.agenciaId), password: '' }
+      ? { ...FORM_INIT, ...usuario, telefono: usuario.telefono ?? '', agenciaId: agenciaIdInicial, password: '' }
       : { ...FORM_INIT, agenciaId: agenciaIdInicial }
   )
   const [errors, setErrors] = useState<Partial<UsuarioForm>>({})
@@ -139,8 +146,14 @@ function UsuarioModal({
     } else if (form.password && form.password.length < 8) {
       e.password = 'Mínimo 8 caracteres (dejar vacío para no cambiar)'
     }
-    if (!form.rol)       e.rol      = 'Obligatorio'
-    if (!form.agenciaId) e.agenciaId = 'Obligatorio'
+    if (!form.rol) e.rol = 'Obligatorio'
+    // GERENTE y CONDUCTOR pertenecen a toda la empresa: agencia opcional
+    if (!form.agenciaId && form.rol && !ROLES_SIN_AGENCIA.includes(form.rol)) {
+      e.agenciaId = 'Obligatorio'
+    }
+    if (modo === 'crear' && form.rol === 'CONDUCTOR' && !form.licencia.trim()) {
+      e.licencia = 'Obligatorio para conductores'
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -152,10 +165,15 @@ function UsuarioModal({
       const payload: any = {
         nombres: form.nombres, apellidos: form.apellidos,
         email: form.email, dni: form.dni, telefono: form.telefono || null,
-        rol: form.rol, agenciaId: parseInt(form.agenciaId),
+        rol: form.rol, agenciaId: form.agenciaId ? parseInt(form.agenciaId) : null,
       }
       if (modo === 'crear') {
         payload.password = form.password
+        if (form.rol === 'CONDUCTOR') {
+          payload.licencia     = form.licencia
+          payload.categoriaLic = form.categoriaLic || null
+          payload.fechaVencLic = form.fechaVencLic || null
+        }
         await api.post('/api/usuarios', payload)
         toast.success('Usuario creado. Credenciales enviadas por email.')
       } else {
@@ -230,11 +248,13 @@ function UsuarioModal({
               ))}
             </select>
           </Field>
-          <Field label="Agencia *" error={errors.agenciaId}>
+          <Field label={ROLES_SIN_AGENCIA.includes(form.rol) ? 'Agencia (opcional)' : 'Agencia *'} error={errors.agenciaId}>
             <select value={form.agenciaId} onChange={sf('agenciaId')}
               disabled={isAdminAgencia}
               className={inputCls('bg-white disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed')}>
-              <option value="">Seleccionar...</option>
+              <option value="">
+                {ROLES_SIN_AGENCIA.includes(form.rol) ? 'Toda la empresa' : 'Seleccionar...'}
+              </option>
               {agenciasVisibles.map(a => (
                 <option key={a.id} value={a.id}>{a.nombre} — {a.ciudad}</option>
               ))}
@@ -242,8 +262,40 @@ function UsuarioModal({
             {isAdminAgencia && (
               <p className="text-[10px] text-gray-400 mt-0.5">Usuario se crea en tu agencia</p>
             )}
+            {!isAdminAgencia && ROLES_SIN_AGENCIA.includes(form.rol) && (
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {form.rol === 'CONDUCTOR'
+                  ? 'Los conductores trabajan con todas las agencias'
+                  : 'El gerente gestiona todas las agencias'}
+              </p>
+            )}
           </Field>
         </div>
+
+        {modo === 'crear' && form.rol === 'CONDUCTOR' && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+            <p className="text-xs font-semibold text-amber-800">Datos de conductor</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="N° Licencia *" error={errors.licencia}>
+                <input value={form.licencia}
+                  onChange={e => {
+                    const v = e.target.value.toUpperCase()
+                    setForm(f => ({ ...f, licencia: v })); setErrors(er => ({ ...er, licencia: undefined }))
+                  }}
+                  placeholder="Q12345678" maxLength={20} className={inputCls('font-mono uppercase')} />
+              </Field>
+              <Field label="Categoría">
+                <select value={form.categoriaLic} onChange={sf('categoriaLic')} className={inputCls('bg-white')}>
+                  <option value="">Sin categoría</option>
+                  {CATEGORIAS_LIC.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Vencimiento de licencia">
+              <input type="date" value={form.fechaVencLic} onChange={sf('fechaVencLic')} className={inputCls()} />
+            </Field>
+          </div>
+        )}
 
         {modo === 'crear' && (
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
@@ -467,7 +519,9 @@ export default function UsuariosPage() {
                     ) : <span className="text-gray-300">—</span>}
                   </td>
                   {(esGerente || esSuperAdmin) && (
-                    <td className="px-4 py-3 text-xs text-gray-700">{u.agenciaNombre ?? `#${u.agenciaId}`}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700">
+                      {u.agenciaNombre ?? (u.agenciaId != null ? `#${u.agenciaId}` : 'Toda la empresa')}
+                    </td>
                   )}
                   <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                     {fmtFecha(u.ultimoAcceso) ?? <span className="text-gray-300">—</span>}
