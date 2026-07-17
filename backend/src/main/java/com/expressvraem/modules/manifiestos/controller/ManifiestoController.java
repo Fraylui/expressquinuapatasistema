@@ -511,7 +511,9 @@ public class ManifiestoController {
                 hora  = fh.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
             }
             origen       = str(viajeRow[1]);
-            destino      = str(viajeRow[2]);
+            // El pasajero puede bajar en una agencia intermedia: su boleta imprime SU destino
+            destino      = p.getDestino() != null && !p.getDestino().isBlank()
+                    ? p.getDestino() : str(viajeRow[2]);
             placa        = str(viajeRow[3]);
             tipo         = str(viajeRow[4]);
             ruc          = str(viajeRow[5]);

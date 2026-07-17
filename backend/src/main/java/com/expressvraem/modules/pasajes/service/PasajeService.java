@@ -110,29 +110,62 @@ public class PasajeService {
                     return clienteRepository.save(c);
                 });
 
-        // Resolver tarifa vigente (rutaId + tipoVehiculo del viaje).
+        // Destino por pasajero: si escogió un destino intermedio, el precio sale de
+        // la TARIFA de esa ruta y la boleta imprime su destino. El asiento se ocupa
+        // el viaje completo (al bajar no se revende — decisión del negocio).
+        Long rutaPrecioId = viaje.getRutaId();
+        String destinoPasajero = null;
+        if (dto.rutaDestinoId() != null && !dto.rutaDestinoId().equals(viaje.getRutaId())) {
+            Object[] rutaTramo;
+            Object[] rutaViaje;
+            try {
+                rutaTramo = (Object[]) entityManager
+                        .createNativeQuery("SELECT origen, destino FROM rutas WHERE id = :id AND activo = true")
+                        .setParameter("id", dto.rutaDestinoId()).getSingleResult();
+                rutaViaje = (Object[]) entityManager
+                        .createNativeQuery("SELECT origen, destino FROM rutas WHERE id = :id")
+                        .setParameter("id", viaje.getRutaId()).getSingleResult();
+            } catch (Exception e) {
+                throw new BusinessException("La ruta del destino elegido no existe o está inactiva", "RUTA_NO_ENCONTRADA");
+            }
+            // El destino elegido debe salir de la misma ciudad que el viaje
+            if (!String.valueOf(rutaTramo[0]).equalsIgnoreCase(String.valueOf(rutaViaje[0]))) {
+                throw new BusinessException(
+                        "El destino elegido no corresponde a este viaje: esa ruta sale de "
+                                + rutaTramo[0] + " y el viaje sale de " + rutaViaje[0],
+                        "DESTINO_INVALIDO");
+            }
+            rutaPrecioId = dto.rutaDestinoId();
+            destinoPasajero = String.valueOf(rutaTramo[1]);
+        }
+
+        // La tarifa es el precio BASE referencial (regla del negocio): el operador
+        // puede cobrar más o menos al momento de registrar. Se resuelve la tarifa
+        // vigente del destino como referencia y, si el precio cobrado difiere,
+        // queda registrado en el log para control de gerencia.
         // Nota: la query de una sola columna devuelve el escalar directo, no Object[].
         long tarifaId = 1L;
         String tipoVehiculo = null;
         BigDecimal precioBase = dto.precioBase();
+        BigDecimal precioTarifa = null;
         try {
             Object vehTipo = entityManager
                     .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
                     .setParameter("vid", viaje.getVehiculoId())
                     .getSingleResult();
             tipoVehiculo = vehTipo != null ? String.valueOf(vehTipo) : null;
-            List<Tarifa> tarifas = tarifaRepository.findVigenteEnTemporada(viaje.getRutaId(), tipoVehiculo);
+            List<Tarifa> tarifas = tarifaRepository.findVigenteEnTemporada(rutaPrecioId, tipoVehiculo);
             if (!tarifas.isEmpty()) {
                 tarifaId = tarifas.get(0).getId();
-                // El precio lo fija la tarifa vigente del sistema, no el navegador del
-                // cajero: sin esto se podía vender un pasaje a cualquier precio
-                if (tarifas.get(0).getPrecio() != null) {
-                    precioBase = tarifas.get(0).getPrecio();
-                }
+                precioTarifa = tarifas.get(0).getPrecio();
             }
         } catch (Exception ignored) {}
         if (precioBase == null || precioBase.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("No hay tarifa vigente para esta ruta y tipo de vehículo, y no se indicó precio válido", "TARIFA_NO_ENCONTRADA");
+            throw new BusinessException("El precio del pasaje debe ser mayor a S/ 0.00", "PRECIO_INVALIDO");
+        }
+        if (precioTarifa != null && precioTarifa.compareTo(precioBase) != 0) {
+            log.info("Venta con precio distinto a tarifa: viaje={} asiento={} tarifa={} cobrado={} operador={}",
+                    dto.viajeId(), dto.asientoNumero(), precioTarifa, precioBase, operadorId);
         }
 
         BigDecimal descuento      = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
@@ -170,6 +203,7 @@ public class PasajeService {
                 .precioFinal(precioFinal)
                 .motivoDescuento(motivoDescuento)
                 .descuentoId(dto.promocionId())
+                .destino(destinoPasajero)
                 .formaPago(dto.formaPago())
                 .estado(esReserva ? "RESERVADO" : "VENDIDO")
                 .codigoBoleta(codigoBoleta)
@@ -379,7 +413,7 @@ public class PasajeService {
                     c != null ? c.getApellidos() : "",
                     c != null ? c.getNumDoc() : "",
                     p.getPrecioBase(), p.getMontoDescuento(), p.getPrecioFinal(),
-                    p.getFormaPago(), p.getEstado(), p.getFechaVenta());
+                    p.getFormaPago(), p.getDestino(), p.getEstado(), p.getFechaVenta());
         }).toList();
     }
 
@@ -391,6 +425,6 @@ public class PasajeService {
                 c != null ? c.getApellidos() : "",
                 c != null ? c.getNumDoc() : "",
                 p.getPrecioBase(), p.getMontoDescuento(), p.getPrecioFinal(),
-                p.getFormaPago(), p.getEstado(), p.getFechaVenta());
+                p.getFormaPago(), p.getDestino(), p.getEstado(), p.getFechaVenta());
     }
 }

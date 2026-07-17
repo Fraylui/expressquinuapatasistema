@@ -16,6 +16,8 @@ public record PasajeResponseDTO(
         BigDecimal descuento,
         BigDecimal precioFinal,
         String formaPago,
+        /** Destino del pasajero (null = destino final de la ruta del viaje) */
+        String destino,
         String estado,
         LocalDateTime fechaVenta
 ) {}
