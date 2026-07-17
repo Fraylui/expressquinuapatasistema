@@ -130,6 +130,18 @@ public class ConfiguracionConductorController {
         c.setFechaVencLic(dto.getFechaVencLic());
 
         Conductor saved = conductorRepository.save(c);
+
+        // Mantener el nombre/teléfono de la cuenta vinculada al día
+        // (email y DNI no se tocan: son únicos y sirven para el login)
+        if (saved.getUsuarioId() != null) {
+            usuarioRepository.findById(saved.getUsuarioId()).ifPresent(u -> {
+                u.setNombres(saved.getNombres());
+                u.setApellidos(saved.getApellidos());
+                if (saved.getTelefono() != null) u.setTelefono(saved.getTelefono());
+                usuarioRepository.save(u);
+            });
+        }
+
         return ResponseEntity.ok(ApiResponse.ok("Conductor actualizado", toMap(saved)));
     }
 
