@@ -29,6 +29,7 @@ import java.util.Map;
 public class ConfiguracionConductorController {
 
     private final ConductorRepository conductorRepository;
+    private final com.expressvraem.modules.auth.repository.UsuarioRepository usuarioRepository;
 
     // ── Listar ────────────────────────────────────────────────────────────────
 
@@ -74,8 +75,14 @@ public class ConfiguracionConductorController {
             throw new BusinessException("Ya existe un conductor con ese número de licencia", "LICENCIA_DUPLICADA");
         }
 
+        // Si ya existe una cuenta con ese DNI (p. ej. el gerente que también maneja),
+        // la ficha queda vinculada automáticamente: no hace falta una segunda cuenta.
+        Long usuarioId = usuarioRepository.findByDni(dni)
+                .map(u -> u.getId()).orElse(null);
+
         Conductor c = Conductor.builder()
                 .agenciaId(agenciaId)
+                .usuarioId(usuarioId)
                 .nombres(dto.getNombres().trim())
                 .apellidos(dto.getApellidos().trim())
                 .dni(dni)
