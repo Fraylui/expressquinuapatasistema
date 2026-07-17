@@ -1645,7 +1645,7 @@ export default function EncomiendaPage() {
           <div className="px-6 pb-6">
             {paso === 0 && (
               <div className="space-y-3">
-                <h3 className="font-semibold text-gray-800 text-sm">¿Quién envía?</h3>
+                <h3 className="font-semibold text-gray-800 text-sm">Remitente</h3>
                 <TipoSelector value={form.tipoRemitente} onChange={v => setForm(f => ({ ...f, tipoRemitente: v, remitente: null }))} />
                 <BuscadorCliente ref={remitenteRef} label="Buscar remitente" value={form.remitente}
                   onChange={c => setForm(f => ({ ...f, remitente: c }))} tipoDoc={tipoToDoc(form.tipoRemitente)} />
@@ -1654,7 +1654,7 @@ export default function EncomiendaPage() {
 
             {paso === 1 && (
               <div className="space-y-3">
-                <h3 className="font-semibold text-gray-800 text-sm">¿Quién recibe?</h3>
+                <h3 className="font-semibold text-gray-800 text-sm">Destinatario</h3>
                 <TipoSelector value={form.tipoDestinatario} onChange={v => setForm(f => ({ ...f, tipoDestinatario: v, destinatario: null }))} />
                 <BuscadorCliente ref={destinatarioRef} label="Buscar destinatario" value={form.destinatario}
                   onChange={c => setForm(f => ({ ...f, destinatario: c }))} tipoDoc={tipoToDoc(form.tipoDestinatario)} />
