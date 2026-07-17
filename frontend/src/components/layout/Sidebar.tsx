@@ -25,7 +25,7 @@ type Section = { section: string; items: NavItem[] }
 
 const navItems: Section[] = [
   {
-    section: 'OPERACIÓN',
+    section: 'OPERACIÓN DIARIA',
     items: [
       { href: '/',            icon: LayoutDashboard, label: 'Tablero',      modulo: null,           roles: null },
       { href: '/viajes',      icon: Bus,             label: 'Viajes',       modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR'] },
@@ -34,19 +34,31 @@ const navItems: Section[] = [
       { href: '/encomiendas-externas', icon: PackageSearch, label: 'Enc. Externas', modulo: 'ENCOMIENDAS',  roles: null },
       { href: '/caja',                 icon: DollarSign,    label: 'Caja',         modulo: 'CAJA',         roles: null },
       { href: '/manifiestos',  icon: FileText,  label: 'Manifiestos',  modulo: 'MANIFIESTOS',  roles: null },
-      { href: '/promociones',  icon: Tag,       label: 'Promociones',  modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
-      { href: '/clientes',     icon: UserCheck, label: 'Clientes',     modulo: null,           roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
     ],
   },
   {
-    section: 'GESTIÓN',
+    section: 'COMERCIAL',
     items: [
-      { href: '/gerente',       icon: TrendingUp,    label: 'Gerencial',      modulo: 'REPORTES',      roles: ['SUPER_ADMIN','GERENTE'] },
-      { href: '/reportes',      icon: BarChart2,     label: 'Reportes',       modulo: 'REPORTES',      roles: null },
-      { href: '/usuarios',      icon: Users,         label: 'Usuarios',       modulo: 'USUARIOS',      roles: null },
-      { href: '/agencias',      icon: Building2,     label: 'Agencias',       modulo: 'AGENCIAS',      roles: null },
-      { href: '/configuracion', icon: Settings,      label: 'Configuración',  modulo: 'CONFIGURACION', roles: null },
-      { href: '/auditoria',     icon: ClipboardList, label: 'Auditoría',      modulo: 'AUDITORIA',     roles: ['SUPER_ADMIN'] },
+      { href: '/promociones',  icon: Tag,       label: 'Promociones',  modulo: null, roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
+      { href: '/clientes',     icon: UserCheck, label: 'Clientes',     modulo: null, roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
+    ],
+  },
+  {
+    section: 'GERENCIA',
+    items: [
+      { href: '/gerente',   icon: TrendingUp,    label: 'Gerencial', modulo: 'REPORTES',  roles: ['SUPER_ADMIN','GERENTE'] },
+      { href: '/reportes',  icon: BarChart2,     label: 'Reportes',  modulo: 'REPORTES',  roles: null },
+      // El backend permite auditoría a GERENTE y ADMIN_AGENCIA (cada uno con su alcance):
+      // el link estaba oculto para ellos por error
+      { href: '/auditoria', icon: ClipboardList, label: 'Auditoría', modulo: 'AUDITORIA', roles: ['SUPER_ADMIN','GERENTE','ADMIN_AGENCIA'] },
+    ],
+  },
+  {
+    section: 'ADMINISTRACIÓN',
+    items: [
+      { href: '/usuarios',      icon: Users,     label: 'Usuarios',      modulo: 'USUARIOS',      roles: null },
+      { href: '/agencias',      icon: Building2, label: 'Agencias',      modulo: 'AGENCIAS',      roles: null },
+      { href: '/configuracion', icon: Settings,  label: 'Configuración', modulo: 'CONFIGURACION', roles: null },
     ],
   },
   {
