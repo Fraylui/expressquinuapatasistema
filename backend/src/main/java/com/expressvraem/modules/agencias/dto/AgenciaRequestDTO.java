@@ -19,6 +19,8 @@ public class AgenciaRequestDTO {
     @Size(max = 200, message = "El nombre no puede superar 200 caracteres")
     private String nombre;
 
+    /** Obligatoria: conecta la agencia con rutas, tracking y hojas de descarga */
+    @NotBlank(message = "La ciudad es obligatoria")
     @Size(max = 100, message = "La ciudad no puede superar 100 caracteres")
     private String ciudad;
 
