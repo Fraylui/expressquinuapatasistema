@@ -97,8 +97,11 @@ public class ManifiestoPdfService {
                 y = drawTablaEncabezadoEncomiendas(cs, y);
                 y -= 4;
 
+                String grupoActual = null;
                 for (ManifiestoDTO.EncomiendaItem ei : encomiendas) {
-                    if (y < MARGIN + 70) {
+                    boolean nuevoGrupo = ei.getAgenciaDestino() != null
+                            && !ei.getAgenciaDestino().equals(grupoActual);
+                    if (y < MARGIN + (nuevoGrupo ? 84 : 70)) {
                         drawPiePagina(cs, pageNum, m);
                         cs.close();
                         pageNum++;
@@ -108,6 +111,10 @@ public class ManifiestoPdfService {
                         y = PAGE_H - MARGIN;
                         y = drawTablaEncabezadoEncomiendas(cs, y);
                         y -= 4;
+                    }
+                    if (nuevoGrupo) {
+                        grupoActual = ei.getAgenciaDestino();
+                        y = drawGrupoDestino(cs, grupoActual, contarGrupo(encomiendas, grupoActual), y);
                     }
                     y = drawFilaEncomienda(cs, ei, y);
                 }
@@ -167,7 +174,9 @@ public class ManifiestoPdfService {
             cs.beginText();
             cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 11);
             cs.newLineAtOffset(MARGIN, y);
-            cs.showText("MANIFIESTO DE ENCOMIENDAS / GUIA DE CARGA");
+            cs.showText(m.getTituloDocumento() != null
+                    ? ascii(m.getTituloDocumento())
+                    : "MANIFIESTO DE ENCOMIENDAS / GUIA DE CARGA");
             cs.endText();
             y -= 10;
 
@@ -230,8 +239,11 @@ public class ManifiestoPdfService {
                 cs.endText();
                 y -= 30;
             } else {
+                String grupoActual = null;
                 for (ManifiestoDTO.EncomiendaItem ei : encomiendas) {
-                    if (y < MARGIN + 70) {
+                    boolean nuevoGrupo = ei.getAgenciaDestino() != null
+                            && !ei.getAgenciaDestino().equals(grupoActual);
+                    if (y < MARGIN + (nuevoGrupo ? 84 : 70)) {
                         drawPiePaginaEnc(cs, pageNum, m);
                         cs.close();
                         pageNum++;
@@ -241,6 +253,10 @@ public class ManifiestoPdfService {
                         y = PAGE_H - MARGIN;
                         y = drawTablaEncabezadoEncomiendas(cs, y);
                         y -= 4;
+                    }
+                    if (nuevoGrupo) {
+                        grupoActual = ei.getAgenciaDestino();
+                        y = drawGrupoDestino(cs, grupoActual, contarGrupo(encomiendas, grupoActual), y);
                     }
                     y = drawFilaEncomienda(cs, ei, y);
                 }
@@ -536,6 +552,28 @@ public class ManifiestoPdfService {
         return y - 14;
     }
 
+    /** Subencabezado de grupo: agencia donde baja la carga que sigue. */
+    private float drawGrupoDestino(PDPageContentStream cs, String agencia, long cantidad, float y) throws IOException {
+        cs.setNonStrokingColor(0.90f, 0.93f, 0.90f);
+        cs.addRect(MARGIN, y - 3, PAGE_W - MARGIN * 2, 12);
+        cs.fill();
+        cs.setNonStrokingColor(0f, 0f, 0f);
+
+        cs.beginText();
+        cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 7.5f);
+        cs.setNonStrokingColor(0.05f, 0.30f, 0.15f);
+        cs.newLineAtOffset(MARGIN + 4, y);
+        cs.showText("BAJA EN: " + ascii(agencia).toUpperCase()
+                + "  (" + cantidad + (cantidad == 1 ? " encomienda)" : " encomiendas)"));
+        cs.endText();
+        cs.setNonStrokingColor(0f, 0f, 0f);
+        return y - 14;
+    }
+
+    private long contarGrupo(List<ManifiestoDTO.EncomiendaItem> items, String agencia) {
+        return items.stream().filter(ei -> agencia.equals(ei.getAgenciaDestino())).count();
+    }
+
     private float drawTablaEncabezadoEncomiendas(PDPageContentStream cs, float y) throws IOException {
         String[] cols = {"#", "Tracking", "Descripcion", "Kg", "Bult.", "Precio", "Remitente"};
         float[] xs = colXEncomiendas();
@@ -612,7 +650,7 @@ public class ManifiestoPdfService {
         cs.beginText();
         cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 7.5f);
         cs.newLineAtOffset(mid + 50, y);
-        cs.showText("Firma del Administrador");
+        cs.showText(m.getFirmaDerecha() != null ? ascii(m.getFirmaDerecha()) : "Firma del Administrador");
         cs.endText();
     }
 
