@@ -1,6 +1,9 @@
 package com.expressvraem.modules.usuarios.dto;
 
 import jakarta.validation.constraints.*;
+import org.springframework.format.annotation.DateTimeFormat;
+
+import java.time.LocalDate;
 
 public record CrearUsuarioDTO(
         @NotBlank(message = "Nombres obligatorio")
@@ -31,6 +34,22 @@ public record CrearUsuarioDTO(
                 message = "Rol inválido")
         String rol,
 
-        @NotNull(message = "Agencia obligatoria")
-        Long agenciaId
+        /**
+         * Opcional para GERENTE y CONDUCTOR (trabajan con toda la empresa).
+         * Obligatoria para ADMIN_AGENCIA y OPERADOR (se valida en el servicio).
+         */
+        Long agenciaId,
+
+        // ── Datos de conductor (solo cuando rol = CONDUCTOR) ────────────────
+        @Size(max = 20)
+        String licencia,
+
+        @Pattern(
+            regexp = "^(A-I|A-IIa|A-IIb|A-IIIa|A-IIIb|A-IIIc|B-I|B-IIa|B-IIb|B-IIc)$",
+            message = "Categoría inválida. Valores permitidos: A-I, A-IIa, A-IIb, A-IIIa, A-IIIb, A-IIIc, B-I, B-IIa, B-IIb, B-IIc"
+        )
+        String categoriaLic,
+
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        LocalDate fechaVencLic
 ) {}

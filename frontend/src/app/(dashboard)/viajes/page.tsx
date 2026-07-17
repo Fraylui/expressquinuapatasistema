@@ -40,7 +40,7 @@ interface ViajeHistorial {
   duracionMinutos?: number
 }
 interface RutaOpt { id: number; origen: string; destino: string; distanciaKm?: number }
-interface VehOpt  { id: number; placa: string; tipo: string; numAsientos?: number }
+interface VehOpt  { id: number; placa: string; tipo: string; numAsientos?: number; conductorHabitualId?: number | null }
 interface CondOpt { id: number; nombres: string; apellidos: string; licencia: string }
 
 const emptyForm     = { rutaId: '', vehiculoId: '', conductorId: '', fechaHoraSal: '', observaciones: '' }
@@ -1185,7 +1185,16 @@ export default function ViajesPage() {
                     <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
                       <Bus size={11} className="text-amber-500" /> Vehículo *
                     </label>
-                    <select value={form.vehiculoId} onChange={e => setForm(f => ({ ...f, vehiculoId: e.target.value }))}
+                    <select value={form.vehiculoId}
+                      onChange={e => {
+                        const vehiculoId = e.target.value
+                        // Preseleccionar el conductor habitual del vehículo (editable)
+                        const habitual = vehiculos.find(v => String(v.id) === vehiculoId)?.conductorHabitualId
+                        setForm(f => ({
+                          ...f, vehiculoId,
+                          conductorId: habitual != null ? String(habitual) : f.conductorId,
+                        }))
+                      }}
                       className="w-full px-4 py-3 border border-gray-200 dark:border-[#293548] bg-white dark:bg-[#1e293b] rounded-xl text-sm text-gray-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition-colors cursor-pointer hover:border-gray-300 dark:hover:border-[#334155]">
                       <option value="">— Selecciona —</option>
                       {vehiculos.map(v => (

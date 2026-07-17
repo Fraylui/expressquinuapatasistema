@@ -15,8 +15,13 @@ public class Conductor {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "agencia_id", nullable = false)
+    /** NULL = trabaja para toda la empresa */
+    @Column(name = "agencia_id")
     private Long agenciaId;
+
+    /** Cuenta de login (usuarios.id) vinculada a este conductor */
+    @Column(name = "usuario_id", unique = true)
+    private Long usuarioId;
 
     @Column(nullable = false, length = 80)
     private String nombres;

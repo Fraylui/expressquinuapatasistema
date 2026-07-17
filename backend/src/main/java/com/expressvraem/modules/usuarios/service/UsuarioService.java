@@ -6,6 +6,8 @@ import com.expressvraem.modules.auditoria.entity.Auditoria;
 import com.expressvraem.modules.auditoria.service.AuditoriaService;
 import com.expressvraem.modules.auth.entity.Usuario;
 import com.expressvraem.modules.auth.repository.UsuarioRepository;
+import com.expressvraem.modules.conductores.entity.Conductor;
+import com.expressvraem.modules.conductores.repository.ConductorRepository;
 import com.expressvraem.modules.usuarios.dto.ActualizarUsuarioDTO;
 import com.expressvraem.modules.usuarios.dto.CrearUsuarioDTO;
 import com.expressvraem.shared.email.EmailService;
@@ -31,6 +33,7 @@ public class UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
     private final AgenciaRepository agenciaRepository;
+    private final ConductorRepository conductorRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final AuditoriaService auditoriaService;
@@ -91,8 +94,10 @@ public class UsuarioService {
         Usuario u = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario", id));
         Map<Long, String> agenciasMap = new HashMap<>();
-        agenciaRepository.findById(u.getAgenciaId())
-                .ifPresent(a -> agenciasMap.put(a.getId(), a.getNombre()));
+        if (u.getAgenciaId() != null) {
+            agenciaRepository.findById(u.getAgenciaId())
+                    .ifPresent(a -> agenciasMap.put(a.getId(), a.getNombre()));
+        }
         return toMap(u, agenciasMap);
     }
 
@@ -110,11 +115,16 @@ public class UsuarioService {
         map.put("rol",          u.getRol());
         map.put("activo",       u.isActivo());
         map.put("agenciaId",    u.getAgenciaId());
-        map.put("agenciaNombre", agenciasMap.getOrDefault(u.getAgenciaId(), "Agencia #" + u.getAgenciaId()));
+        map.put("agenciaNombre", u.getAgenciaId() == null
+                ? "Toda la empresa"
+                : agenciasMap.getOrDefault(u.getAgenciaId(), "Agencia #" + u.getAgenciaId()));
         map.put("ultimoAcceso", u.getUltimoAcceso() != null ? u.getUltimoAcceso().format(DTF) : null);
         map.put("createdAt",    u.getCreatedAt() != null ? u.getCreatedAt().format(DTF) : null);
         return map;
     }
+
+    /** Roles que operan en una agencia concreta; el resto trabaja con toda la empresa. */
+    private static final Set<String> ROLES_CON_AGENCIA = Set.of("ADMIN_AGENCIA", "OPERADOR");
 
     @Transactional
     public Map<String, Object> crear(CrearUsuarioDTO dto) {
@@ -125,8 +135,22 @@ public class UsuarioService {
             throw new BusinessException("Ya existe un usuario con ese DNI", "DNI_DUPLICADO");
         }
 
-        Agencia agencia = agenciaRepository.findById(dto.agenciaId())
-                .orElseThrow(() -> new BusinessException("Agencia no encontrada", "AGENCIA_NOT_FOUND"));
+        // GERENTE y CONDUCTOR pertenecen a la empresa: agencia opcional.
+        // ADMIN_AGENCIA y OPERADOR trabajan en una agencia concreta: obligatoria.
+        if (ROLES_CON_AGENCIA.contains(dto.rol()) && dto.agenciaId() == null) {
+            throw new BusinessException(
+                    "El rol " + dto.rol() + " requiere una agencia", "AGENCIA_REQUERIDA");
+        }
+        Agencia agencia = null;
+        if (dto.agenciaId() != null) {
+            agencia = agenciaRepository.findById(dto.agenciaId())
+                    .orElseThrow(() -> new BusinessException("Agencia no encontrada", "AGENCIA_NOT_FOUND"));
+        }
+
+        if ("CONDUCTOR".equals(dto.rol()) && (dto.licencia() == null || dto.licencia().isBlank())) {
+            throw new BusinessException(
+                    "El número de licencia es obligatorio para el rol CONDUCTOR", "LICENCIA_REQUERIDA");
+        }
 
         Usuario u = Usuario.builder()
                 .agenciaId(dto.agenciaId())
@@ -143,6 +167,10 @@ public class UsuarioService {
         Usuario saved = usuarioRepository.save(u);
         log.info("Usuario creado: {} ({})", saved.getEmail(), saved.getRol());
 
+        if ("CONDUCTOR".equals(dto.rol())) {
+            vincularConductor(saved, dto);
+        }
+
         emailService.enviarCredenciales(saved.getEmail(),
                 saved.getNombres() + " " + saved.getApellidos(),
                 saved.getEmail(), dto.password());
@@ -157,9 +185,53 @@ public class UsuarioService {
         result.put("dni",          saved.getDni());
         result.put("rol",          saved.getRol());
         result.put("agenciaId",    saved.getAgenciaId());
-        result.put("agenciaNombre", agencia.getNombre());
+        result.put("agenciaNombre", agencia != null ? agencia.getNombre() : "Toda la empresa");
         result.put("activo",       saved.isActivo());
         return result;
+    }
+
+    /**
+     * Crea (o vincula, si ya existe por DNI) el registro de conductor asociado
+     * a la cuenta: la ficha de licencia vive en `conductores` y el login en `usuarios`.
+     */
+    private void vincularConductor(Usuario usuario, CrearUsuarioDTO dto) {
+        String licencia = dto.licencia().toUpperCase().trim();
+
+        Conductor existente = conductorRepository.findByDni(usuario.getDni()).orElse(null);
+        if (existente != null) {
+            existente.setUsuarioId(usuario.getId());
+            existente.setNombres(usuario.getNombres());
+            existente.setApellidos(usuario.getApellidos());
+            existente.setTelefono(usuario.getTelefono());
+            existente.setEmail(usuario.getEmail());
+            if (conductorRepository.existsByLicenciaAndIdNot(licencia, existente.getId())) {
+                throw new BusinessException("Ya existe otro conductor con ese número de licencia", "LICENCIA_DUPLICADA");
+            }
+            existente.setLicencia(licencia);
+            if (dto.categoriaLic() != null)  existente.setCategoriaLic(dto.categoriaLic());
+            if (dto.fechaVencLic() != null)  existente.setFechaVencLic(dto.fechaVencLic());
+            existente.setActivo(true);
+            conductorRepository.save(existente);
+            log.info("Conductor existente (DNI {}) vinculado al usuario {}", usuario.getDni(), usuario.getId());
+            return;
+        }
+
+        if (conductorRepository.existsByLicencia(licencia)) {
+            throw new BusinessException("Ya existe un conductor con ese número de licencia", "LICENCIA_DUPLICADA");
+        }
+        conductorRepository.save(Conductor.builder()
+                .agenciaId(usuario.getAgenciaId())   // normalmente null: flota de la empresa
+                .usuarioId(usuario.getId())
+                .nombres(usuario.getNombres())
+                .apellidos(usuario.getApellidos())
+                .dni(usuario.getDni())
+                .licencia(licencia)
+                .categoriaLic(dto.categoriaLic())
+                .telefono(usuario.getTelefono())
+                .email(usuario.getEmail())
+                .fechaVencLic(dto.fechaVencLic())
+                .activo(true)
+                .build());
     }
 
     @Transactional
@@ -193,11 +265,26 @@ public class UsuarioService {
         }
 
         Usuario saved = usuarioRepository.save(u);
+
+        // Mantener sincronizada la ficha del conductor vinculado (nombre/contacto)
+        if ("CONDUCTOR".equals(saved.getRol())) {
+            conductorRepository.findByUsuarioId(saved.getId()).ifPresent(c -> {
+                c.setNombres(saved.getNombres());
+                c.setApellidos(saved.getApellidos());
+                c.setDni(saved.getDni());
+                c.setTelefono(saved.getTelefono());
+                c.setEmail(saved.getEmail());
+                conductorRepository.save(c);
+            });
+        }
+
         audit("UPDATE", saved.getId(), saved.getAgenciaId(), antes, toJson(saved));
 
         Map<String, Object> agenciasMap = new LinkedHashMap<>();
-        agenciaRepository.findById(saved.getAgenciaId())
-                .ifPresent(a -> agenciasMap.put("agenciaNombre", a.getNombre()));
+        if (saved.getAgenciaId() != null) {
+            agenciaRepository.findById(saved.getAgenciaId())
+                    .ifPresent(a -> agenciasMap.put("agenciaNombre", a.getNombre()));
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id",           saved.getId());
@@ -208,7 +295,8 @@ public class UsuarioService {
         result.put("telefono",     saved.getTelefono());
         result.put("rol",          saved.getRol());
         result.put("agenciaId",    saved.getAgenciaId());
-        result.put("agenciaNombre", agenciasMap.getOrDefault("agenciaNombre", "Agencia #" + saved.getAgenciaId()));
+        result.put("agenciaNombre", agenciasMap.getOrDefault("agenciaNombre",
+                saved.getAgenciaId() == null ? "Toda la empresa" : "Agencia #" + saved.getAgenciaId()));
         result.put("activo",       saved.isActivo());
         return result;
     }
@@ -236,6 +324,15 @@ public class UsuarioService {
         String antes = toJson(u);
         u.setActivo(activo);
         usuarioRepository.save(u);
+
+        // Un conductor desactivado tampoco debe poder ser asignado a viajes
+        if ("CONDUCTOR".equals(u.getRol())) {
+            conductorRepository.findByUsuarioId(u.getId()).ifPresent(c -> {
+                c.setActivo(activo);
+                conductorRepository.save(c);
+            });
+        }
+
         audit("UPDATE", id, u.getAgenciaId(),
               antes, "{\"activo\":" + activo + "}");
     }

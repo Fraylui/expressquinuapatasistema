@@ -50,6 +50,8 @@ interface Vehiculo {
   color: string | null
   numAsientos: number
   estado: string
+  conductorHabitualId: number | null
+  conductorHabitualNombre: string | null
 }
 
 interface Conductor {
@@ -733,10 +735,14 @@ function TemporadasTab() {
 interface VehiculoFormState {
   placa: string; tipo: string; marca: string; modelo: string
   anio: string; capacidad: string; color: string; numAsientos: string
+  conductorHabitualId: string
 }
 const emptyVehiculo: VehiculoFormState = {
-  placa: '', tipo: '', marca: '', modelo: '', anio: '', capacidad: '', color: '', numAsientos: ''
+  placa: '', tipo: '', marca: '', modelo: '', anio: '', capacidad: '', color: '', numAsientos: '',
+  conductorHabitualId: '',
 }
+/** Asientos sugeridos por tipo (incluye al conductor, igual que el SeatMap) */
+const ASIENTOS_POR_TIPO: Record<string, number> = { COMBI: 15, CAMIONETA: 5 }
 const ESTADOS_VEHICULO = ['OPERATIVO', 'MANTENIMIENTO', 'BAJA']
 const estadoColor: Record<string, string> = {
   OPERATIVO:    'bg-green-100 text-green-700',
@@ -746,7 +752,9 @@ const estadoColor: Record<string, string> = {
 
 function VehiculosTab() {
   const { data: vehData, isLoading } = useSWR<Vehiculo[]>('/api/configuracion/vehiculos')
-  const vehiculos = vehData ?? []
+  const { data: condData } = useSWR<Conductor[]>('/api/conductor/lista')
+  const vehiculos   = vehData ?? []
+  const conductores = condData ?? []
 
   const [open, setOpen]         = useState(false)
   const [editando, setEditando] = useState<Vehiculo | null>(null)
@@ -775,13 +783,14 @@ function VehiculosTab() {
       anio: v.anio != null ? String(v.anio) : '',
       capacidad: String(v.capacidad), color: v.color ?? '',
       numAsientos: String(v.numAsientos),
+      conductorHabitualId: v.conductorHabitualId != null ? String(v.conductorHabitualId) : '',
     })
     setOpen(true)
   }
 
   const guardar = async () => {
-    if (!form.placa || !form.tipo || !form.capacidad || !form.numAsientos) {
-      toast.error('Placa, tipo, capacidad y asientos son obligatorios')
+    if (!form.placa || !form.tipo || !form.numAsientos) {
+      toast.error('Placa, tipo y n° de asientos son obligatorios')
       return
     }
     setSaving(true)
@@ -790,9 +799,11 @@ function VehiculosTab() {
         placa: form.placa, tipo: form.tipo,
         marca: form.marca || null, modelo: form.modelo || null,
         anio: form.anio ? parseInt(form.anio) : null,
-        capacidad: parseInt(form.capacidad),
+        // Capacidad opcional: el backend usa el n° de asientos si va vacía
+        capacidad: form.capacidad ? parseInt(form.capacidad) : null,
         color: form.color || null,
         numAsientos: parseInt(form.numAsientos),
+        conductorHabitualId: form.conductorHabitualId ? parseInt(form.conductorHabitualId) : null,
       }
       if (editando) {
         await api.put(`/api/configuracion/vehiculos/${editando.id}`, body)
@@ -850,6 +861,7 @@ function VehiculosTab() {
                 <th className="px-4 py-3 text-left font-medium">Placa</th>
                 <th className="px-4 py-3 text-left font-medium">Tipo</th>
                 <th className="px-4 py-3 text-left font-medium">Marca / Modelo</th>
+                <th className="px-4 py-3 text-left font-medium">Conductor habitual</th>
                 <th className="px-4 py-3 text-center font-medium">Asientos</th>
                 <th className="px-4 py-3 text-center font-medium">Estado</th>
                 <th className="px-4 py-3 text-center font-medium">Acciones</th>
@@ -866,6 +878,13 @@ function VehiculosTab() {
                   </td>
                   <td className="px-4 py-3 text-gray-600 text-xs">
                     {v.marca ?? '—'} {v.modelo ?? ''} {v.anio ? `(${v.anio})` : ''}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {v.conductorHabitualNombre
+                      ? <span className="inline-flex items-center gap-1 text-gray-700">
+                          <UserCircle size={12} className="text-gray-400" />{v.conductorHabitualNombre}
+                        </span>
+                      : <span className="text-gray-300">Sin asignar</span>}
                   </td>
                   <td className="px-4 py-3 text-center font-semibold text-gray-900">{v.numAsientos}</td>
                   <td className="px-4 py-3 text-center">
@@ -901,7 +920,15 @@ function VehiculosTab() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
-              <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
+              <select value={form.tipo}
+                onChange={e => {
+                  const tipo = e.target.value
+                  setForm(f => ({
+                    ...f, tipo,
+                    // sugerir asientos según tipo si aún no se escribieron
+                    numAsientos: f.numAsientos || (ASIENTOS_POR_TIPO[tipo] ? String(ASIENTOS_POR_TIPO[tipo]) : ''),
+                  }))
+                }}
                 className={inputCls()}>
                 <option value="">Seleccionar</option>
                 {TIPOS_FLOTA.map(t => <option key={t} value={t}>{t}</option>)}
@@ -928,10 +955,10 @@ function VehiculosTab() {
                 placeholder="2020" className={inputCls()} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Capacidad *</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Capacidad <span className="text-gray-400">(opcional)</span></label>
               <input type="number" min="1" value={form.capacidad}
                 onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))}
-                placeholder="15" className={inputCls()} />
+                placeholder={form.numAsientos || 'auto'} className={inputCls()} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">N° asientos *</label>
@@ -940,11 +967,27 @@ function VehiculosTab() {
                 placeholder="15" className={inputCls()} />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
-            <input value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-              placeholder="Blanco" className={inputCls()} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Color</label>
+              <input value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                placeholder="Blanco" className={inputCls()} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Conductor habitual <span className="text-gray-400">(opcional)</span></label>
+              <select value={form.conductorHabitualId}
+                onChange={e => setForm(f => ({ ...f, conductorHabitualId: e.target.value }))}
+                className={inputCls()}>
+                <option value="">Sin asignar</option>
+                {conductores.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombres} {c.apellidos} — {c.licencia}</option>
+                ))}
+              </select>
+            </div>
           </div>
+          <p className="text-[11px] text-gray-400 -mt-2">
+            El conductor habitual se preselecciona al programar viajes con este vehículo, pero puede cambiarse en cada viaje.
+          </p>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button variant="primary" loading={saving} onClick={guardar}>
@@ -1000,7 +1043,6 @@ function ConductoresTab() {
   const vencidos  = conductores.filter(c => licenciaStatus(c.fechaVencLic) === 'vencida').length
   const proximos  = conductores.filter(c => licenciaStatus(c.fechaVencLic) === 'pronto').length
 
-  const abrirCrear = () => { setEditando(null); setForm(emptyConductor); setOpen(true) }
   const abrirEditar = (c: Conductor) => {
     setEditando(c)
     setForm({
@@ -1013,6 +1055,7 @@ function ConductoresTab() {
   }
 
   const guardar = async () => {
+    if (!editando) return
     if (!form.nombres || !form.apellidos || !form.dni || !form.licencia) {
       toast.error('Nombres, apellidos, DNI y licencia son obligatorios')
       return
@@ -1031,13 +1074,8 @@ function ConductoresTab() {
         email: form.email || null,
         fechaVencLic: form.fechaVencLic || null,
       }
-      if (editando) {
-        await api.put(`/api/configuracion/conductores/${editando.id}`, body)
-        toast.success('Conductor actualizado')
-      } else {
-        await api.post('/api/configuracion/conductores', body)
-        toast.success('Conductor registrado')
-      }
+      await api.put(`/api/configuracion/conductores/${editando.id}`, body)
+      toast.success('Conductor actualizado')
       setOpen(false)
       mutate('/api/configuracion/conductores')
     } catch (err: any) {
@@ -1079,7 +1117,9 @@ function ConductoresTab() {
           )}
           <SearchBar value={q} onChange={setQ} placeholder="Buscar conductor..." />
         </div>
-        <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nuevo conductor</Button>
+        <p className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          Los conductores se registran desde <span className="font-semibold text-gray-600">Usuarios → Nuevo usuario → rol Conductor</span>
+        </p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1170,7 +1210,7 @@ function ConductoresTab() {
         )}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar conductor' : 'Nuevo conductor'} size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title="Editar conductor" size="md">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1232,7 +1272,7 @@ function ConductoresTab() {
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button variant="primary" loading={saving} onClick={guardar}>
-              {editando ? 'Guardar cambios' : 'Registrar conductor'}
+              Guardar cambios
             </Button>
           </div>
         </div>

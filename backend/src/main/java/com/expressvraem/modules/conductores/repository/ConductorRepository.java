@@ -10,6 +10,8 @@ public interface ConductorRepository extends JpaRepository<Conductor, Long> {
     List<Conductor> findByAgenciaId(Long agenciaId);
     List<Conductor> findByAgenciaIdAndActivo(Long agenciaId, boolean activo);
     Optional<Conductor> findByDni(String dni);
+    Optional<Conductor> findByUsuarioId(Long usuarioId);
+    List<Conductor> findByActivo(boolean activo);
     boolean existsByDni(String dni);
     boolean existsByLicencia(String licencia);
     boolean existsByDniAndIdNot(String dni, Long id);

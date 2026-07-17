@@ -13,7 +13,8 @@ public class Vehiculo {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "agencia_id", nullable = false)
+    /** NULL = flota de la empresa (visible para todas las agencias) */
+    @Column(name = "agencia_id")
     private Long agenciaId;
 
     @Column(nullable = false, unique = true, length = 10)
@@ -38,6 +39,10 @@ public class Vehiculo {
 
     @Column(name = "num_asientos", nullable = false)
     private Integer numAsientos;
+
+    /** Conductor al que la empresa le entregó el vehículo (preseleccionado al programar viajes) */
+    @Column(name = "conductor_habitual_id")
+    private Long conductorHabitualId;
 
     @Column(nullable = false, length = 20)
     private String estado;
