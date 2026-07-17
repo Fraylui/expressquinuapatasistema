@@ -106,7 +106,7 @@ function RegistroSuccessScreen({ data, onNueva, onPrint, onEtiqueta }: {
         <p className="text-[10px] text-emerald-300 font-semibold uppercase tracking-widest mb-1">Tracking</p>
         <p className="text-2xl font-black font-mono">{data.enc.codigoTracking}</p>
         <p className="text-sm font-bold text-emerald-200 mt-2">
-          S/ {Number(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}
+          S/ {Number(data.enc.precioEnvio ?? data.enc.monto ?? 0).toFixed(2)}
           {' · '}
           <span className="font-normal">{FORMA_COBRO_LABELS[data.enc.formaCobro ?? ''] ?? data.enc.formaCobro}</span>
         </p>
@@ -129,7 +129,7 @@ function RegistroSuccessScreen({ data, onNueva, onPrint, onEtiqueta }: {
       {data.enc.formaCobro === 'POR_COBRAR' && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 text-left">
           <p className="font-semibold mb-0.5">Pago en destino</p>
-          <p>El cobro de <strong>S/ {Number(data.enc.monto ?? data.enc.precioEnvio ?? 0).toFixed(2)}</strong> lo realiza el operador destino al entregar.</p>
+          <p>El cobro de <strong>S/ {Number(data.enc.precioEnvio ?? data.enc.monto ?? 0).toFixed(2)}</strong> lo realiza el operador destino al entregar.</p>
         </div>
       )}
 
@@ -175,7 +175,7 @@ function EntregaSuccessScreen({ enc, cobrado, onVolver, onPrint }: {
           ['Recibió', enc.recibidoPorNombre ?? '—'],
           ['DNI', enc.recibidoPorDni ?? '—'],
           ['Fecha', enc.fechaEntregaReal ? format(new Date(enc.fechaEntregaReal), 'dd/MM/yyyy HH:mm') : '—'],
-          ...(cobrado ? [['Cobrado', `S/ ${Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)} en caja`]] : []),
+          ...(cobrado ? [['Cobrado', `S/ ${Number(enc.precioEnvio ?? enc.monto ?? 0).toFixed(2)} en caja`]] : []),
         ].map(([label, value]) => (
           <div key={label} className="flex gap-3 px-4 py-2.5">
             <span className="text-xs font-semibold text-gray-400 w-24 shrink-0">{label}</span>
@@ -341,7 +341,7 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
             {esPorCobrar && (
               <div className="flex gap-2">
                 <span className="text-gray-500 w-20 shrink-0">A cobrar:</span>
-                <span className="font-bold text-amber-700">S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)} <span className="text-amber-600 font-normal">(pago en destino)</span></span>
+                <span className="font-bold text-amber-700">S/ {Number(enc.precioEnvio ?? enc.monto ?? 0).toFixed(2)} <span className="text-amber-600 font-normal">(pago en destino)</span></span>
               </div>
             )}
           </div>
@@ -394,7 +394,7 @@ function ModalEntrega({ enc, onClose, onSuccess }: {
               <div className="flex items-start gap-2 text-xs">
                 <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-amber-900">Cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)} al entregar</p>
+                  <p className="font-semibold text-amber-900">Cobrar S/ {Number(enc.precioEnvio ?? enc.monto ?? 0).toFixed(2)} al entregar</p>
                   <p className="text-amber-700 mt-0.5">El cobro ingresará a tu caja activa. <strong>Debes tener turno abierto.</strong></p>
                 </div>
               </div>
@@ -606,7 +606,7 @@ function ParaEntregarTab({ onEntregaSuccess, onCountChange }: {
                       )}
                       {enc.formaCobro === 'POR_COBRAR' && !esEntregado && (
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
-                          Cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
+                          Cobrar S/ {Number(enc.precioEnvio ?? enc.monto ?? 0).toFixed(2)}
                         </span>
                       )}
                       {enc.esFragil && (
@@ -1304,7 +1304,7 @@ function RecepcionarTab({ onBadgeChange }: { onBadgeChange?: (n: number) => void
                               )}
                               {enc.formaCobro === 'POR_COBRAR' && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
-                                  Cobrar S/ {Number(enc.monto ?? enc.precioEnvio ?? 0).toFixed(2)}
+                                  Cobrar S/ {Number(enc.precioEnvio ?? enc.monto ?? 0).toFixed(2)}
                                 </span>
                               )}
                             </div>
@@ -1433,7 +1433,7 @@ export default function EncomiendaPage() {
     if (paso === 0) return !!form.remitente
     if (paso === 1) return !!form.destinatario
     if (paso === 2) return !!form.descripcion.trim() && !!form.agenciaDestinoId
-    if (paso === 3) return !!form.monto && parseFloat(form.monto) >= 0 && !!form.formaCobro
+    if (paso === 3) return !!form.monto && parseFloat(form.monto) > 0 && !!form.formaCobro
     return true
   }
 
