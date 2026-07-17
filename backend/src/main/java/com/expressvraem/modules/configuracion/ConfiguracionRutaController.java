@@ -61,6 +61,16 @@ public class ConfiguracionRutaController {
         if (rutaRepository.existsByCodigoAndIdNot(codigo, 0L)) {
             throw new BusinessException("Ya existe una ruta con ese código", "CODIGO_DUPLICADO");
         }
+        // El trayecto es único: no se permite crear dos veces la misma ruta
+        boolean trayectoDuplicado = rutaRepository.findAll().stream().anyMatch(r ->
+                r.getOrigen() != null && r.getOrigen().trim().equalsIgnoreCase(dto.getOrigen().trim())
+                && r.getDestino() != null && r.getDestino().trim().equalsIgnoreCase(dto.getDestino().trim()));
+        if (trayectoDuplicado) {
+            throw new BusinessException(
+                    "Ya existe la ruta " + dto.getOrigen().trim() + " → " + dto.getDestino().trim()
+                            + ". Edítala o actívala en vez de crearla de nuevo.",
+                    "RUTA_DUPLICADA");
+        }
         // Validar que origen y destino no sean iguales
         if (dto.getOrigen().trim().equalsIgnoreCase(dto.getDestino().trim())) {
             throw new BusinessException("Origen y destino no pueden ser iguales", "RUTA_INVALIDA");

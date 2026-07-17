@@ -269,6 +269,22 @@ function RutasTab() {
                         aria-label={r.activo ? 'Desactivar ruta' : 'Activar ruta'}>
                         {r.activo ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
                       </button>
+                      {!r.activo && (
+                        <button onClick={async () => {
+                            if (!confirm(`¿Eliminar la ruta ${r.origen} → ${r.destino} (${r.codigo})?`)) return
+                            try {
+                              await api.delete(`/api/configuracion/rutas/${r.id}`)
+                              mutate('/api/configuracion/rutas')
+                              toast.success('Ruta eliminada')
+                            } catch (err: any) {
+                              toast.error(err?.response?.data?.message ?? 'Error al eliminar')
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          aria-label="Eliminar ruta">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
