@@ -1043,6 +1043,7 @@ function ConductoresTab() {
   const vencidos  = conductores.filter(c => licenciaStatus(c.fechaVencLic) === 'vencida').length
   const proximos  = conductores.filter(c => licenciaStatus(c.fechaVencLic) === 'pronto').length
 
+  const abrirCrear = () => { setEditando(null); setForm(emptyConductor); setOpen(true) }
   const abrirEditar = (c: Conductor) => {
     setEditando(c)
     setForm({
@@ -1055,7 +1056,6 @@ function ConductoresTab() {
   }
 
   const guardar = async () => {
-    if (!editando) return
     if (!form.nombres || !form.apellidos || !form.dni || !form.licencia) {
       toast.error('Nombres, apellidos, DNI y licencia son obligatorios')
       return
@@ -1074,8 +1074,13 @@ function ConductoresTab() {
         email: form.email || null,
         fechaVencLic: form.fechaVencLic || null,
       }
-      await api.put(`/api/configuracion/conductores/${editando.id}`, body)
-      toast.success('Conductor actualizado')
+      if (editando) {
+        await api.put(`/api/configuracion/conductores/${editando.id}`, body)
+        toast.success('Conductor actualizado')
+      } else {
+        await api.post('/api/configuracion/conductores', body)
+        toast.success('Ficha de conductor creada. Si necesita acceso a la app, créale un usuario con rol Conductor y el mismo DNI.')
+      }
       setOpen(false)
       mutate('/api/configuracion/conductores')
     } catch (err: any) {
@@ -1117,9 +1122,13 @@ function ConductoresTab() {
           )}
           <SearchBar value={q} onChange={setQ} placeholder="Buscar conductor..." />
         </div>
-        <p className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-          Los conductores se registran desde <span className="font-semibold text-gray-600">Usuarios → Nuevo usuario → rol Conductor</span>
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 max-w-md">
+            Conductor con acceso a la app: <span className="font-semibold text-gray-600">Usuarios → rol Conductor</span>.
+            La ficha sola sirve para asignar viajes sin crear cuenta (ej. el gerente que también maneja).
+          </p>
+          <Button variant="primary" icon={Plus} onClick={abrirCrear}>Nueva ficha</Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1210,7 +1219,7 @@ function ConductoresTab() {
         )}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Editar conductor" size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title={editando ? 'Editar conductor' : 'Nueva ficha de conductor'} size="md">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1272,7 +1281,7 @@ function ConductoresTab() {
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button variant="primary" loading={saving} onClick={guardar}>
-              Guardar cambios
+              {editando ? 'Guardar cambios' : 'Crear ficha'}
             </Button>
           </div>
         </div>

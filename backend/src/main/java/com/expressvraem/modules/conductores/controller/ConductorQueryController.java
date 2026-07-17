@@ -37,6 +37,7 @@ public class ConductorQueryController {
     private final EntityManager       entityManager;
     private final com.expressvraem.modules.encomiendas.repository.EncomiendaRepository encomiendaRepository;
     private final com.expressvraem.shared.websocket.WebSocketEventPublisher wsPublisher;
+    private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
 
     // ── Lista de conductores para selects ────────────────────────────────────
 
@@ -123,6 +124,28 @@ public class ConductorQueryController {
                     "Solo puedes confirmar salida de un viaje PROGRAMADO o ATRASADO. Estado: " + viaje.getEstado(),
                     "ESTADO_INVALIDO");
         }
+
+        // Control interno: la salida de una COMBI con cuota configurada la confirma
+        // el OPERADOR de la agencia, que registra la cuota de salida en su caja.
+        // Si el conductor pudiera confirmarla, la cuota no quedaría registrada.
+        Object vehTipo = null;
+        try {
+            vehTipo = entityManager
+                    .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
+                    .setParameter("vid", viaje.getVehiculoId())
+                    .getSingleResult();
+        } catch (Exception ignored) {}
+        if ("COMBI".equals(String.valueOf(vehTipo))) {
+            java.math.BigDecimal cuota = empresaConfigService.get().getCuotaSalidaCombi();
+            if (cuota != null && cuota.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new BusinessException(
+                        "La salida de una combi la confirma el operador de la agencia: "
+                        + "él registra la cuota de salida (S/ " + cuota.toPlainString()
+                        + ") en su caja. Pídele que confirme la salida desde el módulo Viajes.",
+                        "SALIDA_COMBI_REQUIERE_OPERADOR");
+            }
+        }
+
         viaje.setEstado("EN_RUTA");
         viaje.setUpdatedAt(OffsetDateTime.now());
         viajeRepository.save(viaje);
