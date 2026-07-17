@@ -38,14 +38,34 @@ public class ConductorQueryController {
     private final com.expressvraem.modules.encomiendas.repository.EncomiendaRepository encomiendaRepository;
     private final com.expressvraem.shared.websocket.WebSocketEventPublisher wsPublisher;
     private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
+    private final com.expressvraem.modules.vehiculos.service.UbicacionFlotaService ubicacionFlotaService;
 
     // ── Lista de conductores para selects ────────────────────────────────────
 
     @GetMapping("/lista")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR')")
-    public ResponseEntity<ApiResponse<List<Conductor>>> listar() {
-        // Los conductores trabajan para toda la empresa: lista completa para cualquier agencia
-        return ResponseEntity.ok(ApiResponse.ok(conductorRepository.findByActivo(true)));
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listar() {
+        // Los conductores trabajan para toda la empresa: lista completa para cualquier
+        // agencia, con su ubicación derivada del último viaje
+        Map<Long, String> ubicaciones = ubicacionFlotaService.ubicacionConductores();
+        String sede = ubicacionFlotaService.ciudadSedePrincipal();
+
+        List<Map<String, Object>> lista = conductorRepository.findByActivo(true).stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",           c.getId());
+            m.put("nombres",      c.getNombres());
+            m.put("apellidos",    c.getApellidos());
+            m.put("dni",          c.getDni());
+            m.put("licencia",     c.getLicencia());
+            m.put("categoriaLic", c.getCategoriaLic());
+            m.put("telefono",     c.getTelefono());
+            m.put("fechaVencLic", c.getFechaVencLic());
+            m.put("activo",       c.isActivo());
+            m.put("ubicacionActual", ubicaciones.getOrDefault(c.getId(), sede));
+            return m;
+        }).toList();
+
+        return ResponseEntity.ok(ApiResponse.ok(lista));
     }
 
     // ── Mi perfil de conductor (alerta de licencia en el panel) ──────────────
