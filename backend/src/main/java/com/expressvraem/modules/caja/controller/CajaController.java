@@ -141,9 +141,9 @@ public class CajaController {
         Long authUserId = resolveUserId(auth);
         String rol = resolveRol(auth);
 
-        if (!"SUPER_ADMIN".equals(rol) && !"ADMIN_AGENCIA".equals(rol)) {
-            cajaService.verificarOwnership(cajaId, authUserId);
-        }
+        // Scope completo por rol: ADMIN_AGENCIA solo cajas de SU agencia (antes
+        // saltaba toda verificación y podía escribir en cajas de cualquier agencia)
+        cajaService.verificarAcceso(cajaId, authUserId, rol, resolveAgenciaId(auth));
 
         String tipo = String.valueOf(body.get("tipo"));
         String concepto = String.valueOf(body.get("concepto"));

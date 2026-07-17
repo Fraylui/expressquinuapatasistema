@@ -329,8 +329,9 @@ public class CajaService {
         } else if ("ADMIN_AGENCIA".equals(rol)) {
             cajas = cajaRepository.findByAgenciaIdOrderByFechaAperturaDesc(filtroAgencia, pr);
         } else {
-            cajas = cajaRepository.findByUsuarioIdOrderByFechaAperturaDesc(
-                    filtroUsuario != null ? filtroUsuario : usuarioId, pr);
+            // OPERADOR/CONDUCTOR: siempre sus propias cajas — el filtro ?usuario=X
+            // permitía espiar los turnos de caja de cualquier otro usuario
+            cajas = cajaRepository.findByUsuarioIdOrderByFechaAperturaDesc(usuarioId, pr);
         }
 
         return enrichCajaList(cajas.getContent());

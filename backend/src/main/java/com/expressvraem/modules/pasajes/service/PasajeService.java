@@ -110,24 +110,11 @@ public class PasajeService {
                     return clienteRepository.save(c);
                 });
 
-        BigDecimal descuento      = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
-        String     motivoDescuento = dto.motivoDescuento();
-
-        // Si el cajero seleccionó una promoción, recalcular el descuento desde ella validando vigencia
-        if (dto.promocionId() != null) {
-            Promocion promo = promocionService.findVigenteById(dto.promocionId(), "PASAJES");
-            descuento       = promocionService.calcularDescuento(promo, dto.precioBase());
-            motivoDescuento = promo.getNombre();
-            promocionService.incrementarUso(promo.getId());
-        }
-
-        BigDecimal precioFinal = dto.precioBase().subtract(descuento);
-        if (precioFinal.compareTo(BigDecimal.ZERO) < 0) precioFinal = BigDecimal.ZERO;
-
-        // Resolver tarifaId real (rutaId + tipoVehiculo del viaje).
+        // Resolver tarifa vigente (rutaId + tipoVehiculo del viaje).
         // Nota: la query de una sola columna devuelve el escalar directo, no Object[].
         long tarifaId = 1L;
         String tipoVehiculo = null;
+        BigDecimal precioBase = dto.precioBase();
         try {
             Object vehTipo = entityManager
                     .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
@@ -135,8 +122,32 @@ public class PasajeService {
                     .getSingleResult();
             tipoVehiculo = vehTipo != null ? String.valueOf(vehTipo) : null;
             List<Tarifa> tarifas = tarifaRepository.findVigenteEnTemporada(viaje.getRutaId(), tipoVehiculo);
-            if (!tarifas.isEmpty()) tarifaId = tarifas.get(0).getId();
+            if (!tarifas.isEmpty()) {
+                tarifaId = tarifas.get(0).getId();
+                // El precio lo fija la tarifa vigente del sistema, no el navegador del
+                // cajero: sin esto se podía vender un pasaje a cualquier precio
+                if (tarifas.get(0).getPrecio() != null) {
+                    precioBase = tarifas.get(0).getPrecio();
+                }
+            }
         } catch (Exception ignored) {}
+        if (precioBase == null || precioBase.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("No hay tarifa vigente para esta ruta y tipo de vehículo, y no se indicó precio válido", "TARIFA_NO_ENCONTRADA");
+        }
+
+        BigDecimal descuento      = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
+        String     motivoDescuento = dto.motivoDescuento();
+
+        // Si el cajero seleccionó una promoción, recalcular el descuento desde ella validando vigencia
+        if (dto.promocionId() != null) {
+            Promocion promo = promocionService.findVigenteById(dto.promocionId(), "PASAJES");
+            descuento       = promocionService.calcularDescuento(promo, precioBase);
+            motivoDescuento = promo.getNombre();
+            promocionService.incrementarUso(promo.getId());
+        }
+
+        BigDecimal precioFinal = precioBase.subtract(descuento);
+        if (precioFinal.compareTo(BigDecimal.ZERO) < 0) precioFinal = BigDecimal.ZERO;
 
         int anioActual = LocalDateTime.now().getYear();
         long dbMax = pasajeRepository.maxCorrelativoByAgenciaAndAnio(
@@ -154,7 +165,7 @@ public class PasajeService {
                 .tarifaId(tarifaId)
                 .vendedorId(operadorId)
                 .operadorId(operadorId)
-                .precioBase(dto.precioBase())
+                .precioBase(precioBase)
                 .montoDescuento(descuento)
                 .precioFinal(precioFinal)
                 .motivoDescuento(motivoDescuento)

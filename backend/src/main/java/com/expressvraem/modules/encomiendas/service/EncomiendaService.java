@@ -50,6 +50,7 @@ public class EncomiendaService {
     private final CajaService cajaService;
     private final AuditoriaService auditoriaService;
     private final PromocionService promocionService;
+    private final com.expressvraem.modules.viajes.repository.ViajeRepository viajeRepository;
 
     private static final Map<String, Set<String>> TRANSICIONES = Map.of(
         "REGISTRADO",      Set.of("RECEPCIONADO", "DEVUELTO"),
@@ -82,7 +83,13 @@ public class EncomiendaService {
                 dto.destinatarioRazonSocial(), dto.destinatarioTelefono(), agenciaId);
 
         String codigo = trackingCodeGenerator.generateCode();
-        BigDecimal precio = dto.monto() != null ? dto.monto() : BigDecimal.ZERO;
+        // El flete es obligatorio: sin esto un monto olvidado viajaba gratis y sin pasar por caja
+        if (dto.monto() == null || dto.monto().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(
+                    "El monto del envío es obligatorio y debe ser mayor a S/ 0.00",
+                    "MONTO_REQUERIDO");
+        }
+        BigDecimal precio = dto.monto();
 
         // Aplicar promoción si se proporcionó
         BigDecimal descuento  = BigDecimal.ZERO;
@@ -163,6 +170,18 @@ public class EncomiendaService {
     public Encomienda cambiarEstado(Long id, String nuevoEstado, String observacion, Long usuarioId) {
         Encomienda enc = encomiendaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Encomienda", id));
+
+        // El operador solo mueve paquetes de su circuito: agencia de origen o de destino
+        // (GERENTE/SUPER_ADMIN no llevan agencia en el contexto y pasan libre)
+        Long agenciaCtx = AgenciaContext.getAgenciaId();
+        if (agenciaCtx != null
+                && !agenciaCtx.equals(enc.getAgenciaOrigenId())
+                && !agenciaCtx.equals(enc.getAgenciaId())
+                && !agenciaCtx.equals(enc.getAgenciaDestinoId())) {
+            throw new BusinessException(
+                    "Esta encomienda no pertenece a su agencia (ni como origen ni como destino)",
+                    "AGENCIA_INVALIDA");
+        }
 
         String estadoActual = enc.getEstado();
         Set<String> validos = TRANSICIONES.getOrDefault(estadoActual, Set.of());
@@ -257,13 +276,16 @@ public class EncomiendaService {
         String obs = "Recibido por: " + dto.nombreReceptor() + " (DNI: " + dto.dniReceptor() + ")"
                 + (dto.nota() != null && !dto.nota().isBlank() ? " | Nota: " + dto.nota() : "");
 
-        guardarHistorial(id, enc.getAgenciaId(), usuarioId, "DISPONIBLE", "ENTREGADO", obs);
+        // El estado anterior real (puede ser LLEGADO_AGENCIA): el timeline debe reflejarlo
+        String estadoAnterior = enc.getEstado();
+        guardarHistorial(id, enc.getAgenciaId(), usuarioId, estadoAnterior, "ENTREGADO", obs);
         enc.setEstado("ENTREGADO");
         Encomienda saved = encomiendaRepository.save(enc);
 
-        // Pago en destino: caja OBLIGATORIA — si no hay turno activo se rechaza la entrega
+        // Pago en destino: caja OBLIGATORIA — si no hay turno activo se rechaza la entrega.
+        // Se cobra el precio de envío (con promoción aplicada), no el monto bruto.
         boolean cobrado = false;
-        BigDecimal montoEnc = enc.getMonto() != null ? enc.getMonto() : enc.getPrecioEnvio();
+        BigDecimal montoEnc = enc.getPrecioEnvio() != null ? enc.getPrecioEnvio() : enc.getMonto();
         if ("POR_COBRAR".equals(enc.getFormaCobro())) {
             if (montoEnc == null || montoEnc.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BusinessException(
@@ -290,7 +312,7 @@ public class EncomiendaService {
         }
 
         wsPublisher.publicarCambioEstadoEncomienda(enc.getCodigoTracking(),
-                new EstadoEncomiendaDTO(enc.getCodigoTracking(), "DISPONIBLE", "ENTREGADO",
+                new EstadoEncomiendaDTO(enc.getCodigoTracking(), estadoAnterior, "ENTREGADO",
                         obs, "sistema", LocalDateTime.now()));
 
         auditoriaService.registrar(usuarioId, usuarioNombre, enc.getAgenciaId(),
@@ -358,10 +380,32 @@ public class EncomiendaService {
         return encomiendaRepository.findAll(spec);
     }
 
+    private static final Set<String> ESTADOS_ASIGNABLES = Set.of(
+            "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO", "OBSERVADO");
+
     @Transactional
     public Encomienda asignarViaje(Long id, Long viajeId, Long usuarioId) {
         Encomienda enc = encomiendaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Encomienda", id));
+
+        // Solo se puede (re)asignar carga que aún no viajó: una encomienda entregada,
+        // devuelta o en tránsito no debe cambiar de viaje
+        if (!ESTADOS_ASIGNABLES.contains(enc.getEstado())) {
+            throw new BusinessException(
+                    "No se puede asignar viaje a una encomienda en estado " + enc.getEstado(),
+                    "ESTADO_INVALIDO");
+        }
+        if (viajeId != null) {
+            var viaje = viajeRepository.findById(viajeId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Viaje", viajeId));
+            if (!"PROGRAMADO".equals(viaje.getEstado()) && !"ATRASADO".equals(viaje.getEstado())) {
+                throw new BusinessException(
+                        "Solo se puede asignar carga a un viaje PROGRAMADO o ATRASADO. Estado del viaje: "
+                                + viaje.getEstado(),
+                        "VIAJE_NO_ASIGNABLE");
+            }
+        }
+
         enc.setViajeId(viajeId);
         Encomienda saved = encomiendaRepository.save(enc);
         String obs = viajeId != null ? "Viaje asignado: #" + viajeId : "Viaje desasignado";
@@ -409,11 +453,25 @@ public class EncomiendaService {
         int faltantes = 0;
         List<String> codigosFaltantes = new ArrayList<>();
 
+        int omitidas = 0;
         for (RecepcionItemDTO item : items) {
             Encomienda enc = encomiendaRepository.findById(item.encomiendaId())
                     .orElseThrow(() -> new ResourceNotFoundException("Encomienda", item.encomiendaId()));
 
             if (!"EN_TRANSITO".equals(enc.getEstado())) continue;
+
+            // Solo se recepcionan paquetes de ESTE viaje destinados a ESTA agencia:
+            // sin esto, un id equivocado marcaba "llegado" carga de otra agencia/viaje
+            boolean deOtroViaje   = enc.getViajeId() == null || !viajeId.equals(enc.getViajeId());
+            boolean deOtraAgencia = agenciaId != null && enc.getAgenciaDestinoId() != null
+                    && !agenciaId.equals(enc.getAgenciaDestinoId());
+            if (deOtroViaje || deOtraAgencia) {
+                log.warn("Recepción masiva viaje={} agencia={}: encomienda {} omitida ({})",
+                        viajeId, agenciaId, enc.getCodigoTracking(),
+                        deOtroViaje ? "pertenece a otro viaje" : "destinada a otra agencia");
+                omitidas++;
+                continue;
+            }
 
             if (item.recibido()) {
                 enc.setEstado("LLEGADO_AGENCIA");
@@ -454,6 +512,7 @@ public class EncomiendaService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("recibidas", recibidas);
         result.put("faltantes", faltantes);
+        result.put("omitidas", omitidas);
         result.put("total", recibidas + faltantes);
         result.put("codigosFaltantes", codigosFaltantes);
         return result;
