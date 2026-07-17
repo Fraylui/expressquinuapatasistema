@@ -121,10 +121,10 @@ function RutasTab() {
     return Array.from(set.values()).sort()
   }, [agenciasData])
 
-  // Código sugerido: 3 letras de cada ciudad (HUA-KIM)
+  // Código sugerido: 4 letras de cada ciudad (HUAM-KIMB)
   const sugerirCodigo = (origen: string, destino: string) =>
     origen && destino
-      ? `${origen.slice(0, 3)}-${destino.slice(0, 3)}`.toUpperCase().replace(/\s/g, '')
+      ? `${origen.slice(0, 4)}-${destino.slice(0, 4)}`.toUpperCase().replace(/\s/g, '')
       : ''
 
   const [open, setOpen]         = useState(false)
