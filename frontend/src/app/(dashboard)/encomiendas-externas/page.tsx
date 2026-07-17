@@ -195,7 +195,8 @@ function ModalRegistrar({ onClose, onSuccess }: {
     conductorNombre: '', conductorDni: '', conductorTel: '', conductorPlaca: '',
     destinatarioNombre: '', destinatarioDni: '', destinatarioTel: '',
     descripcion: '', observaciones: '',
-    monto: '', estadoPago: 'PENDIENTE' as 'PENDIENTE' | 'PAGADO', formaPago: 'EFECTIVO',
+    // El conductor externo siempre paga la tarifa al dejar el paquete
+    monto: '', estadoPago: 'PAGADO' as 'PENDIENTE' | 'PAGADO', formaPago: 'EFECTIVO',
   })
   const [guardando, setGuardando] = useState(false)
 
@@ -229,8 +230,8 @@ function ModalRegistrar({ onClose, onSuccess }: {
         descripcion:        form.descripcion.trim(),
         observaciones:      form.observaciones.trim() || undefined,
         monto:              parseFloat(form.monto),
-        estadoPago:         form.estadoPago,
-        formaPago:          form.estadoPago === 'PAGADO' ? form.formaPago : undefined,
+        estadoPago:         'PAGADO',
+        formaPago:          form.formaPago,
       }
       const r = await encomiendaExternaService.registrar(dto)
       onSuccess(r.data)
@@ -338,46 +339,34 @@ function ModalRegistrar({ onClose, onSuccess }: {
             </div>
           </div>
 
-          {/* Cobro */}
+          {/* Cobro: el conductor externo paga la tarifa del servicio al dejar el paquete */}
           <div>
-            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Cobro</h4>
+            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+              Tarifa del servicio (la paga el conductor al dejar)
+            </h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Monto (S/) *</label>
-                <input type="number" step="0.5" min="0" value={form.monto} onChange={sf('monto')}
+                <input type="number" step="0.5" min="0.5" value={form.monto} onChange={sf('monto')}
                   placeholder="0.00"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">¿Cuándo se cobra?</label>
-                <select value={form.estadoPago} onChange={sf('estadoPago')}
+                <label className="block text-xs font-medium text-gray-700 mb-1">Forma de pago *</label>
+                <select value={form.formaPago} onChange={sf('formaPago')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-                  <option value="PENDIENTE">Al recoger (destinatario paga)</option>
-                  <option value="PAGADO">Ahora (conductor ya pagó)</option>
+                  {FORMA_PAGO_OPTS.map(f => (
+                    <option key={f} value={f}>{f.charAt(0) + f.slice(1).toLowerCase()}</option>
+                  ))}
                 </select>
               </div>
-              {form.estadoPago === 'PAGADO' && (
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Forma de pago *</label>
-                  <select value={form.formaPago} onChange={sf('formaPago')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-                    {FORMA_PAGO_OPTS.map(f => (
-                      <option key={f} value={f}>{f.charAt(0) + f.slice(1).toLowerCase()}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </div>
-            {form.estadoPago === 'PENDIENTE' && form.monto && parseFloat(form.monto) > 0 && (
-              <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                Se cobrará <strong>S/ {parseFloat(form.monto).toFixed(2)}</strong> al destinatario cuando venga a recoger.
-                El operador que entregue debe tener caja abierta.
-              </p>
-            )}
-            {form.estadoPago === 'PAGADO' && !cajaAbierta && (
+            <p className="mt-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">
+              La empresa solo cobra esta tarifa por guardar y entregar el paquete. El destinatario no paga nada al recoger.
+            </p>
+            {!cajaAbierta && (
               <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
-                <strong>Necesitas un turno de caja abierto</strong> para cobrar al conductor: el dinero se
-                registra en tu caja. Abre tu turno primero o elige &quot;Al recoger&quot;.
+                <strong>Necesitas un turno de caja abierto</strong>: la tarifa que paga el conductor se registra en tu caja.
               </p>
             )}
           </div>
