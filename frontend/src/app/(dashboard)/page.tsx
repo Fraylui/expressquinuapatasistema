@@ -422,42 +422,9 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── Grid de módulos ───────────────────────────────────────────────────── */}
-      {mounted && MODULOS_CONFIG.map(({ section, items }) => {
-        const visibles = items.filter(puedeVer)
-        if (visibles.length === 0) return null
-        return (
-          <div key={section}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center gap-2">
-                <LayoutGrid size={13} className="text-gray-400 dark:text-slate-500" />
-                <p className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">
-                  {section}
-                </p>
-              </div>
-              <div className="flex-1 h-px bg-gray-100 dark:bg-[#293548]" />
-              <span className="text-[11px] text-gray-300 dark:text-slate-600 font-medium">
-                {visibles.length} módulos
-              </span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {visibles.map(m => (
-                <ModuloCard
-                  key={m.href}
-                  href={m.href}
-                  label={m.label}
-                  desc={m.desc}
-                  icon={m.icon}
-                  bg={m.bg}
-                  light={m.light}
-                  text={m.text}
-                  stat={moduloStat(m.href)}
-                />
-              ))}
-            </div>
-          </div>
-        )
-      })}
+      {/* La cuadrícula de módulos se quitó: duplicaba el menú lateral (ya
+          ordenado por secciones). El Tablero queda como pantalla operativa:
+          estado del turno, KPIs, viajes del día y promociones. */}
 
       {/* ── Sección inferior: Viajes del día + Sistema + Promos ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
