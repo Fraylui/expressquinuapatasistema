@@ -465,7 +465,10 @@ function ParaEntregarTab({ onEntregaSuccess, onCountChange }: {
     ? porEstado.filter(e =>
         e.codigoTracking?.toLowerCase().includes(busqueda.toLowerCase()) ||
         e.destinatarioNombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        e.remitenteNombre?.toLowerCase().includes(busqueda.toLowerCase())
+        e.remitenteNombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        // Buscar también por DNI del remitente o destinatario ("DNI 73431663")
+        e.destinatarioDoc?.includes(busqueda.trim()) ||
+        e.remitenteDoc?.includes(busqueda.trim())
       )
     : porEstado
 
@@ -539,7 +542,7 @@ function ParaEntregarTab({ onEntregaSuccess, onCountChange }: {
         <div className="relative flex-1 min-w-[200px]">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar tracking, remitente, destinatario…"
+            placeholder="Buscar tracking, nombre o DNI…"
             className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />
         </div>
 
