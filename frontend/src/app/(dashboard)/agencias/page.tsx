@@ -335,12 +335,8 @@ export default function AgenciasPage() {
   })
 
   const crearAgencia = async () => {
-    if (!form.codigo || !form.nombre) {
-      toast.error('Código y nombre son obligatorios')
-      return
-    }
-    if (form.ruc && form.ruc.length !== 11) {
-      toast.error('El RUC debe tener 11 dígitos')
+    if (!form.codigo || !form.nombre || !form.ciudad.trim()) {
+      toast.error('Código, nombre y ciudad son obligatorios')
       return
     }
     if (form.tipo === 'SUCURSAL' && !form.agenciaPadreId) {
@@ -362,12 +358,8 @@ export default function AgenciasPage() {
 
   const guardarAgencia = async () => {
     if (!modalEditar) return
-    if (!form.codigo || !form.nombre) {
-      toast.error('Código y nombre son obligatorios')
-      return
-    }
-    if (form.ruc && form.ruc.length !== 11) {
-      toast.error('El RUC debe tener 11 dígitos')
+    if (!form.codigo || !form.nombre || !form.ciudad.trim()) {
+      toast.error('Código, nombre y ciudad son obligatorios')
       return
     }
     setSaving(true)
@@ -474,13 +466,16 @@ export default function AgenciasPage() {
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad *</label>
         <input
           value={form.ciudad}
           onChange={e => handleField('ciudad', e.target.value)}
           placeholder="Ayacucho"
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
         />
+        <p className="text-[10px] text-gray-400 mt-0.5">
+          Escríbela igual que en las rutas: conecta la agencia con viajes, tracking y descargas
+        </p>
       </div>
 
       <div>
@@ -493,28 +488,17 @@ export default function AgenciasPage() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-          <input
-            value={form.email}
-            onChange={e => handleField('email', e.target.value)}
-            placeholder="sede@quinuapata.com"
-            type="email"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">RUC</label>
-          <input
-            value={form.ruc}
-            onChange={e => handleField('ruc', e.target.value)}
-            placeholder="20601234567"
-            maxLength={11}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
-          />
-        </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+        <input
+          value={form.email}
+          onChange={e => handleField('email', e.target.value)}
+          placeholder="sede@quinuapata.com"
+          type="email"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
+        />
       </div>
+      {/* El RUC es único de la empresa (Configuración → Empresa); no se pide por agencia */}
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Encargado</label>
