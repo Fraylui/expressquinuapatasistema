@@ -42,9 +42,40 @@ public class ConductorQueryController {
     // ── Lista de conductores para selects ────────────────────────────────────
 
     @GetMapping("/lista")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR','CONDUCTOR')")
     public ResponseEntity<ApiResponse<List<Conductor>>> listar() {
         // Los conductores trabajan para toda la empresa: lista completa para cualquier agencia
         return ResponseEntity.ok(ApiResponse.ok(conductorRepository.findByActivo(true)));
+    }
+
+    // ── Mi perfil de conductor (alerta de licencia en el panel) ──────────────
+
+    @GetMapping("/mi-perfil")
+    @PreAuthorize("hasAnyRole('CONDUCTOR','SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> miPerfil(Authentication auth) {
+        Conductor c = resolverConductor(auth);
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (c == null) {
+            m.put("tieneFicha", false);
+            return ResponseEntity.ok(ApiResponse.ok(m));
+        }
+        m.put("tieneFicha",   true);
+        m.put("nombres",      c.getNombres());
+        m.put("apellidos",    c.getApellidos());
+        m.put("licencia",     c.getLicencia());
+        m.put("categoriaLic", c.getCategoriaLic());
+        m.put("fechaVencLic", c.getFechaVencLic());
+        // Solo se avisa: el conductor puede seguir operando con licencia vencida
+        if (c.getFechaVencLic() != null) {
+            long dias = java.time.temporal.ChronoUnit.DAYS.between(
+                    java.time.LocalDate.now(), c.getFechaVencLic());
+            m.put("diasVencLic", dias);
+            m.put("alertaLicencia", dias < 0 ? "VENCIDA" : dias <= 30 ? "PROXIMA_A_VENCER" : "VIGENTE");
+        } else {
+            m.put("diasVencLic", null);
+            m.put("alertaLicencia", "SIN_FECHA");
+        }
+        return ResponseEntity.ok(ApiResponse.ok(m));
     }
 
     // ── Mis viajes (uso exclusivo del CONDUCTOR autenticado) ─────────────────
@@ -52,7 +83,12 @@ public class ConductorQueryController {
     @GetMapping("/mis-viajes")
     @PreAuthorize("hasAnyRole('CONDUCTOR','SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> misViajes(Authentication auth) {
-        Long conductorId = resolverConductorId(auth);
+        Conductor conductor = resolverConductor(auth);
+        if (conductor == null) {
+            // Sin ficha de conductor no hay viajes propios: lista vacía (no es un error)
+            return ResponseEntity.ok(ApiResponse.ok(List.of()));
+        }
+        Long conductorId = conductor.getId();
 
         List<String> estadosActivos = List.of("PROGRAMADO", "EN_RUTA", "ATRASADO");
         List<Viaje> viajes = viajeRepository
@@ -106,6 +142,52 @@ public class ConductorQueryController {
         }).toList();
 
         return ResponseEntity.ok(ApiResponse.ok(pasajeros));
+    }
+
+    /**
+     * Encomiendas a bordo del viaje, para que el conductor sepa qué entregar
+     * en cada agencia del camino (agrupa el frontend por agencia destino).
+     */
+    @GetMapping("/mis-viajes/{viajeId}/encomiendas")
+    @PreAuthorize("hasAnyRole('CONDUCTOR','SUPER_ADMIN','GERENTE','ADMIN_AGENCIA','OPERADOR')")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> encomiendas(
+            @PathVariable Long viajeId, Authentication auth) {
+        Long conductorId = resolverConductorId(auth);
+        Viaje viaje = viajeRepository.findById(viajeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Viaje", viajeId));
+        if (!conductorId.equals(viaje.getConductorId())) {
+            throw new BusinessException("Este viaje no te pertenece", "ACCESO_DENEGADO");
+        }
+
+        List<Object[]> rows = (List<Object[]>) entityManager.createNativeQuery(
+                "SELECT e.codigo_tracking, e.descripcion, e.num_bultos, e.es_fragil, " +
+                "       e.estado, e.forma_cobro, " +
+                "       COALESCE(a.nombre, 'Sin agencia'), a.ciudad, " +
+                "       TRIM(COALESCE(c.nombres,'') || ' ' || COALESCE(c.apellidos,'')) " +
+                "FROM encomiendas e " +
+                "LEFT JOIN agencias a ON a.id = e.agencia_destino_id " +
+                "LEFT JOIN clientes c ON c.id = e.destinatario_id " +
+                "WHERE e.viaje_id = :viajeId AND e.estado != 'DEVUELTO' " +
+                "ORDER BY COALESCE(a.nombre, 'zzz'), e.codigo_tracking")
+                .setParameter("viajeId", viajeId)
+                .getResultList();
+
+        List<Map<String, Object>> lista = rows.stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("codigo",         r[0]);
+            m.put("descripcion",    r[1]);
+            m.put("bultos",         r[2] != null ? ((Number) r[2]).intValue() : 1);
+            m.put("fragil",         Boolean.TRUE.equals(r[3]));
+            m.put("estado",         r[4]);
+            m.put("pagoEnDestino",  "POR_COBRAR".equals(String.valueOf(r[5])));
+            m.put("agenciaDestino", r[6]);
+            m.put("ciudadDestino",  r[7]);
+            m.put("destinatario",   r[8]);
+            return m;
+        }).toList();
+
+        return ResponseEntity.ok(ApiResponse.ok(lista));
     }
 
     @PostMapping("/mis-viajes/{viajeId}/confirmar-salida")
@@ -197,24 +279,32 @@ public class ConductorQueryController {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Resuelve el conductorId a partir del usuario autenticado.
-     * Primero por el vínculo explícito usuario_id, luego por DNI;
-     * fallback al usuario.id si no hay registro de conductor.
+     * Resuelve la ficha de conductor del usuario autenticado: primero por el
+     * vínculo explícito usuario_id, luego por DNI. Devuelve null si no tiene ficha
+     * (antes se usaba el id del usuario como conductorId, lo que podía chocar con
+     * la ficha de OTRO conductor y dejarle ver/confirmar viajes ajenos).
      */
-    private Long resolverConductorId(Authentication auth) {
+    private Conductor resolverConductor(Authentication auth) {
         Usuario usuario = usuarioRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado", "USER_NOT_FOUND"));
 
         return conductorRepository.findByUsuarioId(usuario.getId())
-                .map(Conductor::getId)
-                .orElseGet(() -> {
-                    if (usuario.getDni() != null && !usuario.getDni().isBlank()) {
-                        return conductorRepository.findByDni(usuario.getDni())
-                                .map(Conductor::getId)
-                                .orElse(usuario.getId());
-                    }
-                    return usuario.getId();
-                });
+                .or(() -> (usuario.getDni() != null && !usuario.getDni().isBlank())
+                        ? conductorRepository.findByDni(usuario.getDni())
+                        : java.util.Optional.empty())
+                .orElse(null);
+    }
+
+    /** Igual que resolverConductor pero exige la ficha (para acciones sobre un viaje). */
+    private Long resolverConductorId(Authentication auth) {
+        Conductor c = resolverConductor(auth);
+        if (c == null) {
+            throw new BusinessException(
+                    "Tu cuenta no tiene ficha de conductor. Pide al administrador que la cree "
+                    + "(Configuración → Conductores → Nueva ficha, con tu mismo DNI).",
+                    "SIN_FICHA_CONDUCTOR");
+        }
+        return c.getId();
     }
 
     private Map<String, Object> enriquecerViaje(Viaje v) {
@@ -246,6 +336,7 @@ public class ConductorQueryController {
                     "numAsientos", ((Number) veh[2]).intValue()));
             m.put("asientosLibres",   libres);
             m.put("asientosOcupados", ocupados);
+            m.put("cantEncomiendas",  encomiendaRepository.countByViajeId(v.getId()));
             return m;
         } catch (Exception e) {
             return null;

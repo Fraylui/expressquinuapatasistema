@@ -21,19 +21,49 @@ interface ViajeDTO {
   vehiculo?: { placa: string; tipo: string; numAsientos: number }
   asientosLibres?: number
   asientosOcupados?: number
+  cantEncomiendas?: number
+}
+
+interface PerfilConductor {
+  tieneFicha: boolean
+  licencia?: string
+  fechaVencLic?: string | null
+  diasVencLic?: number | null
+  alertaLicencia?: 'VENCIDA' | 'PROXIMA_A_VENCER' | 'VIGENTE' | 'SIN_FECHA'
+}
+
+interface EncomiendaAbordo {
+  codigo: string; descripcion: string; bultos: number; fragil: boolean
+  estado: string; pagoEnDestino: boolean
+  agenciaDestino: string; ciudadDestino?: string; destinatario?: string
 }
 
 export default function ConductorPage() {
   const { data, mutate } = useSWR<ViajeDTO[]>('/api/conductor/mis-viajes')
   const viajes: ViajeDTO[] = data || []
+  const { data: perfil } = useSWR<PerfilConductor>('/api/conductor/mi-perfil')
 
   const [viajeSel,       setViajeSel]       = useState<ViajeDTO | null>(null)
+  const [viajeEnc,       setViajeEnc]       = useState<ViajeDTO | null>(null)
   const [confirmando,    setConfirmando]    = useState<number | null>(null)
   const [llegando,       setLlegando]       = useState<number | null>(null)
 
   const { data: pasajeros } = useSWR(
     viajeSel ? `/api/conductor/mis-viajes/${viajeSel.id}/pasajeros` : null
   )
+  const { data: encData } = useSWR<EncomiendaAbordo[]>(
+    viajeEnc ? `/api/conductor/mis-viajes/${viajeEnc.id}/encomiendas` : null
+  )
+  // Agrupar encomiendas por agencia de destino (orden del backend)
+  const encPorAgencia = React.useMemo(() => {
+    const grupos = new Map<string, EncomiendaAbordo[]>()
+    for (const e of encData ?? []) {
+      const key = e.agenciaDestino + (e.ciudadDestino ? ` — ${e.ciudadDestino}` : '')
+      if (!grupos.has(key)) grupos.set(key, [])
+      grupos.get(key)!.push(e)
+    }
+    return grupos
+  }, [encData])
 
   const fmt = (iso: string) => {
     try { return format(new Date(iso), "EEEE dd MMM · HH:mm", { locale: es }) } catch { return '—' }
@@ -42,10 +72,12 @@ export default function ConductorPage() {
     try { return format(new Date(iso), "HH:mm") } catch { return '—' }
   }
 
-  const confirmarSalida = async (id: number) => {
-    setConfirmando(id)
+  const confirmarSalida = async (v: ViajeDTO) => {
+    // Evitar toques accidentales: la salida mueve las encomiendas a EN_TRANSITO
+    if (!confirm(`¿Confirmar salida del viaje ${v.ruta?.origen ?? ''} → ${v.ruta?.destino ?? ''}?`)) return
+    setConfirmando(v.id)
     try {
-      await api.post(`/api/conductor/mis-viajes/${id}/confirmar-salida`)
+      await api.post(`/api/conductor/mis-viajes/${v.id}/confirmar-salida`)
       toast.success('Salida confirmada — ¡buen viaje!')
       mutate()
     } catch (e: any) {
@@ -53,10 +85,11 @@ export default function ConductorPage() {
     } finally { setConfirmando(null) }
   }
 
-  const confirmarLlegada = async (id: number) => {
-    setLlegando(id)
+  const confirmarLlegada = async (v: ViajeDTO) => {
+    if (!confirm(`¿Confirmar que llegaste a ${v.ruta?.destino ?? 'destino'}?`)) return
+    setLlegando(v.id)
     try {
-      await api.post(`/api/conductor/mis-viajes/${id}/confirmar-llegada`)
+      await api.post(`/api/conductor/mis-viajes/${v.id}/confirmar-llegada`)
       toast.success('Llegada confirmada — viaje completado')
       mutate()
     } catch (e: any) {
@@ -79,6 +112,25 @@ export default function ConductorPage() {
           </p>
         </div>
       </div>
+
+      {/* Alerta de licencia (solo aviso, no bloquea) */}
+      {perfil?.tieneFicha && (perfil.alertaLicencia === 'VENCIDA' || perfil.alertaLicencia === 'PROXIMA_A_VENCER') && (
+        <div className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm ${
+          perfil.alertaLicencia === 'VENCIDA'
+            ? 'bg-red-50 border-red-200 text-red-800'
+            : 'bg-amber-50 border-amber-200 text-amber-800'
+        }`}>
+          <AlertTriangle size={16} className="shrink-0" />
+          <div>
+            <p className="font-semibold">
+              {perfil.alertaLicencia === 'VENCIDA'
+                ? `Tu licencia ${perfil.licencia} está VENCIDA`
+                : `Tu licencia ${perfil.licencia} vence en ${perfil.diasVencLic} día${perfil.diasVencLic === 1 ? '' : 's'}`}
+            </p>
+            <p className="text-xs opacity-80">Coordina la renovación con la oficina para evitar problemas en ruta.</p>
+          </div>
+        </div>
+      )}
 
       {/* Estado vacío */}
       {viajes.length === 0 && (
@@ -166,19 +218,30 @@ export default function ConductorPage() {
                 )}
 
                 {/* Acciones */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {/* Ver pasajeros */}
                   <button onClick={() => setViajeSel(v)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
-                    <Users size={14} /> Ver pasajeros
+                    className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
+                    <Users size={14} /> Pasajeros
+                  </button>
+
+                  {/* Ver encomiendas a bordo */}
+                  <button onClick={() => setViajeEnc(v)}
+                    className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 transition-colors">
+                    <Package size={14} /> Encomiendas
+                    {(v.cantEncomiendas ?? 0) > 0 && (
+                      <span className="bg-[#064e3b] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        {v.cantEncomiendas}
+                      </span>
+                    )}
                   </button>
 
                   {/* Confirmar salida */}
                   {esProg && (
                     <button
-                      onClick={() => confirmarSalida(v.id)}
+                      onClick={() => confirmarSalida(v)}
                       disabled={confirmando === v.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
+                      className="flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
                       {confirmando === v.id
                         ? <Loader2 size={14} className="animate-spin" />
                         : <Navigation size={14} />}
@@ -189,9 +252,9 @@ export default function ConductorPage() {
                   {/* Confirmar llegada */}
                   {esRuta && (
                     <button
-                      onClick={() => confirmarLlegada(v.id)}
+                      onClick={() => confirmarLlegada(v)}
                       disabled={llegando === v.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
+                      className="flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
                       {llegando === v.id
                         ? <Loader2 size={14} className="animate-spin" />
                         : <CheckCircle size={14} />}
@@ -232,6 +295,62 @@ export default function ConductorPage() {
                 <div className="text-right shrink-0">
                   <p className="text-sm font-mono font-bold text-gray-800">S/ {Number(p.precio).toFixed(2)}</p>
                   <Badge estado={p.estado} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal encomiendas a bordo, agrupadas por agencia destino */}
+      <Modal
+        open={!!viajeEnc}
+        onClose={() => setViajeEnc(null)}
+        title={viajeEnc ? `Encomiendas — ${viajeEnc.ruta?.origen} → ${viajeEnc.ruta?.destino}` : ''}
+        size="lg"
+      >
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+          {!encData || encData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+              <Package size={32} className="mb-2 opacity-40" />
+              <p className="text-sm">Este viaje no lleva encomiendas</p>
+            </div>
+          ) : (
+            Array.from(encPorAgencia.entries()).map(([agencia, items]) => (
+              <div key={agencia}>
+                <div className="flex items-center gap-2 mb-2">
+                  <MapPin size={13} className="text-[#064e3b]" />
+                  <p className="text-sm font-bold text-gray-800">{agencia}</p>
+                  <span className="text-xs text-gray-400">
+                    {items.length} paquete{items.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {items.map(e => (
+                    <div key={e.codigo} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                      <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0">
+                        <Package size={15} className="text-[#064e3b]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{e.descripcion}</p>
+                        <p className="text-xs text-gray-500 font-mono">{e.codigo}</p>
+                        {e.destinatario && (
+                          <p className="text-xs text-gray-400 truncate">Para: {e.destinatario}</p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0 space-y-1">
+                        <p className="text-xs text-gray-500">{e.bultos} bulto{e.bultos === 1 ? '' : 's'}</p>
+                        <div className="flex gap-1 justify-end">
+                          {e.fragil && (
+                            <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">FRÁGIL</span>
+                          )}
+                          {e.pagoEnDestino && (
+                            <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">COBRAR</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))
