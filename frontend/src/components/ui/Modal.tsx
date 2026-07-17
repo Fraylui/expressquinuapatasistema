@@ -35,10 +35,10 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, size = 'md',
         onClick={onClose}
       />
       <div
-        className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} animate-in fade-in zoom-in-95 duration-200`}
+        className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[88vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
             <h2 className="text-base font-semibold text-gray-900">{title}</h2>
             <button
               onClick={onClose}
@@ -48,7 +48,8 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, size = 'md',
             </button>
           </div>
         )}
-        <div className="px-6 py-5">{children}</div>
+        {/* El contenido hace scroll interno: los formularios largos ya no se salen de la pantalla */}
+        <div className="px-6 py-5 overflow-y-auto">{children}</div>
       </div>
     </div>
   )
