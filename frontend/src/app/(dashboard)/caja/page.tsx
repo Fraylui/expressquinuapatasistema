@@ -14,6 +14,7 @@ import type { MovimientoCaja } from '@/types'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/stores/authStore'
 import api from '@/services/api'
+import { nombreAgenciaCorto } from '@/lib/format'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -610,17 +611,19 @@ function ConsolidadoTab() {
           <div key={ag.agenciaId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {/* Header de la card */}
             <div className="bg-gradient-to-r from-[#064e3b] to-emerald-700 px-4 py-3 text-white">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-bold text-sm leading-tight">{ag.agenciaNombre}</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-bold text-sm leading-tight truncate" title={ag.agenciaNombre}>
+                    {nombreAgenciaCorto(ag.agenciaNombre)}
+                  </p>
                   <div className="flex items-center gap-1 mt-1 text-emerald-100 text-xs">
                     <Users size={11} />
                     <span>{ag.turnosAbiertos} turno{ag.turnosAbiertos !== 1 ? 's' : ''} abierto{ag.turnosAbiertos !== 1 ? 's' : ''}</span>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <p className="text-xs text-emerald-200">Saldo total</p>
-                  <p className="text-lg font-bold font-mono">{fmt(ag.saldoActual)}</p>
+                  <p className="text-lg font-bold font-mono whitespace-nowrap">{fmt(ag.saldoActual)}</p>
                 </div>
               </div>
             </div>
@@ -1180,6 +1183,10 @@ export default function CajaPage() {
     }
   }, [user, tabInicializado])
 
+  const horasAbierta = turno?.fechaApertura
+    ? Math.floor((Date.now() - new Date(turno.fechaApertura).getTime()) / 3600000)
+    : 0
+
   const [movimientos, setMovimientos] = useState<MovimientoCaja[]>([])
   const [mostrarTodos, setMostrarTodos] = useState(false)
   const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>('TODOS')
@@ -1188,6 +1195,24 @@ export default function CajaPage() {
   // Modals
   const [modalApertura, setModalApertura] = useState(false)
   const [montoApertura, setMontoApertura] = useState('')
+  // GERENTE/SUPER_ADMIN eligen en qué agencia trabajan al abrir turno
+  const esGerencia = rol === 'GERENTE' || rol === 'SUPER_ADMIN'
+  const [agencias, setAgencias] = useState<{ id: number; nombre: string }[]>([])
+  const [agenciaApertura, setAgenciaApertura] = useState<string>('')
+  useEffect(() => {
+    if (!modalApertura || !esGerencia || agencias.length > 0) return
+    api.get<any, { data?: any[] }>('/api/agencias')
+      .then(res => {
+        const list = ((res as any)?.data ?? res ?? [])
+          .filter((a: any) => a.activo !== false)
+          .map((a: any) => ({ id: a.id, nombre: a.nombre }))
+        setAgencias(list)
+        if (!agenciaApertura && user?.agenciaId && list.some((a: any) => a.id === user.agenciaId)) {
+          setAgenciaApertura(String(user.agenciaId))
+        }
+      })
+      .catch(() => toast.error('No se pudo cargar la lista de agencias'))
+  }, [modalApertura, esGerencia, agencias.length, agenciaApertura, user?.agenciaId])
   const [modalEgreso, setModalEgreso] = useState(false)
   const [egreso, setEgreso] = useState({ concepto: '', monto: '' })
   const [modalIngreso, setModalIngreso] = useState(false)
@@ -1292,9 +1317,13 @@ export default function CajaPage() {
       toast.error('Ingrese un monto de apertura válido (0 o mayor)')
       return
     }
+    if (esGerencia && !agenciaApertura) {
+      toast.error('Selecciona en qué agencia estás trabajando')
+      return
+    }
     setAbriendo(true)
     try {
-      await cajaService.abrir(monto)
+      await cajaService.abrir(monto, esGerencia ? Number(agenciaApertura) : undefined)
       toast.success(`Turno abierto con S/ ${monto.toFixed(2)}`)
       setModalApertura(false)
       setMontoApertura('')
@@ -1485,6 +1514,26 @@ export default function CajaPage() {
                       <p className="text-xs text-gray-500 mt-1">Ingresa el monto inicial en efectivo que tienes disponible</p>
                     </div>
                     <div className="p-6 space-y-4">
+                      {esGerencia && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            ¿En qué agencia estás trabajando?
+                          </label>
+                          <select
+                            value={agenciaApertura}
+                            onChange={e => setAgenciaApertura(e.target.value)}
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                          >
+                            <option value="">Selecciona la agencia…</option>
+                            {agencias.map(a => (
+                              <option key={a.id} value={a.id}>{nombreAgenciaCorto(a.nombre)}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Tus ventas y cobros de este turno se contabilizarán en esa agencia
+                          </p>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Monto inicial (S/)</label>
                         <div className="relative">
@@ -1552,6 +1601,22 @@ export default function CajaPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Aviso de turno demasiado largo: cerrar caja y rendir */}
+              {horasAbierta >= 12 && (
+                <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-4">
+                  <AlertCircle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-amber-800">
+                      Tu caja lleva {horasAbierta >= 48 ? `${Math.floor(horasAbierta / 24)} días` : `${horasAbierta} horas`} abierta
+                    </p>
+                    <p className="text-amber-700 mt-0.5">
+                      Cierra tu turno al terminar tu horario y rinde el efectivo. Mientras la caja siga abierta,
+                      el dinero no aparece como pendiente de rendir y los reportes del día quedan desactualizados.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Metrics */}
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">

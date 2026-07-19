@@ -14,6 +14,7 @@ import api from '@/services/api'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import type { Agencia } from '@/types'
+import { nombreAgenciaCorto } from '@/lib/format'
 
 /** El backend envía "yyyy-MM-dd HH:mm:ss"; mostrar dd/MM/yyyy HH:mm */
 function fmtFecha(s?: string): string | null {
@@ -530,7 +531,9 @@ export default function UsuariosPage() {
                   </td>
                   {(esGerente || esSuperAdmin) && (
                     <td className="px-4 py-3 text-xs text-gray-700">
-                      {u.agenciaNombre ?? (u.agenciaId != null ? `#${u.agenciaId}` : 'Toda la empresa')}
+                      {u.agenciaNombre
+                        ? <span title={u.agenciaNombre}>{nombreAgenciaCorto(u.agenciaNombre)}</span>
+                        : (u.agenciaId != null ? `#${u.agenciaId}` : 'Toda la empresa')}
                     </td>
                   )}
                   <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">

@@ -7,6 +7,7 @@ import com.expressvraem.modules.caja.repository.CajaRepository;
 import com.expressvraem.modules.caja.repository.EntregaEfectivoRepository;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
+import com.expressvraem.shared.utils.SecuenciaService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class EntregaEfectivoService {
     private final CajaRepository cajaRepository;
     private final AuditoriaService auditoriaService;
     private final EntityManager entityManager;
+    private final SecuenciaService secuenciaService;
 
     /** Días sin rendir a partir de los cuales la agencia se marca en alerta. */
     private static final int DIAS_ALERTA = 7;
@@ -301,9 +303,10 @@ public class EntregaEfectivoService {
     }
 
     private String generarNumero(Long agenciaId) {
+        // Secuencia global atómica en BD (V13) — sin colisiones aunque se borren filas
         int año = LocalDateTime.now().getYear();
-        long count = entregaRepository.count() + 1;
-        return String.format("REN-%d-%05d", año, count);
+        long seq = secuenciaService.siguiente("REN", 0L, año);
+        return String.format("REN-%d-%05d", año, seq);
     }
 
     private BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }

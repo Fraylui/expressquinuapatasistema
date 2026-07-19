@@ -66,12 +66,29 @@ public class CajaService {
         return result;
     }
 
+    /** Agencia del turno ABIERTO del usuario, o null si no tiene turno. */
+    public Long getAgenciaTurnoAbierto(Long usuarioId) {
+        return cajaRepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA")
+                .map(Caja::getAgenciaId).orElse(null);
+    }
+
     @Transactional
     public Caja abrirCaja(Long usuarioId, BigDecimal montoInicial, Long agenciaIdOverride,
                           String ip, String usuarioNombre) {
         Long agenciaId = agenciaIdOverride != null ? agenciaIdOverride : AgenciaContext.getAgenciaId();
         if (agenciaId == null) throw new BusinessException(
                 "No se pudo determinar la agencia del operador", "AGENCIA_REQUERIDA");
+
+        // La agencia elegida (p.ej. por el gerente al viajar) debe existir y estar activa
+        List<?> ag = entityManager
+                .createNativeQuery("SELECT activo FROM agencias WHERE id = :id")
+                .setParameter("id", agenciaId).getResultList();
+        if (ag.isEmpty()) {
+            throw new BusinessException("La agencia seleccionada no existe", "AGENCIA_INVALIDA");
+        }
+        if (Boolean.FALSE.equals(ag.get(0))) {
+            throw new BusinessException("La agencia seleccionada está inactiva", "AGENCIA_INVALIDA");
+        }
 
         if (cajaRepository.existsByUsuarioIdAndEstado(usuarioId, "ABIERTA")) {
             throw new BusinessException("Ya tiene un turno abierto", "CAJA_YA_ABIERTA");

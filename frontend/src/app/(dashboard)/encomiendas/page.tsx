@@ -24,6 +24,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useAuthStore } from '@/stores/authStore'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { nombreAgenciaCorto } from '@/lib/format'
 
 // ── Estado badge ──────────────────────────────────────────────────────────────
 const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
@@ -873,7 +874,7 @@ function EnviadasTab({ viajes = [] }: { viajes?: ViajeSimple[] }) {
                   const cfg = ESTADO_CONFIG[enc.estado] ?? { label: enc.estado, color: 'bg-gray-100 text-gray-800' }
                   const histAbierto = historialesAbiertos.has(enc.id)
                   const hist = historiales[enc.id] ?? []
-                  const tieneDescuento = enc.montoDescuento && Number(enc.montoDescuento) > 0
+                  const tieneDescuento = Number(enc.montoDescuento ?? 0) > 0
                   return (
                     <React.Fragment key={enc.id}>
                       <tr className="hover:bg-gray-50/60 transition-colors group">
@@ -891,7 +892,9 @@ function EnviadasTab({ viajes = [] }: { viajes?: ViajeSimple[] }) {
                         <td className="px-4 py-3 text-gray-800 text-xs max-w-[130px] truncate font-medium">{enc.remitenteNombre ?? `ID ${enc.remitenteId}`}</td>
                         <td className="px-4 py-3 text-gray-800 text-xs max-w-[130px] truncate font-medium">{enc.destinatarioNombre ?? `ID ${enc.destinatarioId}`}</td>
                         <td className="px-4 py-3 text-xs max-w-[150px]">
-                          <p className="text-gray-500 truncate">{enc.agenciaDestinoNombre ?? '—'}</p>
+                          <p className="text-gray-700 font-medium truncate" title={enc.agenciaDestinoNombre ?? undefined}>
+                            {nombreAgenciaCorto(enc.agenciaDestinoNombre)}
+                          </p>
                           {enc.estado === 'REGISTRADO' && (
                             <select
                               defaultValue={enc.viajeId ?? ''}
@@ -922,7 +925,7 @@ function EnviadasTab({ viajes = [] }: { viajes?: ViajeSimple[] }) {
                             </p>
                           )}
                           {enc.formaCobro === 'POR_COBRAR' && (
-                            <p className="text-[10px] text-amber-600 font-medium">En destino</p>
+                            <p className="text-[10px] text-amber-600 font-medium">Cobro en destino</p>
                           )}
                         </td>
                         <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
