@@ -32,14 +32,14 @@ function isLibre(estado: EstadoAsiento) {
 }
 
 // ─── Botón de asiento — paleta nueva ────────────────────────────────────────
-function SeatBtn({ asiento, isSelected, onClick, fluid }: {
-  asiento: Asiento; isSelected: boolean; onClick: () => void; fluid?: boolean
+function SeatBtn({ asiento, isSelected, onClick }: {
+  asiento: Asiento; isSelected: boolean; onClick: () => void
 }) {
   const libre     = isLibre(asiento.estado)
   const reservado = asiento.estado === 'RESERVADO'
   const vendido   = !libre && !reservado
 
-  const base = `${fluid ? 'w-full' : 'w-[52px]'} h-[52px] rounded-[10px] flex flex-col items-center justify-center gap-0.5 transition-all duration-150 select-none`
+  const base = 'w-[52px] h-[52px] rounded-[10px] flex flex-col items-center justify-center gap-0.5 transition-all duration-150 select-none'
 
   const variant = isSelected
     ? 'border-2 border-[#064e3b] bg-[#064e3b] text-white ring-4 ring-[#064e3b]/20'
@@ -65,9 +65,9 @@ function SeatBtn({ asiento, isSelected, onClick, fluid }: {
 }
 
 // ─── Asiento del conductor — volante SVG ────────────────────────────────────
-function DriverSeat({ fluid }: { fluid?: boolean }) {
+function DriverSeat() {
   return (
-    <div className={`${fluid ? 'w-full' : 'w-[52px]'} h-[52px] rounded-[10px] border border-[#CBD5E1] bg-[#E2E8F0] flex flex-col items-center justify-center gap-1 select-none`}>
+    <div className="w-[52px] h-[52px] rounded-[10px] border border-[#CBD5E1] bg-[#E2E8F0] flex flex-col items-center justify-center gap-1 select-none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-[#64748B]">
         <circle cx="12" cy="12" r="9"   stroke="currentColor" strokeWidth="1.5"/>
         <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -119,20 +119,19 @@ function CombiLayout({ asientos, selectedNumero, onSelect }: {
     return <SeatBtn asiento={a} isSelected={selectedNumero === a.numero} onClick={() => onSelect(a.numero)} />
   }
 
-  const SeatFluid = ({ n }: { n: number }) => {
-    const a = byNum[n]
-    if (!a) return <div style={{ height: S }} className="w-full" />
-    return <SeatBtn asiento={a} isSelected={selectedNumero === a.numero} onClick={() => onSelect(a.numero)} fluid />
-  }
-
   return (
     <div className="mx-auto" style={{ width: W }}>
 
-      {/* ── Fila 0: Cabina delantera — COND y asiento 02 se estiran a los costados ── */}
-      <div style={{ display: 'flex', gap: G, marginBottom: G }}>
-        <div style={{ flex: 1 }}><DriverSeat fluid /></div>
-        <div style={{ width: S, flexShrink: 0 }}><Seat n={1} /></div>
-        <div style={{ flex: 1 }}><SeatFluid n={2} /></div>
+      {/* ── Fila 0: Cabina delantera — mismas columnas que el resto (COND | 01 | 02 | ──) ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(4, ${S}px)`,
+        columnGap: G,
+        marginBottom: G,
+      }}>
+        <DriverSeat />
+        <Seat n={1} />
+        <Seat n={2} />
       </div>
 
       {/* ── Separador 1 ── */}
@@ -196,7 +195,7 @@ function CombiLayout({ asientos, selectedNumero, onSelect }: {
 //
 //  Distribución real (3 columnas):
 //
-//  Cabina delantera:  COND  |  01  |  ────
+//  Cabina delantera:  COND  |  ──  |  01
 //  ─────────────────────────────────────────
 //  Cabina trasera:    02    |  03  |  04
 //
@@ -224,8 +223,10 @@ function CamionetaLayout({ asientos, selectedNumero, onSelect }: {
         <div className="flex-1 border-t border-[#E2E8F0]" />
       </div>
 
-      <div className="flex justify-center" style={{ gap: G }}>
+      {/* Mismas 3 columnas que los asientos traseros: COND | ── | 01 (copiloto junto a la puerta) */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(3, ${S}px)`, gap: G }}>
         <DriverSeat />
+        <div style={{ width: S, height: S }} />
         <Seat n={1} />
       </div>
 
