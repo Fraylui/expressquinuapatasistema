@@ -360,6 +360,11 @@ public class EncomiendaService {
 
     public List<Encomienda> buscarConFiltros(Long agenciaId, String estado, Long destino,
                                               LocalDateTime desde, LocalDateTime hasta, String q) {
+        // Si el texto parece un documento (4+ dígitos seguidos), buscar también por
+        // DNI/RUC del remitente o destinatario
+        List<Long> clienteIds = (q != null && q.trim().matches("\\d{4,}"))
+                ? clienteService.idsPorNumDoc(q.trim())
+                : List.of();
         Specification<Encomienda> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (agenciaId != null) predicates.add(cb.equal(root.get("agenciaId"), agenciaId));
@@ -369,10 +374,15 @@ public class EncomiendaService {
             if (hasta != null) predicates.add(cb.lessThanOrEqualTo(root.get("fechaRegistro"), hasta));
             if (q != null && !q.isBlank()) {
                 String pat = "%" + q.toLowerCase() + "%";
-                predicates.add(cb.or(
+                List<Predicate> porTexto = new ArrayList<>(List.of(
                     cb.like(cb.lower(root.get("codigoTracking")), pat),
                     cb.like(cb.lower(root.get("descripcion")),    pat)
                 ));
+                if (!clienteIds.isEmpty()) {
+                    porTexto.add(root.get("remitenteId").in(clienteIds));
+                    porTexto.add(root.get("destinatarioId").in(clienteIds));
+                }
+                predicates.add(cb.or(porTexto.toArray(new Predicate[0])));
             }
             query.orderBy(cb.desc(root.get("fechaRegistro")));
             return cb.and(predicates.toArray(new Predicate[0]));

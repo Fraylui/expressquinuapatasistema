@@ -22,4 +22,6 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
         Long agenciaId1, String apellidos, Long agenciaId2, String nombres);
 
     List<Cliente> findByApellidosContainingIgnoreCaseOrNombresContainingIgnoreCase(String apellidos, String nombres);
+
+    List<Cliente> findByNumDocContaining(String numDoc);
 }

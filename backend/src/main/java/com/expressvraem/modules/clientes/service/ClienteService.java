@@ -103,6 +103,13 @@ public class ClienteService {
                 agenciaId, q, agenciaId, q);
     }
 
+    /** IDs de clientes cuyo documento contiene el texto dado (para filtrar encomiendas por DNI/RUC). */
+    public List<Long> idsPorNumDoc(String q) {
+        return clienteRepository.findByNumDocContaining(q).stream()
+                .map(Cliente::getId)
+                .toList();
+    }
+
     public Cliente crear(ClienteDTO dto) {
         if (dto.getTipoDoc() != null && dto.getNumDoc() != null &&
                 clienteRepository.findByTipoDocAndNumDoc(dto.getTipoDoc(), dto.getNumDoc()).isPresent()) {
