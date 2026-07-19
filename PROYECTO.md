@@ -9,7 +9,7 @@ Sistema web completo para gestionar la operación de una empresa de transporte i
 
 **Cliente:** Express Quinuapata VRAEM S.A.C.  
 **Gerente:** Kevin Sandoval Torres  
-**Rutas:** Huamanga → Kimbiri · Pichari · San Francisco · Lobo · Santa Rosa · Manitea  
+**Rutas:** Huamanga → Kimbiri  · San Francisco · Pichari · Lobo · Santa Rosa · Manitea  · PALMAPAMPA
 **Vehículos:** Combis Toyota Hiace (15 pasajeros) y Camionetas Toyota Hilux (4 pasajeros)
 
 ---
