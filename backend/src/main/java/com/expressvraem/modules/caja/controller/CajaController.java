@@ -97,8 +97,16 @@ public class CajaController {
             HttpServletRequest request) {
         BigDecimal monto = parseMonto(body.get("montoInicial"), "montoInicial");
         Usuario usr = resolveUsuario(auth);
+        // GERENTE/SUPER_ADMIN (sin filtro de agencia) pueden indicar en qué agencia
+        // están trabajando; los demás roles quedan atados a su agencia del JWT.
+        Long agenciaElegida = null;
+        if (AgenciaContext.getAgenciaId() == null && body.get("agenciaId") != null
+                && !String.valueOf(body.get("agenciaId")).isBlank()
+                && !"null".equals(String.valueOf(body.get("agenciaId")))) {
+            agenciaElegida = Long.valueOf(String.valueOf(body.get("agenciaId")));
+        }
         Caja caja = cajaService.abrirCaja(
-                usr.getId(), monto, resolveAgenciaId(auth),
+                usr.getId(), monto, agenciaElegida != null ? agenciaElegida : resolveAgenciaId(auth),
                 getClientIp(request), usr.getNombres() + " " + usr.getApellidos());
         return ResponseEntity.ok(ApiResponse.ok("Turno abierto", caja));
     }

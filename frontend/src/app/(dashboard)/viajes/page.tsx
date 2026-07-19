@@ -947,7 +947,27 @@ export default function ViajesPage() {
             </div>
           )}
 
-          {/* Empty state */}
+          {/* Empty state — también cuando solo quedan viajes cancelados/completados
+              que no se muestran en Operaciones (antes quedaba la página en blanco) */}
+          {viajes.length > 0 && enRuta.length === 0 && programados.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-20 h-20 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-4">
+                <Bus size={32} className="text-gray-300 dark:text-slate-600" />
+              </div>
+              <p className="text-base font-semibold text-gray-600 dark:text-slate-300">
+                {busqueda ? 'Sin resultados para tu búsqueda' : 'No hay viajes activos hoy'}
+              </p>
+              <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">
+                {busqueda ? 'Prueba con otra ruta, conductor o placa' : 'Los viajes completados o cancelados están en el Historial'}
+              </p>
+              {puedeOperar && !busqueda && (
+                <button onClick={() => setModalProgramar(true)}
+                  className="mt-5 flex items-center gap-2 px-6 py-2.5 bg-[#064e3b] text-white text-sm font-semibold rounded-xl hover:bg-[#065f46] transition-colors">
+                  <Plus size={15} /> Programar viaje
+                </button>
+              )}
+            </div>
+          )}
           {viajes.length === 0 && (
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <div className="w-20 h-20 rounded-2xl bg-gray-100 dark:bg-[#293548] flex items-center justify-center mb-4">

@@ -65,8 +65,9 @@ export interface ResumenRendicion {
 }
 
 export const cajaService = {
-  abrir: (montoInicial: number) =>
-    api.post<any, ApiResponse<any>>('/api/caja/abrir', { montoInicial }),
+  abrir: (montoInicial: number, agenciaId?: number) =>
+    api.post<any, ApiResponse<any>>('/api/caja/abrir',
+      agenciaId != null ? { montoInicial, agenciaId } : { montoInicial }),
 
   egreso: (concepto: string, monto: number) =>
     api.post<any, ApiResponse<MovimientoCaja>>('/api/caja/egreso', { concepto, monto }),

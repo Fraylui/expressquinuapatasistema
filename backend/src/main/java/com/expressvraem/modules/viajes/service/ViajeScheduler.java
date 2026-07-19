@@ -38,6 +38,7 @@ public class ViajeScheduler {
     private final CajaService             cajaService;
     private final WebSocketEventPublisher wsPublisher;
     private final EntityManager           entityManager;
+    private final com.expressvraem.modules.auditoria.service.AuditoriaService auditoriaService;
 
     // ── Marcar atrasados ──────────────────────────────────────────────────────
 
@@ -164,7 +165,7 @@ public class ViajeScheduler {
         if (!"VENDIDO".equals(estadoOriginal)) return;
         try {
             cajaRepository.findByUsuarioIdAndEstado(pasaje.getVendedorId(), "ABIERTA")
-                    .ifPresent(caja -> {
+                    .ifPresentOrElse(caja -> {
                         cajaService.registrarMovimiento(
                                 caja.getId(), "EGRESO",
                                 "Reverso auto — " + motivo + " — boleta " + pasaje.getCodigoBoleta(),
@@ -172,9 +173,32 @@ public class ViajeScheduler {
                                 "REVERSO_PASAJE", pasaje.getId());
                         log.info("Reverso S/{} registrado en caja #{} por pasaje #{}",
                                 pasaje.getPrecioFinal(), caja.getId(), pasaje.getId());
-                    });
+                    }, () -> registrarReversoOmitido(pasaje, motivo));
         } catch (Exception e) {
             log.warn("No se pudo registrar reverso en caja para pasaje #{}: {}", pasaje.getId(), e.getMessage());
+            registrarReversoOmitido(pasaje, motivo + " (error: " + e.getMessage() + ")");
+        }
+    }
+
+    /** El vendedor no tiene caja abierta: el egreso no se puede aplicar. Se deja
+     *  rastro en log y auditoría para que gerencia lo cuadre a mano. */
+    private void registrarReversoOmitido(Pasaje pasaje, String motivo) {
+        log.warn("REVERSO OMITIDO: boleta {} por S/{} (vendedor #{} sin caja abierta) — {}",
+                pasaje.getCodigoBoleta(), pasaje.getPrecioFinal(), pasaje.getVendedorId(), motivo);
+        try {
+            auditoriaService.registrar(com.expressvraem.modules.auditoria.entity.Auditoria.builder()
+                    .usuarioId(pasaje.getVendedorId())
+                    .usuarioNombre("SISTEMA (viaje cancelado)")
+                    .agenciaId(pasaje.getAgenciaId())
+                    .accion("UPDATE").modulo("CAJA").entidad("REVERSO_OMITIDO")
+                    .registroId(pasaje.getId())
+                    .datosDespues("Reverso NO aplicado: boleta=" + pasaje.getCodigoBoleta()
+                            + " monto=" + pasaje.getPrecioFinal().toPlainString()
+                            + " vendedorSinCajaAbierta=" + pasaje.getVendedorId()
+                            + " motivo=" + motivo)
+                    .build());
+        } catch (Exception ex) {
+            log.error("No se pudo auditar el reverso omitido del pasaje #{}: {}", pasaje.getId(), ex.getMessage());
         }
     }
 

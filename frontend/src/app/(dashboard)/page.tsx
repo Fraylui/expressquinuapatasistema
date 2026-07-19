@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import {
   Ticket, Package, DollarSign, TrendingUp, Bus, ArrowRight,
   Tag, UserCheck, FileText, PackageSearch, ChevronRight,
-  MapPin, Plus, Zap, LayoutGrid, RefreshCw,
+  MapPin, Plus, Zap, LayoutGrid, RefreshCw, AlertTriangle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useAuthStore } from '@/stores/authStore'
@@ -217,6 +217,9 @@ export default function DashboardPage() {
   const { data: agenciasD } = useSWR('/api/agencias')
 
   const cajaAbierta   = (turno as any)?.estado === 'ABIERTA'
+  const horasCajaAbierta = cajaAbierta && (turno as any)?.fechaApertura
+    ? Math.floor((Date.now() - new Date((turno as any).fechaApertura).getTime()) / 3600000)
+    : 0
   const totalIngresos = (turno as any)?.totalIngresos
   const saldoActual   = (turno as any)?.saldoActual
   const montoPasajes     = Number((turno as any)?.montoPasajes ?? 0)
@@ -346,6 +349,25 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Aviso: caja abierta demasiado tiempo ─────────────────────────────── */}
+      {mounted && horasCajaAbierta >= 12 && (
+        <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-4">
+          <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm flex-1">
+            <p className="font-semibold text-amber-800 dark:text-amber-300">
+              Tu caja lleva {horasCajaAbierta >= 48 ? `${Math.floor(horasCajaAbierta / 24)} días` : `${horasCajaAbierta} horas`} abierta
+            </p>
+            <p className="text-amber-700 dark:text-amber-400/80 mt-0.5">
+              Cierra tu turno al terminar tu horario y rinde el efectivo a gerencia.
+            </p>
+          </div>
+          <Link href="/caja"
+            className="shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors">
+            Ir a caja
+          </Link>
+        </div>
+      )}
 
       {/* ── Acciones rápidas ─────────────────────────────────────────────────── */}
       {mounted && (

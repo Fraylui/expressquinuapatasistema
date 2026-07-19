@@ -19,6 +19,7 @@ import com.expressvraem.modules.viajes.repository.ViajeRepository;
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
+import com.expressvraem.shared.utils.SecuenciaService;
 import com.expressvraem.shared.websocket.WebSocketEventPublisher;
 import com.expressvraem.shared.websocket.dto.AsientoUpdateDTO;
 import jakarta.persistence.EntityManager;
@@ -33,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @Service
@@ -51,13 +51,35 @@ public class PasajeService {
     private final PromocionService promocionService;
     private final TarifaRepository tarifaRepository;
     private final EntityManager entityManager;
+    private final SecuenciaService secuenciaService;
 
-    private static final AtomicLong SEQ = new AtomicLong(0);
+    /**
+     * Agencia donde se contabiliza la operación: la del JWT (OPERADOR/ADMIN_AGENCIA),
+     * o la del turno de caja abierto (GERENTE/SUPER_ADMIN eligen agencia al abrir
+     * turno cuando trabajan viajando), o la agencia de la ficha del usuario.
+     * Nunca se asume la agencia 1: sin agencia determinable no se emite boleta.
+     */
+    private Long resolverAgenciaTrabajo(Long operadorId) {
+        Long ag = AgenciaContext.getAgenciaId();
+        if (ag == null) ag = cajaService.getAgenciaTurnoAbierto(operadorId);
+        if (ag == null) {
+            List<?> row = entityManager
+                    .createNativeQuery("SELECT agencia_id FROM usuarios WHERE id = :id")
+                    .setParameter("id", operadorId).getResultList();
+            if (!row.isEmpty() && row.get(0) != null) ag = ((Number) row.get(0)).longValue();
+        }
+        if (ag == null) {
+            throw new BusinessException(
+                    "No se pudo determinar en qué agencia está trabajando. Abra su turno de caja indicando la agencia.",
+                    "AGENCIA_REQUERIDA");
+        }
+        return ag;
+    }
 
     @Transactional
     public PasajeResponseDTO venderPasaje(VentaPasajeDTO dto, Long operadorId,
                                           String ip, String usuarioNombre) {
-        Long agenciaId = AgenciaContext.getAgenciaId();
+        Long agenciaId = resolverAgenciaTrabajo(operadorId);
 
         // Validar que el viaje no haya vencido (más de 30 min desde su hora de salida)
         Viaje viaje = viajeRepository.findById(dto.viajeId())
@@ -97,7 +119,7 @@ public class PasajeService {
         Cliente cliente = clienteRepository.findByTipoDocAndNumDoc("DNI", dto.clienteDni())
                 .orElseGet(() -> {
                     Cliente c = Cliente.builder()
-                            .agenciaId(agenciaId != null ? agenciaId : 1L)
+                            .agenciaId(agenciaId)
                             .tipo("PERSONA")
                             .nombres(dto.clienteNombres())
                             .apellidos(dto.clienteApellidos())
@@ -182,15 +204,18 @@ public class PasajeService {
         BigDecimal precioFinal = precioBase.subtract(descuento);
         if (precioFinal.compareTo(BigDecimal.ZERO) < 0) precioFinal = BigDecimal.ZERO;
 
+        // Numeración por agencia y año, atómica en BD (tabla secuencias, V13).
+        // El código incluye el código de la agencia para que sea único y legible:
+        // VTA-SEDE-HMG-2026-00001
         int anioActual = LocalDateTime.now().getYear();
-        long dbMax = pasajeRepository.maxCorrelativoByAgenciaAndAnio(
-                agenciaId != null ? agenciaId : 1L, anioActual);
-        // Seed in-memory counter from DB on first use; always take the higher of DB max and in-memory
-        long seq = SEQ.updateAndGet(cur -> Math.max(cur, dbMax) + 1);
-        String codigoBoleta = String.format("VTA-%d-%05d", anioActual, seq);
+        long seq = secuenciaService.siguiente("VTA", agenciaId, anioActual);
+        String agenciaCodigo = String.valueOf(entityManager
+                .createNativeQuery("SELECT codigo FROM agencias WHERE id = :id")
+                .setParameter("id", agenciaId).getSingleResult());
+        String codigoBoleta = String.format("VTA-%s-%d-%05d", agenciaCodigo, anioActual, seq);
 
         Pasaje pasaje = Pasaje.builder()
-                .agenciaId(agenciaId != null ? agenciaId : 1L)
+                .agenciaId(agenciaId)
                 .viajeId(dto.viajeId())
                 .asientoId(asiento.getId())
                 .asientoNumero(dto.asientoNumero())
@@ -237,7 +262,7 @@ public class PasajeService {
         wsPublisher.publicarActualizacionAsientos(dto.viajeId(),
                 new AsientoUpdateDTO(dto.viajeId(), dto.asientoNumero(), esReserva ? "RESERVADO" : "OCUPADO", LocalDateTime.now()));
 
-        auditoriaService.registrar(operadorId, usuarioNombre, agenciaId != null ? agenciaId : 1L,
+        auditoriaService.registrar(operadorId, usuarioNombre, agenciaId,
                 "INSERT", "PASAJES", "PASAJE", saved.getId(),
                 (esReserva ? "RESERVA" : "VENTA") + " boleta=" + codigoBoleta
                         + " asiento=" + dto.asientoNumero() + " precio=" + precioFinal.toPlainString()
