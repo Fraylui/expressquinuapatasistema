@@ -25,7 +25,7 @@ public class Encomienda {
     @Column(name = "agencia_destino_id")
     private Long agenciaDestinoId;
 
-    @Column(name = "codigo_tracking", length = 30, unique = true)
+    @Column(name = "codigo_tracking", length = 40, unique = true)
     private String codigoTracking;
 
     @Column(name = "remitente_id", nullable = false)

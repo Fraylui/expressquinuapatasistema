@@ -147,6 +147,16 @@ public class CajaService {
         if (esIngreso) {
             caja.setTotalIngresos(caja.getTotalIngresos().add(monto));
         } else {
+            // Saldo validado DENTRO del lock: dos egresos simultáneos ya no pueden
+            // pasar ambos la verificación y dejar la caja en negativo
+            BigDecimal saldoActual = caja.getMontoApertura()
+                    .add(caja.getTotalIngresos())
+                    .subtract(caja.getTotalEgresos());
+            if (monto.compareTo(saldoActual) > 0) {
+                throw new BusinessException(
+                        "Saldo insuficiente. Saldo actual: S/" + saldoActual.toPlainString(),
+                        "SALDO_INSUFICIENTE");
+            }
             caja.setTotalEgresos(caja.getTotalEgresos().add(monto));
         }
         cajaRepository.save(caja);
@@ -230,13 +240,7 @@ public class CajaService {
         if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("El monto del egreso debe ser mayor que cero", "MONTO_INVALIDO");
         }
-        BigDecimal saldo = caja.getMontoApertura()
-                .add(caja.getTotalIngresos())
-                .subtract(caja.getTotalEgresos());
-        if (monto.compareTo(saldo) > 0) {
-            throw new BusinessException(
-                "Saldo insuficiente. Saldo actual: S/" + saldo.toPlainString(), "SALDO_INSUFICIENTE");
-        }
+        // El saldo se valida dentro de registrarMovimiento, ya con la caja bloqueada
         MovimientoCaja mov = registrarMovimiento(caja.getId(), "EGRESO", concepto, monto, usuarioId, null, null);
 
         auditoriaService.registrar(Auditoria.builder()

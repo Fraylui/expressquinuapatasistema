@@ -17,7 +17,6 @@ import com.expressvraem.modules.encomiendas.repository.HistorialEncomiendaReposi
 import com.expressvraem.shared.exceptions.BusinessException;
 import com.expressvraem.shared.exceptions.ResourceNotFoundException;
 import com.expressvraem.shared.middleware.AgenciaContext;
-import com.expressvraem.shared.utils.TrackingCodeGenerator;
 import com.expressvraem.shared.websocket.WebSocketEventPublisher;
 import com.expressvraem.shared.websocket.dto.EstadoEncomiendaDTO;
 import jakarta.persistence.criteria.Predicate;
@@ -44,7 +43,7 @@ public class EncomiendaService {
     private final EncomiendaRepository encomiendaRepository;
     private final HistorialEncomiendaRepository historialRepository;
     private final ClienteService clienteService;
-    private final TrackingCodeGenerator trackingCodeGenerator;
+    private final com.expressvraem.shared.utils.SecuenciaService secuenciaService;
     private final WebSocketEventPublisher wsPublisher;
     private final CajaRepository cajaRepository;
     private final CajaService cajaService;
@@ -83,7 +82,15 @@ public class EncomiendaService {
                 dto.destinatarioNombres(), dto.destinatarioApellidos(),
                 dto.destinatarioRazonSocial(), dto.destinatarioTelefono(), agenciaId);
 
-        String codigo = trackingCodeGenerator.generateCode();
+        // Código de tracking por agencia y año, atómico en BD (tabla secuencias, V13):
+        // EXP-{COD_AGENCIA}-YYYY-NNNNN. Sin repetidos tras reinicios y se ve de qué
+        // agencia salió el paquete. Los códigos antiguos EXP-YYYY-NNNNN siguen vigentes.
+        int anioActual = LocalDateTime.now().getYear();
+        long seq = secuenciaService.siguiente("EXP", agenciaId, anioActual);
+        String agenciaCodigo = String.valueOf(entityManager
+                .createNativeQuery("SELECT codigo FROM agencias WHERE id = :id")
+                .setParameter("id", agenciaId).getSingleResult());
+        String codigo = String.format("EXP-%s-%d-%05d", agenciaCodigo, anioActual, seq);
         // Si ya viene con viaje asignado, ese viaje debe pasar por el destino del paquete
         if (dto.viajeId() != null) validarDestinoEnCamino(dto.viajeId(), dto.agenciaDestinoId());
         // El flete es obligatorio: sin esto un monto olvidado viajaba gratis y sin pasar por caja
