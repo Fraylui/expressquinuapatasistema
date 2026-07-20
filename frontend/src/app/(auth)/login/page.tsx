@@ -183,7 +183,7 @@ export default function LoginPage() {
 
           {/* Email */}
           <div className="mb-[1.1rem] flex flex-col gap-2">
-            <label className="text-[0.78rem] font-semibold" style={{ color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
+            <label htmlFor="login-email" className="text-[0.78rem] font-semibold" style={{ color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
               Correo electrónico
             </label>
             <div className="relative flex items-center">
@@ -191,6 +191,7 @@ export default function LoginPage() {
                 <Mail size={15} />
               </span>
               <input
+                id="login-email"
                 type="email"
                 placeholder="usuario@empresa.com"
                 autoComplete="email"
@@ -211,7 +212,7 @@ export default function LoginPage() {
 
           {/* Contraseña */}
           <div className="mb-[1.1rem] flex flex-col gap-2">
-            <label className="text-[0.78rem] font-semibold" style={{ color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
+            <label htmlFor="login-password" className="text-[0.78rem] font-semibold" style={{ color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
               Contraseña
             </label>
             <div className="relative flex items-center">
@@ -219,6 +220,7 @@ export default function LoginPage() {
                 <Lock size={15} />
               </span>
               <input
+                id="login-password"
                 type={showPass ? 'text' : 'password'}
                 placeholder="••••••••"
                 autoComplete="current-password"
