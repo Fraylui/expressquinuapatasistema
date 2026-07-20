@@ -5,7 +5,7 @@ import {
   FileSpreadsheet, TrendingUp, Package,
   Wallet, Clock, Bus,
   Download, BarChart2, ChevronRight, DollarSign,
-  Ticket,
+  Ticket, HandCoins,
 } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
@@ -16,7 +16,7 @@ import api from '@/services/api'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/authStore'
 
-type TabType     = 'ventas' | 'encomiendas' | 'caja'
+type TabType     = 'ventas' | 'encomiendas' | 'caja' | 'rendiciones'
 type PeriodoType = '7' | '14' | '30'
 
 interface TendenciaDia { fecha: string; pasajes: number; encomiendas: number; ingresos: number }
@@ -437,7 +437,11 @@ export default function ReportesPage() {
           ? fechaDesde && fechaHasta
             ? `/api/reportes/encomiendas/excel?desde=${fechaDesde}T00:00:00&hasta=${fechaHasta}T23:59:59`
             : `/api/reportes/encomiendas/excel`
-          : `/api/reportes/caja/excel?cajaId=${cajaId}`
+          : tab === 'rendiciones'
+            ? fechaDesde && fechaHasta
+              ? `/api/reportes/rendiciones/excel?desde=${fechaDesde}T00:00:00&hasta=${fechaHasta}T23:59:59`
+              : `/api/reportes/rendiciones/excel`
+            : `/api/reportes/caja/excel?cajaId=${cajaId}`
       const blob = await api.get(url, { responseType: 'blob' }) as unknown as Blob
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
@@ -462,6 +466,7 @@ export default function ReportesPage() {
     { key: 'ventas',      label: 'Ventas',      icon: Ticket,         desc: 'Pasajes emitidos con detalle de ruta y cobro' },
     { key: 'encomiendas', label: 'Encomiendas', icon: Package,        desc: 'Registro de envíos y estado de entrega' },
     { key: 'caja',        label: 'Caja',        icon: Wallet,         desc: 'Movimientos de un turno de caja específico' },
+    { key: 'rendiciones', label: 'Rendiciones', icon: HandCoins,      desc: 'Entregas de efectivo a gerencia y su confirmación' },
   ]
 
   return (
@@ -632,7 +637,7 @@ export default function ReportesPage() {
         </div>
 
         {/* Selector de tipo */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {exportTabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${
@@ -655,18 +660,18 @@ export default function ReportesPage() {
 
         {/* Controles según tab */}
         <div className="pt-1 border-t border-gray-100">
-          {(tab === 'ventas' || tab === 'encomiendas') && (
+          {(tab === 'ventas' || tab === 'encomiendas' || tab === 'rendiciones') && (
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">
-                  Desde {tab === 'encomiendas' && <span className="font-normal text-gray-400">(opcional)</span>}
+                  Desde {tab !== 'ventas' && <span className="font-normal text-gray-400">(opcional)</span>}
                 </label>
                 <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
                   className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">
-                  Hasta {tab === 'encomiendas' && <span className="font-normal text-gray-400">(opcional)</span>}
+                  Hasta {tab !== 'ventas' && <span className="font-normal text-gray-400">(opcional)</span>}
                 </label>
                 <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
                   className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] focus:outline-none transition-colors" />

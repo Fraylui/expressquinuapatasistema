@@ -29,6 +29,7 @@ public class ReporteService {
     private final PasajeRepository pasajeRepository;
     private final EncomiendaService encomiendaService;
     private final MovimientoCajaRepository movimientoRepository;
+    private final com.expressvraem.modules.caja.repository.EntregaEfectivoRepository entregaEfectivoRepository;
     private final ExcelReportGenerator excelGenerator;
     private final EntityManager entityManager;
 
@@ -536,6 +537,76 @@ public class ReporteService {
             return row;
         }).collect(Collectors.toList());
         return excelGenerator.generarReporteEncomiendas(datos);
+    }
+
+    /** Reporte de rendiciones (entregas de efectivo a gerencia) con filtros opcionales. */
+    @SuppressWarnings("unchecked")
+    @Transactional(readOnly = true)
+    public byte[] generarReporteRendiciones(Long agenciaId, String estado, String desde, String hasta) throws IOException {
+        Long ag = agenciaId != null ? agenciaId : AgenciaContext.getAgenciaId();
+        LocalDateTime desdeDate = parseFechaSegura(desde);
+        LocalDateTime hastaDate = parseFechaSegura(hasta);
+
+        var entregas = (ag != null
+                ? entregaEfectivoRepository.findByAgenciaIdOrderByFechaEntregaDesc(ag)
+                : entregaEfectivoRepository.findAllByOrderByFechaEntregaDesc())
+            .stream()
+            .filter(e -> estado == null || estado.isBlank() || estado.equals(e.getEstado()))
+            .filter(e -> desdeDate == null || !e.getFechaEntrega().isBefore(desdeDate))
+            .filter(e -> hastaDate == null || !e.getFechaEntrega().isAfter(hastaDate))
+            .collect(Collectors.toList());
+
+        // Batch-load nombres de usuarios (declara + confirma) y agencias, evitando N+1
+        List<Long> usuarioIds = entregas.stream()
+                .flatMap(e -> java.util.stream.Stream.of(e.getUsuarioEntregaId(), e.getUsuarioConfirmaId()))
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> usuarioMap = new HashMap<>();
+        if (!usuarioIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, nombres || ' ' || apellidos FROM usuarios WHERE id IN :ids")
+                    .setParameter("ids", usuarioIds).getResultList();
+                for (Object[] r : rows) usuarioMap.put(((Number) r[0]).longValue(), str(r[1]));
+            } catch (Exception ignored) {}
+        }
+
+        List<Long> agenciaIds = entregas.stream().map(e -> e.getAgenciaId())
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> agenciaMap = new HashMap<>();
+        if (!agenciaIds.isEmpty()) {
+            try {
+                List<Object[]> rows = entityManager.createNativeQuery(
+                    "SELECT id, nombre FROM agencias WHERE id IN :ids")
+                    .setParameter("ids", agenciaIds).getResultList();
+                for (Object[] r : rows) agenciaMap.put(((Number) r[0]).longValue(), str(r[1]));
+            } catch (Exception ignored) {}
+        }
+
+        DateTimeFormatter fmtFecha = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        List<Map<String, Object>> datos = entregas.stream().map(e -> {
+            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("numero",       e.getNumero());
+            row.put("fecha",        e.getFechaEntrega() != null ? e.getFechaEntrega().format(fmtFecha) : "—");
+            row.put("agencia",      agenciaMap.getOrDefault(e.getAgenciaId(), "—"));
+            row.put("declaradoPor", usuarioMap.getOrDefault(e.getUsuarioEntregaId(), "—"));
+            row.put("modalidad",    "DEPOSITO_BANCARIO".equals(e.getModalidad()) ? "Depósito bancario" : "Entrega directa");
+            row.put("nroOperacion", e.getNroOperacion() != null ? e.getNroOperacion() : "");
+            row.put("montoDeclarado", e.getMontoDeclarado() != null ? e.getMontoDeclarado().toString() : "0");
+            if (e.getMontoConfirmado() != null) row.put("montoConfirmado", e.getMontoConfirmado().toString());
+            if (e.getDiferencia() != null)      row.put("diferencia",      e.getDiferencia().toString());
+            row.put("estado",        e.getEstado());
+            row.put("confirmadoPor", e.getUsuarioConfirmaId() != null
+                    ? usuarioMap.getOrDefault(e.getUsuarioConfirmaId(), "—") : "");
+            row.put("fechaConfirmacion", e.getFechaConfirmacion() != null
+                    ? e.getFechaConfirmacion().format(fmtFecha) : "");
+            String obs = e.getObservaciones() != null ? e.getObservaciones() : "";
+            if (e.getObsConfirmacion() != null && !e.getObsConfirmacion().isBlank()) {
+                obs = obs.isBlank() ? e.getObsConfirmacion() : obs + " | " + e.getObsConfirmacion();
+            }
+            row.put("observaciones", obs);
+            return row;
+        }).collect(Collectors.toList());
+        return excelGenerator.generarReporteRendiciones(datos);
     }
 
     @SuppressWarnings("unchecked")

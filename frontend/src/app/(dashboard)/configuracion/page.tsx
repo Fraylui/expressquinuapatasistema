@@ -156,10 +156,11 @@ function RutasTab() {
   }
 
   const guardar = async () => {
-    if (!form.codigo || !form.origen || !form.destino) {
-      toast.error('Código, origen y destino son obligatorios')
+    if (!form.origen || !form.destino) {
+      toast.error('Selecciona la ciudad de origen y la de destino')
       return
     }
+    const codigo = form.codigo || sugerirCodigo(form.origen, form.destino)
     if (form.origen.trim().toLowerCase() === form.destino.trim().toLowerCase()) {
       toast.error('Origen y destino no pueden ser iguales')
       return
@@ -167,7 +168,7 @@ function RutasTab() {
     setSaving(true)
     try {
       const body = {
-        codigo: form.codigo,
+        codigo,
         origen: form.origen,
         destino: form.destino,
         distanciaKm: form.distanciaKm ? parseFloat(form.distanciaKm) : null,
@@ -298,12 +299,15 @@ function RutasTab() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
-              <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
-                placeholder="HUA-KIM" className={inputCls('font-mono uppercase')} />
+              <label className="block text-xs font-medium text-gray-700 mb-1">Código (automático)</label>
+              <input value={form.codigo} readOnly tabIndex={-1}
+                placeholder="Se genera al elegir origen y destino"
+                className={inputCls('font-mono uppercase bg-gray-50 text-gray-500 cursor-default pointer-events-none')} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Distancia (km)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Distancia (km) <span className="font-normal text-gray-400">(opcional)</span>
+              </label>
               <input type="number" min="0" step="0.01" value={form.distanciaKm}
                 onChange={e => setForm(f => ({ ...f, distanciaKm: e.target.value }))}
                 placeholder="125.5" className={inputCls()} />
@@ -314,7 +318,7 @@ function RutasTab() {
             <select value={form.origen}
               onChange={e => setForm(f => ({
                 ...f, origen: e.target.value,
-                codigo: f.codigo || sugerirCodigo(e.target.value, f.destino),
+                codigo: sugerirCodigo(e.target.value, f.destino) || f.codigo,
               }))}
               className={inputCls()}>
               <option value="">Seleccionar ciudad…</option>
@@ -326,7 +330,7 @@ function RutasTab() {
             <select value={form.destino}
               onChange={e => setForm(f => ({
                 ...f, destino: e.target.value,
-                codigo: f.codigo || sugerirCodigo(f.origen, e.target.value),
+                codigo: sugerirCodigo(f.origen, e.target.value) || f.codigo,
               }))}
               className={inputCls()}>
               <option value="">Seleccionar ciudad…</option>
@@ -337,7 +341,9 @@ function RutasTab() {
             </p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Duración estimada (min)</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Duración estimada (min) <span className="font-normal text-gray-400">(opcional)</span>
+            </label>
             <input type="number" min="1" value={form.duracionMin}
               onChange={e => setForm(f => ({ ...f, duracionMin: e.target.value }))}
               placeholder="180" className={inputCls()} />

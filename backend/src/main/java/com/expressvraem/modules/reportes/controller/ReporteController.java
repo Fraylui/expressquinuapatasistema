@@ -99,6 +99,21 @@ public class ReporteController {
                 .body(data);
     }
 
+    /** Reporte de rendiciones (entregas de efectivo a gerencia). Filtros opcionales. */
+    @GetMapping("/rendiciones/excel")
+    @RequiereModulo("REPORTES")
+    public ResponseEntity<byte[]> rendicionesExcel(
+            @RequestParam(required = false) Long agenciaId,
+            @RequestParam(required = false) String estado,
+            @RequestParam(required = false) String desde,
+            @RequestParam(required = false) String hasta) throws IOException {
+        byte[] data = reporteService.generarReporteRendiciones(resolveAgencia(agenciaId), estado, desde, hasta);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=rendiciones.xlsx")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(data);
+    }
+
     /**
      * Tendencia de ventas (pasajes + encomiendas) de los últimos N días.
      * Devuelve lista de { fecha, pasajes, encomiendas, ingresos }.

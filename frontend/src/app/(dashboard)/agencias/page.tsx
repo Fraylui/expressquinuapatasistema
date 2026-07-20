@@ -320,8 +320,19 @@ export default function AgenciasPage() {
   const handleField = (key: keyof FormState, val: string | boolean) =>
     setForm(f => ({ ...f, [key]: val }))
 
+  // Código autogenerado: 4 letras de la ciudad + correlativo libre (AYAC-01, AYAC-SUC-01)
+  const sugerirCodigoAgencia = (ciudad: string, tipo: 'AGENCIA' | 'SUCURSAL') => {
+    const base = ciudad.trim().replace(/\s/g, '').slice(0, 4).toUpperCase()
+    if (!base) return ''
+    const prefijo = tipo === 'SUCURSAL' ? `${base}-SUC` : base
+    const codigos = lista.flatMap(a => [a, ...(a.sucursales ?? [])]).map(a => (a.codigo ?? '').toUpperCase())
+    let n = 1
+    while (codigos.includes(`${prefijo}-${String(n).padStart(2, '0')}`)) n++
+    return `${prefijo}-${String(n).padStart(2, '0')}`
+  }
+
   const buildPayload = () => ({
-    codigo: form.codigo,
+    codigo: form.codigo || sugerirCodigoAgencia(form.ciudad, form.tipo),
     nombre: form.nombre,
     ciudad: form.ciudad,
     direccion: form.direccion,
@@ -335,8 +346,8 @@ export default function AgenciasPage() {
   })
 
   const crearAgencia = async () => {
-    if (!form.codigo || !form.nombre || !form.ciudad.trim()) {
-      toast.error('Código, nombre y ciudad son obligatorios')
+    if (!form.nombre || !form.ciudad.trim()) {
+      toast.error('Nombre y ciudad son obligatorios')
       return
     }
     if (form.tipo === 'SUCURSAL' && !form.agenciaPadreId) {
@@ -399,7 +410,10 @@ export default function AgenciasPage() {
               <button
                 key={t}
                 type="button"
-                onClick={() => handleField('tipo', t)}
+                onClick={() => setForm(f => ({
+                  ...f, tipo: t,
+                  codigo: modalEditar ? f.codigo : sugerirCodigoAgencia(f.ciudad, t) || f.codigo,
+                }))}
                 className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
                   form.tipo === t
                     ? t === 'AGENCIA'
@@ -436,12 +450,13 @@ export default function AgenciasPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Código (automático)</label>
           <input
             value={form.codigo}
-            onChange={e => handleField('codigo', e.target.value)}
-            placeholder={form.tipo === 'SUCURSAL' ? 'HUA-SUC-01' : 'AYA-02'}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
+            readOnly
+            tabIndex={-1}
+            placeholder="Se genera con la ciudad"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-default pointer-events-none focus:outline-none"
           />
         </div>
         <div>
@@ -469,7 +484,10 @@ export default function AgenciasPage() {
         <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad *</label>
         <input
           value={form.ciudad}
-          onChange={e => handleField('ciudad', e.target.value)}
+          onChange={e => setForm(f => ({
+            ...f, ciudad: e.target.value,
+            codigo: modalEditar ? f.codigo : sugerirCodigoAgencia(e.target.value, f.tipo) || f.codigo,
+          }))}
           placeholder="Ayacucho"
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070C0]/30"
         />
