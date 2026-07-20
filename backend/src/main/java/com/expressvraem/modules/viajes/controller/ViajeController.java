@@ -416,10 +416,22 @@ public class ViajeController {
                     "ESTADO_INVALIDO");
         }
 
+        // Ventana de salida: solo desde 2 horas antes de la hora programada
+        if (viaje.getFechaHoraSal() != null
+                && OffsetDateTime.now().isBefore(viaje.getFechaHoraSal().minusHours(2))) {
+            String prog = viaje.getFechaHoraSal()
+                    .atZoneSameInstant(java.time.ZoneId.of("America/Lima"))
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM 'a las' HH:mm"));
+            throw new BusinessException(
+                    "El viaje está programado para el " + prog
+                            + ". La salida se puede confirmar desde 2 horas antes.",
+                    "SALIDA_MUY_TEMPRANO");
+        }
+
         viaje.setEstado("EN_RUTA");
         viajeRepository.save(viaje);
 
-        // Cuota fija por salida de COMBI → ingreso en la caja del operador que confirma
+        // Cuota fija por salida (combi o camioneta) → ingreso en la caja del operador que confirma
         Object vehTipoObj = null;
         try {
             vehTipoObj = entityManager
@@ -427,26 +439,25 @@ public class ViajeController {
                     .setParameter("vid", viaje.getVehiculoId())
                     .getSingleResult();
         } catch (Exception ignored) {}
-        if ("COMBI".equals(String.valueOf(vehTipoObj))) {
-            java.math.BigDecimal cuota = empresaConfigService.get().getCuotaSalidaCombi();
-            if (cuota != null && cuota.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                Long operadorId = usuarioRepository.findByEmail(auth.getName())
-                        .map(u -> u.getId()).orElse(null);
-                var turno = operadorId == null
-                        ? java.util.Optional.<com.expressvraem.modules.caja.entity.Caja>empty()
-                        : cajaRepository.findByUsuarioIdAndEstado(operadorId, "ABIERTA");
-                if (turno.isEmpty()) {
-                    throw new BusinessException(
-                            "Debe tener un turno de caja abierto para registrar la cuota de salida de la combi (S/ "
-                                    + cuota.toPlainString() + "). Abra su caja primero.",
-                            "CAJA_REQUERIDA");
-                }
-                cajaService.registrarMovimiento(
-                        turno.get().getId(), "INGRESO",
-                        "Cuota salida combi — viaje " + id,
-                        cuota, operadorId, "CUOTA_SALIDA_COMBI", id,
-                        "CUOTA_SALIDA_COMBI", id, viaje.getVehiculoId(), "COMBI", viaje.getConductorId());
+        String tipoVeh = String.valueOf(vehTipoObj);
+        java.math.BigDecimal cuota = empresaConfigService.get().cuotaSalidaPara(tipoVeh);
+        if (cuota.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            Long operadorId = usuarioRepository.findByEmail(auth.getName())
+                    .map(u -> u.getId()).orElse(null);
+            var turno = operadorId == null
+                    ? java.util.Optional.<com.expressvraem.modules.caja.entity.Caja>empty()
+                    : cajaRepository.findByUsuarioIdAndEstado(operadorId, "ABIERTA");
+            if (turno.isEmpty()) {
+                throw new BusinessException(
+                        "Debe tener un turno de caja abierto para registrar la cuota de salida (S/ "
+                                + cuota.toPlainString() + "). Abra su caja primero.",
+                        "CAJA_REQUERIDA");
             }
+            cajaService.registrarMovimiento(
+                    turno.get().getId(), "INGRESO",
+                    "Cuota salida " + tipoVeh.toLowerCase() + " — viaje " + id,
+                    cuota, operadorId, "CUOTA_SALIDA_COMBI", id,
+                    "CUOTA_SALIDA_COMBI", id, viaje.getVehiculoId(), tipoVeh, viaje.getConductorId());
         }
 
         // Cambia todas las encomiendas pre-tránsito asignadas a este viaje
@@ -522,21 +533,77 @@ public class ViajeController {
                     "ESTADO_INVALIDO");
         }
 
+        // La llegada la confirma la agencia de la CIUDAD DESTINO (o gerencia; el
+        // conductor tiene su propio botón). La agencia origen no puede confirmarse
+        // la llegada a sí misma: eso marcaba como "llegadas" encomiendas que aún viajaban.
+        String destinoRuta = "";
+        try {
+            destinoRuta = String.valueOf(entityManager
+                    .createNativeQuery("SELECT destino FROM rutas WHERE id = :id")
+                    .setParameter("id", viaje.getRutaId()).getSingleResult());
+        } catch (Exception ignored) {}
+        boolean esGerencia = auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ROLE_SUPER_ADMIN") || a.getAuthority().equals("ROLE_GERENTE"));
+        if (!esGerencia && !destinoRuta.isBlank()) {
+            Long agUsuario = AgenciaContext.getAgenciaId();
+            if (agUsuario == null) {
+                agUsuario = usuarioRepository.findByEmail(auth.getName())
+                        .map(u -> u.getAgenciaId()).orElse(null);
+            }
+            String ciudadUsuario = "";
+            if (agUsuario != null) {
+                try {
+                    ciudadUsuario = String.valueOf(entityManager
+                            .createNativeQuery("SELECT ciudad FROM agencias WHERE id = :id")
+                            .setParameter("id", agUsuario).getSingleResult());
+                } catch (Exception ignored) {}
+            }
+            if (!ciudadUsuario.trim().equalsIgnoreCase(destinoRuta.trim())) {
+                throw new BusinessException(
+                        "La llegada la confirma la agencia de destino (" + destinoRuta
+                                + "), el conductor o gerencia. Las encomiendas que bajan en el camino "
+                                + "las recepciona cada agencia con el botón de recepción.",
+                        "LLEGADA_SOLO_DESTINO");
+            }
+        }
+
         viaje.setEstado("COMPLETADO");
         viaje.setFechaHoraArr(OffsetDateTime.now());
         viaje.setUpdatedAt(OffsetDateTime.now());
         viajeRepository.save(viaje);
 
-        List<Encomienda> llegadas = encomiendaRepository.findByViajeId(id).stream()
+        // Solo llegan las encomiendas de la CIUDAD DESTINO FINAL. Las que bajaron en
+        // agencias intermedias siguen EN_TRANSITO hasta que su propia agencia las
+        // recepcione (y si nadie lo hace, caen en la alerta de +24 h del gerente).
+        List<Long> agenciasCiudadDestino = new ArrayList<>();
+        try {
+            List<?> ids = entityManager.createNativeQuery(
+                    "SELECT id FROM agencias WHERE LOWER(TRIM(ciudad)) = LOWER(TRIM(:c))")
+                    .setParameter("c", destinoRuta).getResultList();
+            for (Object o : ids) agenciasCiudadDestino.add(((Number) o).longValue());
+        } catch (Exception ignored) {}
+
+        List<Encomienda> todasViaje = encomiendaRepository.findByViajeId(id);
+        List<Encomienda> llegadas = todasViaje.stream()
                 .filter(enc -> "EN_TRANSITO".equals(enc.getEstado()))
+                // sin agencias mapeadas para la ciudad destino, conservar el comportamiento anterior
+                .filter(enc -> agenciasCiudadDestino.isEmpty()
+                        || (enc.getAgenciaDestinoId() != null && agenciasCiudadDestino.contains(enc.getAgenciaDestinoId())))
                 .peek(enc -> enc.setEstado("LLEGADO_AGENCIA"))
                 .toList();
         if (!llegadas.isEmpty()) encomiendaRepository.saveAll(llegadas);
+        long pendientesRecepcion = todasViaje.stream()
+                .filter(e -> "EN_TRANSITO".equals(e.getEstado())).count();
 
         logService.logOperacion(auth.getName(), "VIAJES", "CONFIRMAR_LLEGADA",
-                Map.of("viajeId", id, "operador", auth.getName()));
+                Map.of("viajeId", id, "operador", auth.getName(),
+                       "llegadas", llegadas.size(), "pendientesRecepcion", pendientesRecepcion));
 
-        return ResponseEntity.ok(ApiResponse.ok("Viaje completado — llegada confirmada", enrich(viaje)));
+        String msg = "Viaje completado — llegada confirmada"
+                + (pendientesRecepcion > 0
+                    ? " · " + pendientesRecepcion + " encomienda(s) de paradas intermedias pendientes de recepción por su agencia"
+                    : "");
+        return ResponseEntity.ok(ApiResponse.ok(msg, enrich(viaje)));
     }
 
     /**

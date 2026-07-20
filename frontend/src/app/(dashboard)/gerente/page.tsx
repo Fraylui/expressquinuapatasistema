@@ -147,10 +147,10 @@ function KPICard({ label, value, sub, icon: Icon, accent, delta, inverseAlert }:
 // ── Alert banner ──────────────────────────────────────────────────────────────
 interface RutaSinTarifa { rutaId: number; codigo: string; origen: string; destino: string; tipoVehiculo: string }
 
-function AlertBanner({ diferencias, pendientes, sinTarifa }: {
-  diferencias: number; pendientes: number; sinTarifa: RutaSinTarifa[]
+function AlertBanner({ diferencias, pendientes, sinTarifa, cuotasPendientes }: {
+  diferencias: number; pendientes: number; sinTarifa: RutaSinTarifa[]; cuotasPendientes: number
 }) {
-  if (diferencias === 0 && pendientes === 0 && sinTarifa.length === 0) return null
+  if (diferencias === 0 && pendientes === 0 && sinTarifa.length === 0 && cuotasPendientes === 0) return null
   // Agrupar por ruta: "HUA-KIM (COMBI y CAMIONETA)"
   const rutasAgrupadas = Object.values(
     sinTarifa.reduce<Record<string, { codigo: string; tipos: string[] }>>((acc, r) => {
@@ -160,7 +160,7 @@ function AlertBanner({ diferencias, pendientes, sinTarifa }: {
   )
   return (
     <div className="space-y-2">
-      {(diferencias > 0 || pendientes > 0) && (
+      {(diferencias > 0 || pendientes > 0 || cuotasPendientes > 0) && (
         <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
           <AlertTriangle size={16} className="text-amber-500 shrink-0" />
           <div className="flex flex-wrap gap-3 flex-1">
@@ -172,6 +172,11 @@ function AlertBanner({ diferencias, pendientes, sinTarifa }: {
             {pendientes > 0 && (
               <span className="font-medium">
                 {pendientes} encomienda{pendientes > 1 ? 's' : ''} sin movimiento en más de 24 h
+              </span>
+            )}
+            {cuotasPendientes > 0 && (
+              <span className="font-medium">
+                {cuotasPendientes} cuota{cuotasPendientes > 1 ? 's' : ''} de salida pendiente{cuotasPendientes > 1 ? 's' : ''} de cobro (salidas confirmadas por el conductor)
               </span>
             )}
           </div>
@@ -268,6 +273,8 @@ export default function GerentePage() {
     useSWR<KPIs>(ag('/api/reportes/kpis'), { refreshInterval: 60_000 })
   const { data: rutasSinTarifa } =
     useSWR<RutaSinTarifa[]>('/api/tarifas/rutas-sin-tarifa', { refreshInterval: 300_000 })
+  const { data: cuotasPend } =
+    useSWR<{ viajeId: number }[]>('/api/caja/cuotas-pendientes', { refreshInterval: 300_000 })
 
   const { data: comparativa } =
     useSWR<Comparativa>(ag('/api/reportes/comparativa'), { refreshInterval: 120_000 })
@@ -414,6 +421,7 @@ export default function GerentePage() {
         diferencias={kpis?.diferenciasHoy ?? 0}
         pendientes={encPendientes.length}
         sinTarifa={rutasSinTarifa ?? []}
+        cuotasPendientes={cuotasPend?.length ?? 0}
       />
 
       {/* ── KPIs ── */}

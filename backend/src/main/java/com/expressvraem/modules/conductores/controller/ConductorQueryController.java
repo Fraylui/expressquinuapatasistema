@@ -37,7 +37,6 @@ public class ConductorQueryController {
     private final EntityManager       entityManager;
     private final com.expressvraem.modules.encomiendas.repository.EncomiendaRepository encomiendaRepository;
     private final com.expressvraem.shared.websocket.WebSocketEventPublisher wsPublisher;
-    private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
     private final com.expressvraem.modules.vehiculos.service.UbicacionFlotaService ubicacionFlotaService;
 
     // ── Lista de conductores para selects ────────────────────────────────────
@@ -227,26 +226,21 @@ public class ConductorQueryController {
                     "ESTADO_INVALIDO");
         }
 
-        // Control interno: la salida de una COMBI con cuota configurada la confirma
-        // el OPERADOR de la agencia, que registra la cuota de salida en su caja.
-        // Si el conductor pudiera confirmarla, la cuota no quedaría registrada.
-        Object vehTipo = null;
-        try {
-            vehTipo = entityManager
-                    .createNativeQuery("SELECT tipo FROM vehiculos WHERE id = :vid")
-                    .setParameter("vid", viaje.getVehiculoId())
-                    .getSingleResult();
-        } catch (Exception ignored) {}
-        if ("COMBI".equals(String.valueOf(vehTipo))) {
-            java.math.BigDecimal cuota = empresaConfigService.get().getCuotaSalidaCombi();
-            if (cuota != null && cuota.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                throw new BusinessException(
-                        "La salida de una combi la confirma el operador de la agencia: "
-                        + "él registra la cuota de salida (S/ " + cuota.toPlainString()
-                        + ") en su caja. Pídele que confirme la salida desde el módulo Viajes.",
-                        "SALIDA_COMBI_REQUIERE_OPERADOR");
-            }
+        // Misma ventana que el operador: solo desde 2 horas antes de la hora programada
+        if (viaje.getFechaHoraSal() != null
+                && OffsetDateTime.now().isBefore(viaje.getFechaHoraSal().minusHours(2))) {
+            String prog = viaje.getFechaHoraSal()
+                    .atZoneSameInstant(java.time.ZoneId.of("America/Lima"))
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM 'a las' HH:mm"));
+            throw new BusinessException(
+                    "El viaje está programado para el " + prog
+                            + ". La salida se puede confirmar desde 2 horas antes.",
+                    "SALIDA_MUY_TEMPRANO");
         }
+
+        // Salidas de madrugada sin operador con caja: el conductor confirma y la
+        // cuota de salida queda PENDIENTE — aparece en Caja/Gerencia (viajes que
+        // salieron sin movimiento CUOTA_SALIDA_COMBI) para cobrarla después.
 
         viaje.setEstado("EN_RUTA");
         viaje.setUpdatedAt(OffsetDateTime.now());
@@ -293,6 +287,31 @@ public class ConductorQueryController {
         viaje.setFechaHoraArr(OffsetDateTime.now());
         viaje.setUpdatedAt(OffsetDateTime.now());
         viajeRepository.save(viaje);
+
+        // Igual que la llegada del operador destino: solo llegan las encomiendas de
+        // la ciudad destino final; las de paradas intermedias las recepciona su agencia
+        String destinoRuta = "";
+        try {
+            destinoRuta = String.valueOf(entityManager
+                    .createNativeQuery("SELECT destino FROM rutas WHERE id = :id")
+                    .setParameter("id", viaje.getRutaId()).getSingleResult());
+        } catch (Exception ignored) {}
+        java.util.List<Long> agenciasDestino = new java.util.ArrayList<>();
+        try {
+            java.util.List<?> ids = entityManager.createNativeQuery(
+                    "SELECT id FROM agencias WHERE LOWER(TRIM(ciudad)) = LOWER(TRIM(:c))")
+                    .setParameter("c", destinoRuta).getResultList();
+            for (Object o : ids) agenciasDestino.add(((Number) o).longValue());
+        } catch (Exception ignored) {}
+        var todasViaje = encomiendaRepository.findByViajeId(viajeId);
+        var llegadas = todasViaje.stream()
+                .filter(enc -> "EN_TRANSITO".equals(enc.getEstado()))
+                .filter(enc -> agenciasDestino.isEmpty()
+                        || (enc.getAgenciaDestinoId() != null && agenciasDestino.contains(enc.getAgenciaDestinoId())))
+                .peek(enc -> enc.setEstado("LLEGADO_AGENCIA"))
+                .toList();
+        if (!llegadas.isEmpty()) encomiendaRepository.saveAll(llegadas);
+
         return ResponseEntity.ok(ApiResponse.ok("Llegada confirmada — viaje completado", enriquecerViaje(viaje)));
     }
 
