@@ -1,12 +1,14 @@
 #!/bin/sh
 # Backup PostgreSQL — corre dentro del contenedor de backup (postgres:15-alpine)
 # Se conecta directamente al servicio 'postgres' de la red Docker.
+# PGPASSWORD ya viene en el entorno del contenedor (docker-compose lo inyecta
+# desde DB_PASSWORD del .env) — no sobreescribirla aquí.
 set -e
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 FILENAME="/backups/quinuapata_${TIMESTAMP}.sql.gz"
 
-PGPASSWORD="$DB_PASSWORD" pg_dump \
+pg_dump \
     -h postgres \
     -U "$DB_USER" \
     --no-owner \
@@ -14,7 +16,9 @@ PGPASSWORD="$DB_PASSWORD" pg_dump \
     "$DB_NAME" \
   | gzip > "$FILENAME"
 
-if [ ! -s "$FILENAME" ] || ! gzip -t "$FILENAME" 2>/dev/null; then
+# Un gzip puede ser "válido" pero estar vacío si pg_dump falló dentro del
+# pipeline: exigir que el dump descomprimido tenga contenido real.
+if ! gzip -t "$FILENAME" 2>/dev/null || [ "$(gzip -cd "$FILENAME" | head -c 1 | wc -c)" -eq 0 ]; then
     echo "[ERROR] Backup inválido o vacío — eliminando." >&2
     rm -f "$FILENAME"
     exit 1
