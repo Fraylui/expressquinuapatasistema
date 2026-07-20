@@ -281,6 +281,16 @@ public class CajaService {
                 .subtract(caja.getTotalEgresos());
         BigDecimal diferencia = montoFisico.subtract(saldoSistema);
 
+        // Cerrar con sobrante o faltante exige explicar el motivo (igual que las
+        // rendiciones observadas): sin esto la diferencia pasaba en silencio
+        if (diferencia.compareTo(BigDecimal.ZERO) != 0 && (observacion == null || observacion.isBlank())) {
+            String tipo = diferencia.compareTo(BigDecimal.ZERO) > 0 ? "sobrante" : "faltante";
+            throw new BusinessException(
+                    "La caja cierra con " + tipo + " de S/ " + diferencia.abs().toPlainString()
+                            + ". Escriba una observación explicando la diferencia para poder cerrar.",
+                    "OBSERVACION_REQUERIDA");
+        }
+
         caja.setMontoCierre(montoFisico);
         caja.setDiferencia(diferencia);
         caja.setEstado("CERRADA");

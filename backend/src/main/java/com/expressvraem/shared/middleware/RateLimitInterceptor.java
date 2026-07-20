@@ -16,7 +16,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RateLimitInterceptor implements HandlerInterceptor {
 
     private static final int MAX_REQUESTS_PER_MIN = 100;
-    private static final int MAX_LOGIN_PER_MIN = 5;
+    // Por IP: varias operadoras de una misma agencia comparten el internet del local,
+    // así que 5/min bloqueaba los logins de la mañana. El bloqueo por fuerza bruta
+    // real lo da el contador de intentos fallidos por cuenta (5 y se bloquea).
+    private static final int MAX_LOGIN_PER_MIN = 15;
 
     private final ConcurrentHashMap<String, RateLimitInfo> rateLimits = new ConcurrentHashMap<>();
 

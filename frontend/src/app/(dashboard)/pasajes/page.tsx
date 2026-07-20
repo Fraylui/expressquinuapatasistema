@@ -464,6 +464,7 @@ export default function PasajesPage() {
 
   // Tarifa
   const [precioBase, setPrecioBase]   = useState('')
+  const [tarifaRef, setTarifaRef]     = useState<number | null>(null)
   const [descuento, setDescuento]     = useState('0')
   // Destino del pasajero: '' = destino final de la ruta del viaje
   const [destinoSel, setDestinoSel]   = useState('')
@@ -523,9 +524,10 @@ export default function PasajesPage() {
     try {
       const res = await api.get(`/api/tarifas/buscar?rutaId=${v.ruta.id}&tipoVehiculo=${v.vehiculo.tipo}`)
       const d = (res as any)?.data
-      if (d?.precio) setPrecioBase(String(Number(d.precio).toFixed(2)))
+      if (d?.precio) { setPrecioBase(String(Number(d.precio).toFixed(2))); setTarifaRef(Number(d.precio)) }
     } catch {
       /* sin tarifa registrada — usuario ingresa precio manualmente */
+      setTarifaRef(null)
     }
   }
 
@@ -859,8 +861,8 @@ export default function PasajesPage() {
                             try {
                               const res = await api.get(`/api/tarifas/buscar?rutaId=${rutaId}&tipoVehiculo=${viaje.vehiculo.tipo}`)
                               const d = (res as any)?.data
-                              if (d?.precio) setPrecioBase(String(Number(d.precio).toFixed(2)))
-                            } catch { /* sin tarifa: el operador pone el precio */ }
+                              if (d?.precio) { setPrecioBase(String(Number(d.precio).toFixed(2))); setTarifaRef(Number(d.precio)) }
+                            } catch { setTarifaRef(null) /* sin tarifa: el operador pone el precio */ }
                           }
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500">
@@ -980,6 +982,16 @@ export default function PasajesPage() {
                     }}
                     placeholder="0.00"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#064e3b]/30 focus:border-[#064e3b] transition-colors" />
+                  {tarifaRef !== null && parseFloat(precioBase) !== tarifaRef && precioBase !== '' && (
+                    <p className="text-[11px] text-amber-600 mt-1">
+                      Precio acordado con el cliente — la tarifa referencial es S/ {tarifaRef.toFixed(2)} (queda registrado en auditoría)
+                    </p>
+                  )}
+                  {tarifaRef === null && precioBase !== '' && (
+                    <p className="text-[11px] text-amber-600 mt-1">
+                      Esta ruta no tiene tarifa referencial — avisa al gerente para que la registre
+                    </p>
+                  )}
                 </div>
 
                 {/* ── Selector de descuentos / promociones ── */}

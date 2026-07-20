@@ -185,10 +185,8 @@ public class PasajeService {
         if (precioBase == null || precioBase.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("El precio del pasaje debe ser mayor a S/ 0.00", "PRECIO_INVALIDO");
         }
-        if (precioTarifa != null && precioTarifa.compareTo(precioBase) != 0) {
-            log.info("Venta con precio distinto a tarifa: viaje={} asiento={} tarifa={} cobrado={} operador={}",
-                    dto.viajeId(), dto.asientoNumero(), precioTarifa, precioBase, operadorId);
-        }
+        // Precio libre acordado con el cliente: se permite, pero queda auditado
+        // más abajo (PRECIO_DISTINTO_TARIFA / VENTA_SIN_TARIFA) para el gerente.
 
         BigDecimal descuento      = dto.descuento() != null ? dto.descuento() : BigDecimal.ZERO;
         String     motivoDescuento = dto.motivoDescuento();
@@ -268,6 +266,23 @@ public class PasajeService {
                         + " asiento=" + dto.asientoNumero() + " precio=" + precioFinal.toPlainString()
                         + " formaPago=" + dto.formaPago(),
                 ip);
+
+        // El gerente debe poder ver toda venta con precio negociado distinto a la
+        // tarifa referencial, o hecha en una ruta que no tiene tarifa vigente
+        if (precioTarifa != null && precioTarifa.compareTo(precioBase) != 0) {
+            auditoriaService.registrar(operadorId, usuarioNombre, agenciaId,
+                    "UPDATE", "PASAJES", "PRECIO_DISTINTO_TARIFA", saved.getId(),
+                    "Boleta " + codigoBoleta + ": precio acordado S/ " + precioBase.toPlainString()
+                            + " (tarifa referencial S/ " + precioTarifa.toPlainString()
+                            + ", diferencia S/ " + precioBase.subtract(precioTarifa).toPlainString() + ")",
+                    ip);
+        } else if (precioTarifa == null) {
+            auditoriaService.registrar(operadorId, usuarioNombre, agenciaId,
+                    "UPDATE", "PASAJES", "VENTA_SIN_TARIFA", saved.getId(),
+                    "Boleta " + codigoBoleta + ": la ruta no tiene tarifa vigente, precio manual S/ "
+                            + precioBase.toPlainString(),
+                    ip);
+        }
 
         log.info("Pasaje {}: {} asiento={} precio={}", esReserva ? "reservado" : "vendido", codigoBoleta, dto.asientoNumero(), precioFinal);
 
