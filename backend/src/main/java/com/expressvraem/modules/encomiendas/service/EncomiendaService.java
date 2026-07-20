@@ -51,6 +51,7 @@ public class EncomiendaService {
     private final AuditoriaService auditoriaService;
     private final PromocionService promocionService;
     private final com.expressvraem.modules.viajes.repository.ViajeRepository viajeRepository;
+    private final jakarta.persistence.EntityManager entityManager;
 
     private static final Map<String, Set<String>> TRANSICIONES = Map.of(
         "REGISTRADO",      Set.of("RECEPCIONADO", "DEVUELTO"),
@@ -83,6 +84,8 @@ public class EncomiendaService {
                 dto.destinatarioRazonSocial(), dto.destinatarioTelefono(), agenciaId);
 
         String codigo = trackingCodeGenerator.generateCode();
+        // Si ya viene con viaje asignado, ese viaje debe pasar por el destino del paquete
+        if (dto.viajeId() != null) validarDestinoEnCamino(dto.viajeId(), dto.agenciaDestinoId());
         // El flete es obligatorio: sin esto un monto olvidado viajaba gratis y sin pasar por caja
         if (dto.monto() == null || dto.monto().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(
@@ -393,6 +396,41 @@ public class EncomiendaService {
     private static final Set<String> ESTADOS_ASIGNABLES = Set.of(
             "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO", "OBSERVADO");
 
+    /**
+     * Una encomienda solo puede subir a un viaje que pase por su destino: la ciudad
+     * de su agencia destino debe ser el destino final de la ruta, o una parada del
+     * corredor (existe ruta activa con el mismo origen hacia esa ciudad — el mismo
+     * criterio de "baja en el camino" que usan los pasajes).
+     */
+    private void validarDestinoEnCamino(Long viajeId, Long agenciaDestinoId) {
+        if (viajeId == null || agenciaDestinoId == null) return;
+        String origenRuta, destinoRuta, ciudadDestino;
+        try {
+            Object[] rv = (Object[]) entityManager.createNativeQuery(
+                    "SELECT r.origen, r.destino FROM viajes v JOIN rutas r ON r.id = v.ruta_id WHERE v.id = :vid")
+                    .setParameter("vid", viajeId).getSingleResult();
+            origenRuta  = String.valueOf(rv[0]).trim();
+            destinoRuta = String.valueOf(rv[1]).trim();
+            ciudadDestino = String.valueOf(entityManager.createNativeQuery(
+                    "SELECT ciudad FROM agencias WHERE id = :id")
+                    .setParameter("id", agenciaDestinoId).getSingleResult()).trim();
+        } catch (Exception e) {
+            return; // datos incompletos: no bloquear la operación
+        }
+        if (ciudadDestino.equalsIgnoreCase(destinoRuta)) return;
+        Number enCamino = (Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM rutas WHERE activo = true " +
+                "AND LOWER(TRIM(origen)) = LOWER(TRIM(:o)) AND LOWER(TRIM(destino)) = LOWER(TRIM(:d))")
+                .setParameter("o", origenRuta).setParameter("d", ciudadDestino).getSingleResult();
+        if (enCamino.longValue() == 0) {
+            throw new BusinessException(
+                    "Este viaje va de " + origenRuta + " a " + destinoRuta
+                            + " y la encomienda es para " + ciudadDestino
+                            + ": el viaje no pasa por su destino. Asígnala a un viaje que sí vaya hacia allá.",
+                    "DESTINO_NO_COINCIDE");
+        }
+    }
+
     @Transactional
     public Encomienda asignarViaje(Long id, Long viajeId, Long usuarioId) {
         Encomienda enc = encomiendaRepository.findById(id)
@@ -414,6 +452,7 @@ public class EncomiendaService {
                                 + viaje.getEstado(),
                         "VIAJE_NO_ASIGNABLE");
             }
+            validarDestinoEnCamino(viajeId, enc.getAgenciaDestinoId());
         }
 
         enc.setViajeId(viajeId);

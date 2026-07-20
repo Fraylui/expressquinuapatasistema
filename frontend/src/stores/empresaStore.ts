@@ -10,6 +10,7 @@ interface EmpresaState {
   telefono: string
   logoBase64: string | null
   cuotaSalidaCombi: string
+  cuotaSalidaCamioneta: string
   loaded: boolean
   setNombre:     (v: string) => void
   setRuc:        (v: string) => void
@@ -32,6 +33,7 @@ export const useEmpresaStore = create<EmpresaState>()(
       telefono:    '',
       logoBase64:  null,
       cuotaSalidaCombi: '0',
+      cuotaSalidaCamioneta: '0',
       loaded:      false,
 
       setNombre:     (nombre)     => set({ nombre }),
@@ -55,6 +57,7 @@ export const useEmpresaStore = create<EmpresaState>()(
               telefono:   d.telefono   ?? '',
               logoBase64: d.logoBase64 ?? null,
               cuotaSalidaCombi: d.cuotaSalidaCombi != null ? String(d.cuotaSalidaCombi) : '0',
+              cuotaSalidaCamioneta: d.cuotaSalidaCamioneta != null ? String(d.cuotaSalidaCamioneta) : '0',
               loaded:     true,
             })
           }
@@ -70,15 +73,21 @@ export const useEmpresaStore = create<EmpresaState>()(
           telefono:   get().telefono,
           logoBase64: get().logoBase64,
           cuotaSalidaCombi: get().cuotaSalidaCombi,
+          cuotaSalidaCamioneta: get().cuotaSalidaCamioneta,
           ...data,
         }
         set(current)
-        const payload = { ...current, cuotaSalidaCombi: parseFloat(String(current.cuotaSalidaCombi)) || 0 }
+        const payload = {
+          ...current,
+          cuotaSalidaCombi: parseFloat(String(current.cuotaSalidaCombi)) || 0,
+          cuotaSalidaCamioneta: parseFloat(String(current.cuotaSalidaCamioneta)) || 0,
+        }
         const res: any = await api.put('/api/empresa-config', payload)
         const saved = res?.data
         if (saved) set({
           ...saved,
           cuotaSalidaCombi: saved.cuotaSalidaCombi != null ? String(saved.cuotaSalidaCombi) : '0',
+          cuotaSalidaCamioneta: saved.cuotaSalidaCamioneta != null ? String(saved.cuotaSalidaCamioneta) : '0',
           loaded: true,
         })
       },

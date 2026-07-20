@@ -45,4 +45,18 @@ public class EmpresaConfig {
     @DecimalMin(value = "0.00", message = "La cuota de salida no puede ser negativa")
     @Column(name = "cuota_salida_combi", precision = 8, scale = 2)
     private java.math.BigDecimal cuotaSalidaCombi;
+
+    /** Cuota fija que paga cada camioneta por salida. 0 = deshabilitado. */
+    @DecimalMin(value = "0.00", message = "La cuota de salida no puede ser negativa")
+    @Column(name = "cuota_salida_camioneta", precision = 8, scale = 2)
+    private java.math.BigDecimal cuotaSalidaCamioneta;
+
+    /** Cuota de salida según el tipo de vehículo (null-safe, 0 si no aplica). */
+    @Transient
+    public java.math.BigDecimal cuotaSalidaPara(String tipoVehiculo) {
+        java.math.BigDecimal c = "COMBI".equalsIgnoreCase(tipoVehiculo)
+                ? cuotaSalidaCombi
+                : "CAMIONETA".equalsIgnoreCase(tipoVehiculo) ? cuotaSalidaCamioneta : null;
+        return c != null ? c : java.math.BigDecimal.ZERO;
+    }
 }

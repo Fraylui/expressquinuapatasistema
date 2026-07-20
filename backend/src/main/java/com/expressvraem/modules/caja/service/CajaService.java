@@ -36,6 +36,7 @@ public class CajaService {
     private final WebSocketEventPublisher wsPublisher;
     private final EntityManager entityManager;
     private final AuditoriaService auditoriaService;
+    private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
 
     private record TipoStat(long count, BigDecimal sum) {
         static final TipoStat ZERO = new TipoStat(0L, BigDecimal.ZERO);
@@ -269,6 +270,79 @@ public class CajaService {
         return mov;
     }
 
+
+    /**
+     * Cuotas de salida que quedaron pendientes: viajes que ya salieron (p.ej. de
+     * madrugada, confirmados por el conductor) sin que la cuota entrara a ninguna
+     * caja. Se detectan por la ausencia del movimiento CUOTA_SALIDA_COMBI del viaje.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getCuotasSalidaPendientes(Long agenciaId) {
+        var cfg = empresaConfigService.get();
+        List<Object[]> rows = entityManager.createNativeQuery(
+                "SELECT v.id, v.agencia_id, v.fecha_hora_sal, r.origen, r.destino, ve.placa, ve.tipo " +
+                "FROM viajes v " +
+                "JOIN rutas r ON r.id = v.ruta_id " +
+                "JOIN vehiculos ve ON ve.id = v.vehiculo_id " +
+                "WHERE v.estado IN ('EN_RUTA','COMPLETADO') " +
+                "AND (CAST(:ag AS BIGINT) IS NULL OR v.agencia_id = :ag) " +
+                "AND NOT EXISTS (SELECT 1 FROM movimientos_caja mc " +
+                "                WHERE mc.referencia_tipo = 'CUOTA_SALIDA_COMBI' AND mc.referencia_id = v.id) " +
+                "ORDER BY v.fecha_hora_sal DESC")
+                .setParameter("ag", agenciaId)
+                .getResultList();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Object[] r : rows) {
+            String tipoVeh = String.valueOf(r[6]);
+            BigDecimal cuota = cfg.cuotaSalidaPara(tipoVeh);
+            if (cuota.compareTo(BigDecimal.ZERO) <= 0) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("viajeId",      ((Number) r[0]).longValue());
+            m.put("agenciaId",    r[1] != null ? ((Number) r[1]).longValue() : null);
+            m.put("fechaHoraSal", String.valueOf(r[2]));
+            m.put("ruta",         r[3] + " → " + r[4]);
+            m.put("placa",        String.valueOf(r[5]));
+            m.put("tipoVehiculo", tipoVeh);
+            m.put("monto",        cuota);
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Registra en la caja abierta del usuario una cuota de salida que quedó pendiente. */
+    @Transactional
+    public MovimientoCaja cobrarCuotaSalidaPendiente(Long viajeId, Long usuarioId) {
+        Caja caja = cajaRepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA")
+                .orElseThrow(() -> new BusinessException(
+                        "Debe tener un turno de caja abierto para registrar la cuota", "CAJA_REQUERIDA"));
+        Number ya = (Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM movimientos_caja " +
+                "WHERE referencia_tipo = 'CUOTA_SALIDA_COMBI' AND referencia_id = :vid")
+                .setParameter("vid", viajeId).getSingleResult();
+        if (ya.longValue() > 0) {
+            throw new BusinessException("La cuota de este viaje ya fue registrada", "CUOTA_YA_COBRADA");
+        }
+        Object[] v;
+        try {
+            v = (Object[]) entityManager.createNativeQuery(
+                    "SELECT vi.vehiculo_id, vi.conductor_id, ve.tipo FROM viajes vi " +
+                    "JOIN vehiculos ve ON ve.id = vi.vehiculo_id WHERE vi.id = :vid")
+                    .setParameter("vid", viajeId).getSingleResult();
+        } catch (Exception e) {
+            throw new ResourceNotFoundException("Viaje", viajeId);
+        }
+        String tipoVeh = String.valueOf(v[2]);
+        BigDecimal cuota = empresaConfigService.get().cuotaSalidaPara(tipoVeh);
+        if (cuota.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("No hay cuota de salida configurada para " + tipoVeh, "SIN_CUOTA");
+        }
+        return registrarMovimiento(caja.getId(), "INGRESO",
+                "Cuota salida " + tipoVeh.toLowerCase() + " — viaje " + viajeId + " (cobro posterior)",
+                cuota, usuarioId, "CUOTA_SALIDA_COMBI", viajeId,
+                "CUOTA_SALIDA_COMBI", viajeId,
+                v[0] != null ? ((Number) v[0]).longValue() : null, tipoVeh,
+                v[1] != null ? ((Number) v[1]).longValue() : null);
+    }
 
     @Transactional
     public Caja cerrarTurno(Long usuarioId, BigDecimal montoFisico, String observacion,

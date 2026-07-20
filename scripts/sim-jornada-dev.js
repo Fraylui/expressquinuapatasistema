@@ -92,12 +92,13 @@ async function main() {
 
   // ── 3. Programación de viajes (varias sedes, vehículos y conductores) ───
   //    Conductores con licencia VIGENTE en dev: 1, 3, 6, 7, 8
+  //    Salidas dentro de la ventana de 2 h; KIM-PIC queda a 4 h para probar el rechazo
   const defViajes = [
-    ['kevin', kevin, 1, 1, 1, 2, 'HUA-KIM combi'],
-    ['kevin', kevin, 5, 3, 3, 3, 'HUA-SFR camioneta'],
-    ['elena', elena, 2, 6, 6, 2.5, 'KIM-HUA combi'],
+    ['kevin', kevin, 1, 1, 1, 1.5, 'HUA-KIM combi'],
+    ['kevin', kevin, 5, 3, 3, 1.5, 'HUA-SFR camioneta'],
+    ['elena', elena, 2, 6, 6, 1.5, 'KIM-HUA combi'],
     ['elena', elena, 7, 7, 7, 4, 'KIM-PIC camioneta'],
-    ['pedro', pedro, 6, 10, 8, 3.5, 'SFR-HUA combi'],
+    ['pedro', pedro, 6, 10, 8, 1.5, 'SFR-HUA combi'],
   ]
   const viajes = {}
   for (const [quien, tok, rutaId, vehiculoId, conductorId, delta, etiqueta] of defViajes) {
@@ -167,31 +168,60 @@ async function main() {
     return null
   }
 
-  const encKim = await registrarEnc('carlos', carlos, 2, 'HUA-KIM combi', 'EFECTIVO', 20, 'Caja de repuestos', false)
+  // La ruta 1 de dev (código HUA-KIM) en realidad termina en Palmapampa (ag 5)
+  const encKim = await registrarEnc('carlos', carlos, 5, 'HUA-KIM combi', 'EFECTIVO', 20, 'Caja de repuestos', false)
   const encSfr = await registrarEnc('carlos', carlos, 4, 'HUA-SFR camioneta', 'POR_COBRAR', 35, 'Televisor 43 pulgadas', true)
   const encHua = await registrarEnc('rosaK', rosaK, 1, 'KIM-HUA combi', 'YAPE', 15, 'Documentos notariales', false)
 
+  // ── 5b. Reglas nuevas: pruebas negativas ─────────────────────────────────
+  // Salida antes de la ventana de 2 h: debe RECHAZARSE (KIM-PIC sale en 4 h)
+  if (viajes['KIM-PIC camioneta']) {
+    const r = await api('POST', `/api/viajes/${viajes['KIM-PIC camioneta']}/confirmar-salida`, elena, {})
+    if (r.status >= 300) nota('OK', 'regla.salida2h', `salida a 4h rechazada (${r.json?.message?.slice(0, 60)}…)`)
+    else nota('VACIO', 'regla.salida2h', '¡se confirmó una salida 4 horas antes!')
+  }
+  // Encomienda a un viaje que no pasa por su destino: debe RECHAZARSE
+  if (encKim && viajes['SFR-HUA combi']) {
+    const r = await api('PATCH', `/api/encomiendas/${encKim.id}/asignar-viaje`, mariaS,
+      { viajeId: viajes['SFR-HUA combi'] })
+    if (r.status >= 300) nota('OK', 'regla.destinoEncomienda', `asignación a viaje equivocado rechazada (${r.json?.message?.slice(0, 70)}…)`)
+    else nota('VACIO', 'regla.destinoEncomienda', '¡encomienda para Kimbiri subió a un viaje SFR→Huamanga!')
+  }
+
   // ── 6. Salida y llegada de viajes ───────────────────────────────────────
-  // La salida de una COMBI registra la cuota S/10 en la caja de quien confirma:
-  // debe hacerlo un operador con turno abierto, no el gerente/admin sin caja
-  for (const [etiqueta, tokSalida] of [['HUA-KIM combi', carlos], ['HUA-SFR camioneta', kevin], ['KIM-HUA combi', rosaK]]) {
+  // Salida: la confirma el origen (la cuota de salida entra a la caja de quien
+  // confirma). Llegada: SOLO la agencia de la ciudad destino, conductor o gerencia.
+  const ciclos = [
+    ['HUA-KIM combi',     carlos, rosaN,  'carlos sale, rosaN (Palmapampa) recibe'],
+    ['HUA-SFR camioneta', carlos, mariaS, 'carlos sale (cuota camioneta a su caja), mariaS (SFR) recibe'],
+    ['KIM-HUA combi',     rosaK,  carlos, 'rosaK sale, carlos (Huamanga) recibe'],
+  ]
+  let llegadaOrigenProbada = false
+  for (const [etiqueta, tokSalida, tokLlegada, desc] of ciclos) {
     const id = viajes[etiqueta]
     if (!id) continue
     let r = await api('POST', `/api/viajes/${id}/confirmar-salida`, tokSalida, {})
     if (r.status >= 300) { nota('FALLO', 'viaje.salida', `${etiqueta} -> HTTP ${r.status} ${r.json?.message}`); continue }
-    r = await api('POST', `/api/viajes/${id}/confirmar-llegada`, tokSalida, {})
+    // Regla nueva: la agencia ORIGEN no puede confirmar la llegada
+    if (!llegadaOrigenProbada && tokSalida !== tokLlegada) {
+      const rMal = await api('POST', `/api/viajes/${id}/confirmar-llegada`, tokSalida, {})
+      if (rMal.status >= 300) nota('OK', 'regla.llegadaOrigen', `llegada desde el origen rechazada (${rMal.json?.message?.slice(0, 60)}…)`)
+      else nota('VACIO', 'regla.llegadaOrigen', '¡la agencia origen confirmó la llegada!')
+      llegadaOrigenProbada = true
+    }
+    r = await api('POST', `/api/viajes/${id}/confirmar-llegada`, tokLlegada, {})
     if (r.status >= 300) nota('FALLO', 'viaje.llegada', `${etiqueta} -> HTTP ${r.status} ${r.json?.message}`)
-    else nota('OK', 'viaje.ciclo', `${etiqueta} salió y llegó`)
+    else nota('OK', 'viaje.ciclo', `${etiqueta}: ${desc}`)
   }
 
   // ── 7. Recepción y entrega en destino ───────────────────────────────────
-  // Kimbiri (rosaK) recepciona lo del viaje HUA-KIM
-  if (encKim) {
+  // Palmapampa (rosaN) recepciona y entrega lo del viaje HUA-KIM
+  if (encKim && rosaN) {
     const vid = viajes['HUA-KIM combi']
-    let r = await api('POST', `/api/encomiendas/viaje/${vid}/recepcionar`, rosaK, [{ encomiendaId: encKim.id, recibido: true, observacion: '' }])
-    if (r.status >= 300) nota('FALLO', 'encomienda.recepcionar', `Kimbiri viaje ${vid} -> HTTP ${r.status} ${r.json?.message}`)
-    r = await api('POST', `/api/encomiendas/${encKim.id}/entregar`, rosaK, { dniReceptor: '42333444', nombreReceptor: 'Flor Huaman Rojas', nota: 'entrega normal' })
-    if (r.status < 300) nota('OK', 'encomienda.entrega', `${encKim.codigo} entregada en Kimbiri (pagada en origen)`)
+    let r = await api('POST', `/api/encomiendas/viaje/${vid}/recepcionar`, rosaN, [{ encomiendaId: encKim.id, recibido: true, observacion: '' }])
+    if (r.status >= 300) nota('FALLO', 'encomienda.recepcionar', `Palmapampa viaje ${vid} -> HTTP ${r.status} ${r.json?.message}`)
+    r = await api('POST', `/api/encomiendas/${encKim.id}/entregar`, rosaN, { dniReceptor: '42333444', nombreReceptor: 'Flor Huaman Rojas', nota: 'entrega normal' })
+    if (r.status < 300) nota('OK', 'encomienda.entrega', `${encKim.codigo} entregada en Palmapampa (pagada en origen)`)
     else nota('FALLO', 'encomienda.entrega', `${encKim.codigo} -> HTTP ${r.status} ${r.json?.message}`)
   }
   // San Francisco (mariaS) recepciona y entrega COBRANDO el POR_COBRAR

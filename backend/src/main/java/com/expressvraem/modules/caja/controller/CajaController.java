@@ -181,6 +181,23 @@ public class CajaController {
         return ResponseEntity.ok(ApiResponse.ok(cajaService.getMovimientos(cajaId)));
     }
 
+    /** Cuotas de salida pendientes (viajes que salieron sin registrar la cuota en caja). */
+    @GetMapping("/cuotas-pendientes")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> cuotasPendientes(Authentication auth) {
+        boolean esGerencia = auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ROLE_SUPER_ADMIN") || a.getAuthority().equals("ROLE_GERENTE"));
+        Long agencia = esGerencia ? AgenciaContext.getAgenciaId() : resolveAgenciaId(auth);
+        return ResponseEntity.ok(ApiResponse.ok(cajaService.getCuotasSalidaPendientes(agencia)));
+    }
+
+    /** Registra una cuota de salida pendiente en la caja abierta del usuario actual. */
+    @PostMapping("/cuotas-pendientes/{viajeId}/cobrar")
+    public ResponseEntity<ApiResponse<MovimientoCaja>> cobrarCuotaPendiente(
+            @PathVariable Long viajeId, Authentication auth) {
+        MovimientoCaja mov = cajaService.cobrarCuotaSalidaPendiente(viajeId, resolveUserId(auth));
+        return ResponseEntity.ok(ApiResponse.ok("Cuota registrada en su caja", mov));
+    }
+
     @PostMapping("/cerrar")
     public ResponseEntity<ApiResponse<Map<String, Object>>> cerrar(
             @RequestBody Map<String, Object> body,

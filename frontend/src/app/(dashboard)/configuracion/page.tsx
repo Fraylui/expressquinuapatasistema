@@ -1362,13 +1362,14 @@ function ConductoresTab() {
 // ─── EmpresaTab ───────────────────────────────────────────────────────────────
 
 function EmpresaTab() {
-  const { nombre, ruc, direccion, ciudad, telefono, logoBase64, cuotaSalidaCombi, setLogoBase64, fetchFromApi, saveToApi } = useEmpresaStore()
+  const { nombre, ruc, direccion, ciudad, telefono, logoBase64, cuotaSalidaCombi, cuotaSalidaCamioneta, setLogoBase64, fetchFromApi, saveToApi } = useEmpresaStore()
   const [localNombre,    setLocalNombre]    = useState(nombre)
   const [localRuc,       setLocalRuc]       = useState(ruc)
   const [localDireccion, setLocalDireccion] = useState(direccion)
   const [localCiudad,    setLocalCiudad]    = useState(ciudad)
   const [localTelefono,  setLocalTelefono]  = useState(telefono)
   const [localCuotaCombi, setLocalCuotaCombi] = useState(cuotaSalidaCombi)
+  const [localCuotaCamioneta, setLocalCuotaCamioneta] = useState(cuotaSalidaCamioneta)
   const [saving,         setSaving]         = useState(false)
   const [dragging,       setDragging]       = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1380,7 +1381,8 @@ function EmpresaTab() {
     setLocalNombre(nombre); setLocalRuc(ruc)
     setLocalDireccion(direccion); setLocalCiudad(ciudad); setLocalTelefono(telefono)
     setLocalCuotaCombi(cuotaSalidaCombi)
-  }, [nombre, ruc, direccion, ciudad, telefono, cuotaSalidaCombi])
+    setLocalCuotaCamioneta(cuotaSalidaCamioneta)
+  }, [nombre, ruc, direccion, ciudad, telefono, cuotaSalidaCombi, cuotaSalidaCamioneta])
 
   const handleGuardar = async () => {
     if (!localNombre.trim()) { toast.error('El nombre de la empresa es obligatorio'); return }
@@ -1393,6 +1395,7 @@ function EmpresaTab() {
         ciudad:    localCiudad.trim(),
         telefono:  localTelefono.trim(),
         cuotaSalidaCombi: localCuotaCombi,
+        cuotaSalidaCamioneta: localCuotaCamioneta,
       })
       toast.success('Datos de empresa guardados')
     } catch { toast.error('Error al guardar. El backend debe estar activo.') }
@@ -1546,19 +1549,31 @@ function EmpresaTab() {
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Cuota fija por salida de combi (S/)</label>
-          <input
-            value={localCuotaCombi}
-            onChange={e => setLocalCuotaCombi(e.target.value.replace(/[^\d.]/g, ''))}
-            placeholder="0.00"
-            inputMode="decimal"
-            className={inputCls('font-mono')}
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            Se registra automáticamente en caja al confirmar la salida de un viaje en COMBI. Dejar en 0 para deshabilitar.
-          </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Cuota por salida de combi (S/)</label>
+            <input
+              value={localCuotaCombi}
+              onChange={e => setLocalCuotaCombi(e.target.value.replace(/[^\d.]/g, ''))}
+              placeholder="0.00"
+              inputMode="decimal"
+              className={inputCls('font-mono')}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Cuota por salida de camioneta (S/)</label>
+            <input
+              value={localCuotaCamioneta}
+              onChange={e => setLocalCuotaCamioneta(e.target.value.replace(/[^\d.]/g, ''))}
+              placeholder="0.00"
+              inputMode="decimal"
+              className={inputCls('font-mono')}
+            />
+          </div>
         </div>
+        <p className="text-xs text-gray-400 -mt-2">
+          Se registra automáticamente en la caja del operador al confirmar la salida del viaje. Dejar en 0 para deshabilitar.
+        </p>
 
         <div className="pt-2">
           <Button variant="primary" loading={saving} onClick={handleGuardar}>

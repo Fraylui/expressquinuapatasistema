@@ -1273,6 +1273,29 @@ export default function CajaPage() {
     } catch { setTurno(null) }
   }, [])
 
+  // Cuotas de salida pendientes (viajes que salieron sin operador con caja, p.ej. de madrugada)
+  const [cuotasPend, setCuotasPend] = useState<{
+    viajeId: number; ruta: string; placa: string; tipoVehiculo: string; monto: number; fechaHoraSal: string
+  }[]>([])
+  const cargarCuotasPend = useCallback(async () => {
+    try {
+      const r = await api.get<any, any>('/api/caja/cuotas-pendientes')
+      setCuotasPend(Array.isArray(r?.data) ? r.data : [])
+    } catch { /* sin acceso: no bloquear la vista */ }
+  }, [])
+  useEffect(() => { cargarCuotasPend() }, [cargarCuotasPend])
+
+  const cobrarCuota = async (viajeId: number) => {
+    try {
+      await api.post(`/api/caja/cuotas-pendientes/${viajeId}/cobrar`)
+      toast.success('Cuota registrada en tu caja')
+      cargarCuotasPend()
+      cargarTurno()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'No se pudo registrar la cuota')
+    }
+  }
+
   const cargarMovimientos = useCallback(async () => {
     if (!turno) return
     setCargandoMovs(true)
@@ -1625,6 +1648,36 @@ export default function CajaPage() {
                       Cierra tu turno al terminar tu horario y rinde el efectivo. Mientras la caja siga abierta,
                       el dinero no aparece como pendiente de rendir y los reportes del día quedan desactualizados.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Cuotas de salida pendientes de cobro (salidas de madrugada del conductor) */}
+              {cuotasPend.length > 0 && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                    <p className="text-sm font-semibold text-amber-800">
+                      {cuotasPend.length} cuota{cuotasPend.length > 1 ? 's' : ''} de salida sin registrar en caja
+                    </p>
+                  </div>
+                  <p className="text-xs text-amber-700">
+                    Son viajes cuya salida confirmó el conductor sin operador con caja abierta (ej. de madrugada).
+                    Cóbralas al conductor/agencia y regístralas en tu caja:
+                  </p>
+                  <div className="space-y-1.5">
+                    {cuotasPend.map(c => (
+                      <div key={c.viajeId}
+                        className="flex flex-wrap items-center justify-between gap-2 bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm">
+                        <span className="text-gray-700">
+                          <strong>{c.ruta}</strong> · {c.placa} ({c.tipoVehiculo?.toLowerCase()}) — S/ {Number(c.monto).toFixed(2)}
+                        </span>
+                        <button onClick={() => cobrarCuota(c.viajeId)}
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                          Registrar en mi caja
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
