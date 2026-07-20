@@ -236,14 +236,19 @@ async function main() {
   }
 
   // ── 11. Cierres de caja ─────────────────────────────────────────────────
-  async function cerrar(quien, tok, ajuste = 0, observacion) {
+  async function cerrar(quien, tok, ajuste = 0) {
     const t = await api('GET', '/api/caja/turno-actual', tok)
     const saldo = Number(t.json?.data?.saldoActual ?? t.json?.data?.saldo ?? NaN)
     const body = { montoFisico: isNaN(saldo) ? 100 : saldo + ajuste }
-    if (observacion) body.observaciones = observacion
+    if (ajuste !== 0) {
+      // Cerrar con diferencia SIN observación debe ser RECHAZADO (loop F)
+      const rSin = await api('POST', '/api/caja/cerrar', tok, body)
+      if (rSin.status < 300) nota('VACIO', 'caja.cerrarSinObs', `${quien} cerró con diferencia sin observación — ¡no debería!`)
+      else nota('OK', 'caja.cerrarSinObs', `${quien} rechazado correctamente sin observación`)
+      body.observacion = 'faltó vuelto de la mañana (prueba de simulación)'
+    }
     const r = await api('POST', '/api/caja/cerrar', tok, body)
-    if (r.status < 300) nota(ajuste !== 0 ? 'VACIO' : 'OK', 'caja.cerrar',
-      `${quien} cerró con diferencia=${r.json?.data?.diferencia}${ajuste !== 0 ? ' — aceptado SIN exigir observación' : ''}`)
+    if (r.status < 300) nota('OK', 'caja.cerrar', `${quien} cerró con diferencia=${r.json?.data?.diferencia}`)
     else nota('FALLO', 'caja.cerrar', `${quien} -> HTTP ${r.status} ${r.json?.message}`)
   }
   await cerrar('carlos', carlos)

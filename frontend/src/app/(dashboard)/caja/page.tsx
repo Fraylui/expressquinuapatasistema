@@ -131,6 +131,7 @@ function ModalCierre({ turno, onClose, onSuccess }: {
   const [montoFisico, setMontoFisico] = useState(0)
   const [showDenomin, setShowDenomin] = useState(false)
   const [observacion, setObservacion] = useState('')
+  const [obsRequerida, setObsRequerida] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
   const setDesdeInput = (val: string) => {
@@ -148,13 +149,20 @@ function ModalCierre({ turno, onClose, onSuccess }: {
 
   const confirmar = async () => {
     if (!puedeConfirmar) { toast.error('Ingresa el total de efectivo en caja'); return }
+    if (obsRequerida && !observacion.trim()) {
+      toast.error('Escribe la observación que explica la diferencia para poder cerrar')
+      return
+    }
     setCerrando(true)
     try {
       const r = await cajaService.cerrar(montoFisico, observacion.trim() || undefined)
       toast.success('Turno cerrado correctamente')
       onSuccess(r.data as TurnoActual)
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Error al cerrar turno')
+      const msg = err?.response?.data?.message ?? 'Error al cerrar turno'
+      // El backend rechaza el cierre con diferencia sin observación: marcar el campo
+      if (msg.includes('observación')) setObsRequerida(true)
+      toast.error(msg)
     } finally { setCerrando(false) }
   }
 
@@ -236,14 +244,17 @@ function ModalCierre({ turno, onClose, onSuccess }: {
           {/* Observación */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Observación <span className="text-gray-400">(opcional)</span>
+              Observación {obsRequerida
+                ? <span className="text-red-500 font-semibold">(obligatoria: explica la diferencia)</span>
+                : <span className="text-gray-400">(opcional)</span>}
             </label>
             <textarea
               value={observacion}
               onChange={e => setObservacion(e.target.value)}
               rows={2}
-              placeholder="Alguna nota sobre el turno..."
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+              placeholder={obsRequerida ? 'Ej.: faltó vuelto de la mañana, se repone mañana…' : 'Alguna nota sobre el turno...'}
+              className={`w-full px-3 py-2 border rounded-lg text-sm resize-none focus:ring-2 bg-gray-50 ${
+                obsRequerida ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-500'}`}
             />
           </div>
         </div>

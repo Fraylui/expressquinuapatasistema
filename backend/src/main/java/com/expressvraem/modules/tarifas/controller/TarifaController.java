@@ -44,6 +44,36 @@ public class TarifaController {
         return ResponseEntity.ok(ApiResponse.ok(enrichAll(resultados).get(0)));
     }
 
+    /**
+     * Alerta gerencial: rutas activas sin tarifa vigente para algún tipo de vehículo
+     * (por temporada vencida o porque nunca se creó). El vendedor aún puede vender
+     * con precio manual, pero el gerente debe enterarse y regularizar la referencia.
+     */
+    @SuppressWarnings("unchecked")
+    @GetMapping("/rutas-sin-tarifa")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN','GERENTE','ADMIN_AGENCIA')")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> rutasSinTarifa() {
+        List<Object[]> rutas = entityManager.createNativeQuery(
+                "SELECT id, codigo, origen, destino FROM rutas WHERE activo = true ORDER BY codigo")
+                .getResultList();
+        List<Map<String, Object>> faltantes = new java.util.ArrayList<>();
+        for (Object[] r : rutas) {
+            Long rutaId = ((Number) r[0]).longValue();
+            for (String tipo : List.of("COMBI", "CAMIONETA")) {
+                if (tarifaRepository.findVigenteEnTemporada(rutaId, tipo).isEmpty()) {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("rutaId", rutaId);
+                    m.put("codigo", r[1] != null ? r[1].toString() : "");
+                    m.put("origen", r[2] != null ? r[2].toString() : "");
+                    m.put("destino", r[3] != null ? r[3].toString() : "");
+                    m.put("tipoVehiculo", tipo);
+                    faltantes.add(m);
+                }
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.ok(faltantes));
+    }
+
     /** Endpoint autenticado — lista de la agencia del usuario */
     @GetMapping
     public ResponseEntity<ApiResponse<List<TarifaResponseDTO>>> listar() {

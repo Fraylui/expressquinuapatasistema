@@ -58,6 +58,28 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("El registro ya existe o viola una restricción de integridad"));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadable(
+            org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        log.warn("Cuerpo de petición inválido: {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Los datos enviados no tienen el formato esperado. Revise los campos e intente de nuevo."));
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("El parámetro '" + ex.getName() + "' no es válido"));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
+            org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.error("Operación no disponible para este recurso"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
         log.error("Error inesperado: {}", ex.getMessage(), ex);

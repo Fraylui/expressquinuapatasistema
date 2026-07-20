@@ -145,26 +145,54 @@ function KPICard({ label, value, sub, icon: Icon, accent, delta, inverseAlert }:
 }
 
 // ── Alert banner ──────────────────────────────────────────────────────────────
-function AlertBanner({ diferencias, pendientes }: { diferencias: number; pendientes: number }) {
-  if (diferencias === 0 && pendientes === 0) return null
+interface RutaSinTarifa { rutaId: number; codigo: string; origen: string; destino: string; tipoVehiculo: string }
+
+function AlertBanner({ diferencias, pendientes, sinTarifa }: {
+  diferencias: number; pendientes: number; sinTarifa: RutaSinTarifa[]
+}) {
+  if (diferencias === 0 && pendientes === 0 && sinTarifa.length === 0) return null
+  // Agrupar por ruta: "HUA-KIM (COMBI y CAMIONETA)"
+  const rutasAgrupadas = Object.values(
+    sinTarifa.reduce<Record<string, { codigo: string; tipos: string[] }>>((acc, r) => {
+      (acc[r.codigo] ??= { codigo: r.codigo, tipos: [] }).tipos.push(r.tipoVehiculo)
+      return acc
+    }, {})
+  )
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-      <AlertTriangle size={16} className="text-amber-500 shrink-0" />
-      <div className="flex flex-wrap gap-3 flex-1">
-        {diferencias > 0 && (
-          <span className="font-medium">
-            {diferencias} caja{diferencias > 1 ? 's' : ''} cerrada{diferencias > 1 ? 's' : ''} con diferencia de efectivo
-          </span>
-        )}
-        {pendientes > 0 && (
-          <span className="font-medium">
-            {pendientes} encomienda{pendientes > 1 ? 's' : ''} sin movimiento en más de 24 h
-          </span>
-        )}
-      </div>
-      <Link href="/caja" className="text-xs font-semibold text-amber-700 hover:underline whitespace-nowrap">
-        Revisar →
-      </Link>
+    <div className="space-y-2">
+      {(diferencias > 0 || pendientes > 0) && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+          <div className="flex flex-wrap gap-3 flex-1">
+            {diferencias > 0 && (
+              <span className="font-medium">
+                {diferencias} caja{diferencias > 1 ? 's' : ''} cerrada{diferencias > 1 ? 's' : ''} con diferencia de efectivo
+              </span>
+            )}
+            {pendientes > 0 && (
+              <span className="font-medium">
+                {pendientes} encomienda{pendientes > 1 ? 's' : ''} sin movimiento en más de 24 h
+              </span>
+            )}
+          </div>
+          <Link href="/caja" className="text-xs font-semibold text-amber-700 hover:underline whitespace-nowrap">
+            Revisar →
+          </Link>
+        </div>
+      )}
+      {rutasAgrupadas.length > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800">
+          <AlertTriangle size={16} className="text-red-500 shrink-0" />
+          <div className="flex-1 font-medium">
+            {rutasAgrupadas.length} ruta{rutasAgrupadas.length > 1 ? 's' : ''} sin tarifa vigente:{' '}
+            {rutasAgrupadas.map(r => `${r.codigo} (${r.tipos.join(' y ')})`).join(', ')}
+            <span className="font-normal text-red-600"> — los operadores están vendiendo con precio manual sin referencia</span>
+          </div>
+          <Link href="/configuracion" className="text-xs font-semibold text-red-700 hover:underline whitespace-nowrap">
+            Crear tarifas →
+          </Link>
+        </div>
+      )}
     </div>
   )
 }
@@ -238,6 +266,8 @@ export default function GerentePage() {
 
   const { data: kpis, mutate: mutateKpis } =
     useSWR<KPIs>(ag('/api/reportes/kpis'), { refreshInterval: 60_000 })
+  const { data: rutasSinTarifa } =
+    useSWR<RutaSinTarifa[]>('/api/tarifas/rutas-sin-tarifa', { refreshInterval: 300_000 })
 
   const { data: comparativa } =
     useSWR<Comparativa>(ag('/api/reportes/comparativa'), { refreshInterval: 120_000 })
@@ -383,6 +413,7 @@ export default function GerentePage() {
       <AlertBanner
         diferencias={kpis?.diferenciasHoy ?? 0}
         pendientes={encPendientes.length}
+        sinTarifa={rutasSinTarifa ?? []}
       />
 
       {/* ── KPIs ── */}
