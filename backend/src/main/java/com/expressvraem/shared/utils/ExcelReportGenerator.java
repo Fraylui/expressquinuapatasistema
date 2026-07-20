@@ -180,6 +180,89 @@ public class ExcelReportGenerator {
         }
     }
 
+    public byte[] generarReporteRendiciones(List<Map<String, Object>> datos) throws IOException {
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Rendiciones");
+            sheet.createFreezePane(0, 1);
+
+            CellStyle headerStyle = crearEstiloHeader(wb);
+            CellStyle monedaStyle = crearEstiloMoneda(wb);
+            CellStyle monedaAlt   = crearEstiloMonedaAlt(wb);
+            CellStyle normalStyle = crearEstiloNormal(wb);
+            CellStyle altStyle    = crearEstiloAlt(wb);
+            CellStyle totalLabel  = crearEstiloTotalLabel(wb);
+            CellStyle totalMoneda = crearEstiloTotalMoneda(wb);
+
+            String[] headers = {
+                "N°", "Fecha", "Agencia", "Declarado por", "Modalidad", "N° Operación",
+                "Declarado S/", "Confirmado S/", "Diferencia S/",
+                "Estado", "Confirmado por", "Fecha confirmación", "Observaciones"
+            };
+            crearFila(sheet, 0, headers, headerStyle);
+
+            BigDecimal totalDeclarado  = BigDecimal.ZERO;
+            BigDecimal totalConfirmado = BigDecimal.ZERO;
+            int row = 1;
+            for (Map<String, Object> d : datos) {
+                boolean alt = (row % 2 == 0);
+                Row fila = sheet.createRow(row++);
+                setCell(fila, 0, str(d, "numero"),       alt ? altStyle : normalStyle);
+                setCell(fila, 1, str(d, "fecha"),        alt ? altStyle : normalStyle);
+                setCell(fila, 2, str(d, "agencia"),      alt ? altStyle : normalStyle);
+                setCell(fila, 3, str(d, "declaradoPor"), alt ? altStyle : normalStyle);
+                setCell(fila, 4, str(d, "modalidad"),    alt ? altStyle : normalStyle);
+                setCell(fila, 5, str(d, "nroOperacion"), alt ? altStyle : normalStyle);
+
+                BigDecimal declarado  = toBD(d.getOrDefault("montoDeclarado",  "0"));
+                Cell cDecl = fila.createCell(6);
+                cDecl.setCellValue(declarado.doubleValue());
+                cDecl.setCellStyle(alt ? monedaAlt : monedaStyle);
+
+                // Confirmado y diferencia quedan vacíos mientras la entrega siga PENDIENTE
+                if (d.get("montoConfirmado") != null) {
+                    BigDecimal confirmado = toBD(d.get("montoConfirmado"));
+                    Cell cConf = fila.createCell(7);
+                    cConf.setCellValue(confirmado.doubleValue());
+                    cConf.setCellStyle(alt ? monedaAlt : monedaStyle);
+                    if (!"ANULADA".equals(str(d, "estado"))) totalConfirmado = totalConfirmado.add(confirmado);
+                } else {
+                    setCell(fila, 7, "", alt ? altStyle : normalStyle);
+                }
+                if (d.get("diferencia") != null) {
+                    Cell cDif = fila.createCell(8);
+                    cDif.setCellValue(toBD(d.get("diferencia")).doubleValue());
+                    cDif.setCellStyle(alt ? monedaAlt : monedaStyle);
+                } else {
+                    setCell(fila, 8, "", alt ? altStyle : normalStyle);
+                }
+
+                setCell(fila, 9, str(d, "estado"),        alt ? altStyle : normalStyle);
+                setCell(fila,10, str(d, "confirmadoPor"), alt ? altStyle : normalStyle);
+                setCell(fila,11, str(d, "fechaConfirmacion"), alt ? altStyle : normalStyle);
+                setCell(fila,12, str(d, "observaciones"), alt ? altStyle : normalStyle);
+
+                if (!"ANULADA".equals(str(d, "estado"))) totalDeclarado = totalDeclarado.add(declarado);
+            }
+
+            Row totalRow = sheet.createRow(row);
+            Cell lbl = totalRow.createCell(5);
+            lbl.setCellValue("TOTAL (sin anuladas):");
+            lbl.setCellStyle(totalLabel);
+            Cell tDecl = totalRow.createCell(6);
+            tDecl.setCellValue(totalDeclarado.doubleValue());
+            tDecl.setCellStyle(totalMoneda);
+            Cell tConf = totalRow.createCell(7);
+            tConf.setCellValue(totalConfirmado.doubleValue());
+            tConf.setCellStyle(totalMoneda);
+
+            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
     public byte[] generarReporteAuditoria(List<Map<String, Object>> datos) throws IOException {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet("Auditoría");
