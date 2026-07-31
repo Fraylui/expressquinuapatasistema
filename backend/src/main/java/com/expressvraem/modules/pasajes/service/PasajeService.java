@@ -432,11 +432,11 @@ public class PasajeService {
         } else if (codigoBoleta != null && !codigoBoleta.isBlank()) {
             pasajes = pasajeRepository.searchByCodigoBoleta(codigoBoleta);
         } else if (agenciaId != null && estado != null) {
-            pasajes = pasajeRepository.findByAgenciaIdAndEstado(agenciaId, estado);
+            pasajes = pasajeRepository.findByAgenciaIdAndEstadoOrderByFechaVentaDesc(agenciaId, estado);
         } else if (agenciaId != null) {
             pasajes = pasajeRepository.findByAgenciaIdOrderByFechaVentaDesc(agenciaId);
         } else {
-            pasajes = pasajeRepository.findAll();
+            pasajes = pasajeRepository.findAllByOrderByFechaVentaDesc();
         }
 
         Set<Long> clienteIds = pasajes.stream()
