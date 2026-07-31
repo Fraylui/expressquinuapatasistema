@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import useSWR from 'swr'
+import { redirect } from 'next/navigation'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, BarChart, Cell, Legend,
@@ -239,6 +240,8 @@ function ChartTooltip({ active, payload, label }: any) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function GerentePage() {
   const { user } = useAuthStore()
+  if (user && !['SUPER_ADMIN', 'GERENTE', 'ADMIN_AGENCIA'].includes(user.rol)) redirect('/')
+
   const [agenciaFiltro, setAgenciaFiltro] = useState<number | null>(null)
   const [periodo, setPeriodo] = useState<Periodo>('HOY')
   const [topDias, setTopDias] = useState(7)

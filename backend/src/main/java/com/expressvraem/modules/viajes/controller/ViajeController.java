@@ -113,8 +113,10 @@ public class ViajeController {
 
         viaje = viajeRepository.save(viaje);
 
-        List<Asiento> asientosNuevos = new ArrayList<>(numAsientos);
-        for (int i = 1; i <= numAsientos; i++) {
+        // num_asientos del vehículo incluye el asiento del conductor: los vendibles son numAsientos-1
+        int asientosVendibles = Math.max(1, numAsientos - 1);
+        List<Asiento> asientosNuevos = new ArrayList<>(asientosVendibles);
+        for (int i = 1; i <= asientosVendibles; i++) {
             asientosNuevos.add(Asiento.builder()
                     .agenciaId(agenciaId)
                     .viajeId(viaje.getId())
@@ -683,7 +685,7 @@ public class ViajeController {
                     .createNativeQuery("SELECT num_asientos FROM vehiculos WHERE id = :vid")
                     .setParameter("vid", dto.vehiculoId())
                     .getSingleResult();
-            int nuevosAsientos = ((Number) newVehRow[0]).intValue();
+            int nuevosAsientos = Math.max(1, ((Number) newVehRow[0]).intValue() - 1);
 
             Long agId = AgenciaContext.getAgenciaId() != null ? AgenciaContext.getAgenciaId() : viaje.getAgenciaId();
             List<Asiento> lista = new ArrayList<>(nuevosAsientos);

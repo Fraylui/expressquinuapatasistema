@@ -20,7 +20,9 @@ public interface PasajeRepository extends JpaRepository<Pasaje, Long> {
 
     List<Pasaje> findByAgenciaIdOrderByFechaVentaDesc(Long agenciaId);
 
-    List<Pasaje> findByAgenciaIdAndEstado(Long agenciaId, String estado);
+    List<Pasaje> findAllByOrderByFechaVentaDesc();
+
+    List<Pasaje> findByAgenciaIdAndEstadoOrderByFechaVentaDesc(Long agenciaId, String estado);
 
     Optional<Pasaje> findOneByCodigoBoleta(String codigoBoleta);
 
