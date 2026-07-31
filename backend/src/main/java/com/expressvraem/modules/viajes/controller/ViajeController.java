@@ -509,13 +509,40 @@ public class ViajeController {
 
         viaje.setEstado("CANCELADO");
         viajeRepository.save(viaje);
-        logService.logOperacion(auth.getName(), "VIAJES", "CANCELAR",
-                Map.of("viajeId", id, "operador", auth.getName(), "boletasActivas", boletasActivas.longValue()));
 
-        String msg = boletasActivas.longValue() > 0
-                ? "Viaje cancelado. ATENCIÓN: tiene " + boletasActivas + " boleta(s) vigente(s) — reubique a los pasajeros en otro viaje o anule cada pasaje (la anulación registra la devolución en caja)."
-                : "Viaje cancelado";
-        return ResponseEntity.ok(ApiResponse.ok(msg, enrich(viaje)));
+        // Soltar las encomiendas asignadas: igual que en la cancelación automática
+        // (ViajeScheduler), para que no queden "atrapadas" en un viaje que ya no existe
+        // y aparezcan en el panel de Urgentes para reasignarlas a otro viaje/vehículo.
+        java.util.Set<String> estadosAfectados = java.util.Set.of(
+                "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
+        List<Encomienda> encomiendasAsignadas = encomiendaRepository.findByViajeId(id).stream()
+                .filter(e -> estadosAfectados.contains(e.getEstado()))
+                .toList();
+        if (!encomiendasAsignadas.isEmpty()) {
+            String notaEnc = "⚠ Viaje #" + id + " cancelado — pendiente de reasignar";
+            encomiendasAsignadas.forEach(e -> {
+                e.setViajeId(null);
+                e.setEstado("ALMACENADO");
+                String obsActual = e.getObservaciones() != null ? e.getObservaciones() + " | " : "";
+                e.setObservaciones(obsActual + notaEnc);
+            });
+            encomiendaRepository.saveAll(encomiendasAsignadas);
+        }
+
+        logService.logOperacion(auth.getName(), "VIAJES", "CANCELAR",
+                Map.of("viajeId", id, "operador", auth.getName(), "boletasActivas", boletasActivas.longValue(),
+                        "encomiendasLiberadas", encomiendasAsignadas.size()));
+
+        StringBuilder msg = new StringBuilder("Viaje cancelado");
+        if (boletasActivas.longValue() > 0) {
+            msg.append(". ATENCIÓN: tiene ").append(boletasActivas)
+               .append(" boleta(s) vigente(s) — reubique a los pasajeros en otro viaje o anule cada pasaje (la anulación registra la devolución en caja).");
+        }
+        if (!encomiendasAsignadas.isEmpty()) {
+            msg.append(" Se liberaron ").append(encomiendasAsignadas.size())
+               .append(" encomienda(s) — quedaron disponibles en el panel de Urgentes para reasignar.");
+        }
+        return ResponseEntity.ok(ApiResponse.ok(msg.toString(), enrich(viaje)));
     }
 
     /**
