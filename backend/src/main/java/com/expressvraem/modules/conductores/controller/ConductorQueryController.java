@@ -38,6 +38,7 @@ public class ConductorQueryController {
     private final com.expressvraem.modules.encomiendas.repository.EncomiendaRepository encomiendaRepository;
     private final com.expressvraem.shared.websocket.WebSocketEventPublisher wsPublisher;
     private final com.expressvraem.modules.vehiculos.service.UbicacionFlotaService ubicacionFlotaService;
+    private final com.expressvraem.modules.encomiendas.service.EncomiendaService encomiendaService;
 
     // ── Lista de conductores para selects ────────────────────────────────────
 
@@ -248,12 +249,18 @@ public class ConductorQueryController {
 
         // Igual que cuando confirma el operador: las encomiendas del viaje pasan
         // a EN_TRANSITO y se avisa a las agencias destino (tracking coherente)
+        Long usuarioSalidaId = usuarioRepository.findByEmail(auth.getName())
+                .map(Usuario::getId).orElse(null);
         java.util.Set<String> preTransito = java.util.Set.of(
                 "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
         var encomiendas = encomiendaRepository.findByViajeId(viajeId);
         var aActualizar = encomiendas.stream()
                 .filter(enc -> preTransito.contains(enc.getEstado()))
-                .peek(enc -> enc.setEstado("EN_TRANSITO"))
+                .peek(enc -> {
+                    encomiendaService.guardarHistorial(enc.getId(), enc.getAgenciaId(), usuarioSalidaId,
+                            enc.getEstado(), "EN_TRANSITO", "Salida de viaje #" + viajeId);
+                    enc.setEstado("EN_TRANSITO");
+                })
                 .toList();
         if (!aActualizar.isEmpty()) encomiendaRepository.saveAll(aActualizar);
 
@@ -303,12 +310,18 @@ public class ConductorQueryController {
                     .setParameter("c", destinoRuta).getResultList();
             for (Object o : ids) agenciasDestino.add(((Number) o).longValue());
         } catch (Exception ignored) {}
+        Long usuarioLlegadaId = usuarioRepository.findByEmail(auth.getName())
+                .map(Usuario::getId).orElse(null);
         var todasViaje = encomiendaRepository.findByViajeId(viajeId);
         var llegadas = todasViaje.stream()
                 .filter(enc -> "EN_TRANSITO".equals(enc.getEstado()))
                 .filter(enc -> agenciasDestino.isEmpty()
                         || (enc.getAgenciaDestinoId() != null && agenciasDestino.contains(enc.getAgenciaDestinoId())))
-                .peek(enc -> enc.setEstado("LLEGADO_AGENCIA"))
+                .peek(enc -> {
+                    encomiendaService.guardarHistorial(enc.getId(), enc.getAgenciaId(), usuarioLlegadaId,
+                            "EN_TRANSITO", "LLEGADO_AGENCIA", "Llegó a agencia destino — viaje #" + viajeId);
+                    enc.setEstado("LLEGADO_AGENCIA");
+                })
                 .toList();
         if (!llegadas.isEmpty()) encomiendaRepository.saveAll(llegadas);
 

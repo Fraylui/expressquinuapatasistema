@@ -574,7 +574,8 @@ public class EncomiendaService {
         return result;
     }
 
-    private void guardarHistorial(Long encId, Long agenciaId, Long usuarioId,
+    /** Público: usado también por controllers que hacen transición masiva (llegada/salida de viaje). */
+    public void guardarHistorial(Long encId, Long agenciaId, Long usuarioId,
                                   String anterior, String nuevo, String observacion) {
         historialRepository.save(HistorialEncomienda.builder()
                 .encomiendaId(encId)

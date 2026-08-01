@@ -28,11 +28,17 @@ export const glassInput: React.CSSProperties = {
 
 /* Chips de estado legibles sobre fondo navy (los Badge del panel son pastel claro) */
 const CHIP: Record<string, { bg: string; fg: string; bd: string; label: string }> = {
-  REGISTRADO:  { bg: 'rgba(59,130,246,0.12)', fg: '#93c5fd', bd: 'rgba(59,130,246,0.35)', label: 'Registrado' },
-  EN_TRANSITO: { bg: 'rgba(250,204,21,0.10)', fg: '#fde047', bd: 'rgba(250,204,21,0.30)', label: 'En tránsito' },
-  ENTREGADO:   { bg: 'rgba(34,197,94,0.12)',  fg: '#4ade80', bd: 'rgba(34,197,94,0.35)',  label: 'Entregado' },
-  DEVUELTO:    { bg: 'rgba(249,115,22,0.12)', fg: '#fdba74', bd: 'rgba(249,115,22,0.35)', label: 'Devuelto' },
-  PERDIDO:     { bg: 'rgba(239,68,68,0.12)',  fg: '#fca5a5', bd: 'rgba(239,68,68,0.35)',  label: 'Perdido' },
+  REGISTRADO:      { bg: 'rgba(59,130,246,0.12)', fg: '#93c5fd', bd: 'rgba(59,130,246,0.35)', label: 'Registrado' },
+  RECEPCIONADO:    { bg: 'rgba(59,130,246,0.12)', fg: '#93c5fd', bd: 'rgba(59,130,246,0.35)', label: 'Registrado' },
+  ALMACENADO:      { bg: 'rgba(59,130,246,0.12)', fg: '#93c5fd', bd: 'rgba(59,130,246,0.35)', label: 'Registrado' },
+  CARGADO:         { bg: 'rgba(59,130,246,0.12)', fg: '#93c5fd', bd: 'rgba(59,130,246,0.35)', label: 'Registrado' },
+  EN_TRANSITO:     { bg: 'rgba(250,204,21,0.10)', fg: '#fde047', bd: 'rgba(250,204,21,0.30)', label: 'En tránsito' },
+  LLEGADO_AGENCIA: { bg: 'rgba(34,197,94,0.10)',  fg: '#86efac', bd: 'rgba(34,197,94,0.30)',  label: 'Disponible en agencia' },
+  DISPONIBLE:      { bg: 'rgba(34,197,94,0.10)',  fg: '#86efac', bd: 'rgba(34,197,94,0.30)',  label: 'Disponible en agencia' },
+  OBSERVADO:       { bg: 'rgba(250,204,21,0.10)', fg: '#fde047', bd: 'rgba(250,204,21,0.30)', label: 'Observado' },
+  ENTREGADO:       { bg: 'rgba(34,197,94,0.12)',  fg: '#4ade80', bd: 'rgba(34,197,94,0.35)',  label: 'Entregado' },
+  DEVUELTO:        { bg: 'rgba(249,115,22,0.12)', fg: '#fdba74', bd: 'rgba(249,115,22,0.35)', label: 'Devuelto' },
+  PERDIDO:         { bg: 'rgba(239,68,68,0.12)',  fg: '#fca5a5', bd: 'rgba(239,68,68,0.35)',  label: 'Perdido' },
   PROGRAMADO:  { bg: 'rgba(59,130,246,0.12)', fg: '#93c5fd', bd: 'rgba(59,130,246,0.35)', label: 'Programado' },
   EN_RUTA:     { bg: 'rgba(34,197,94,0.12)',  fg: '#4ade80', bd: 'rgba(34,197,94,0.35)',  label: 'En ruta' },
 }
