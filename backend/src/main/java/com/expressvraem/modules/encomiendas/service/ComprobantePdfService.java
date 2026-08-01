@@ -69,6 +69,7 @@ public class ComprobantePdfService {
             String remDoc    = rem != null ? rem.getTipoDoc() + " " + rem.getNumDoc() : "";
             String remTel    = rem != null && rem.getTelefono() != null ? rem.getTelefono() : "";
             String desNombre = des != null ? nombreDisplay(des) : "—";
+            String desDoc    = des != null ? des.getTipoDoc() + " " + des.getNumDoc() : "";
             String desTel    = des != null && des.getTelefono() != null ? des.getTelefono() : "";
 
             String agenciaDestNombre = "—";
@@ -226,7 +227,8 @@ public class ComprobantePdfService {
                 y -= 3;
 
                 // Destinatario
-                y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y);
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "DESTINATARIO:", desNombre, y); y -= 1;
+                y = drawLabel(cs, fontBold, fontNorm, 7f, "Documento:", desDoc, y);
                 if (!desTel.isEmpty()) { y -= 1; y = drawLabel(cs, fontBold, fontNorm, 7f, "Tel. dest.:", desTel, y); }
                 y -= 1;
                 y = drawWrappedLabel(cs, fontBold, fontNorm, 7f, "Recojo en:",
