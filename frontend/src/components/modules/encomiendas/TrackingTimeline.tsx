@@ -14,15 +14,18 @@ interface TrackingTimelineProps {
   estadoActual: string
 }
 
+/** Cada paso puede agrupar varios estados internos del backend bajo un mismo hito visible al cliente. */
 const ESTADOS_ORDEN = [
-  { key: 'REGISTRADO',  label: 'Registrado' },
-  { key: 'EN_TRANSITO', label: 'En tránsito' },
-  { key: 'ENTREGADO',   label: 'Entregado' },
+  { key: 'REGISTRADO',        keys: ['REGISTRADO', 'RECEPCIONADO', 'ALMACENADO', 'CARGADO'], label: 'Registrado' },
+  { key: 'EN_TRANSITO',       keys: ['EN_TRANSITO'],                                          label: 'En tránsito' },
+  { key: 'LLEGADO_AGENCIA',   keys: ['LLEGADO_AGENCIA', 'DISPONIBLE'],                        label: 'Disponible en agencia' },
+  { key: 'ENTREGADO',         keys: ['ENTREGADO'],                                             label: 'Entregado' },
 ]
 
 const ESTADOS_ALTERNATIVOS = [
-  { key: 'DEVUELTO', label: 'Devuelto' },
-  { key: 'PERDIDO',  label: 'Perdido' },
+  { key: 'DEVUELTO', keys: ['DEVUELTO'], label: 'Devuelto' },
+  { key: 'PERDIDO',  keys: ['PERDIDO'],  label: 'Perdido' },
+  { key: 'OBSERVADO', keys: ['OBSERVADO'], label: 'Observado' },
 ]
 
 /* Color del estado actual: verde en el flujo normal, alerta en los alternativos */
@@ -36,18 +39,18 @@ const GREEN = '#16a34a'
 /** Timeline de la página pública de rastreo — estilado sobre fondo navy. */
 export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ historial, estadoActual }) => {
   const completados = historial.map(h => h.estadoNuevo)
-  const esAlternativo = ESTADOS_ALTERNATIVOS.some(e => e.key === estadoActual)
+  const esAlternativo = ESTADOS_ALTERNATIVOS.some(e => e.keys.includes(estadoActual))
 
   const estados = esAlternativo
-    ? [...ESTADOS_ORDEN, ...ESTADOS_ALTERNATIVOS.filter(e => e.key === estadoActual)]
+    ? [...ESTADOS_ORDEN, ...ESTADOS_ALTERNATIVOS.filter(e => e.keys.includes(estadoActual))]
     : ESTADOS_ORDEN
 
   return (
     <div className="flex items-start gap-0 overflow-x-auto py-3">
       {estados.map((estado, i) => {
-        const completado = completados.includes(estado.key)
-        const esActual = estadoActual === estado.key
-        const histItem = historial.find(h => h.estadoNuevo === estado.key)
+        const completado = estado.keys.some(k => completados.includes(k))
+        const esActual = estado.keys.includes(estadoActual)
+        const histItem = [...historial].reverse().find(h => estado.keys.includes(h.estadoNuevo))
         const fecha = histItem ? new Date(histItem.createdAt) : null
         const fechaValida = fecha && !isNaN(fecha.getTime())
         const colorActual = COLOR_ACTUAL[estado.key] ?? GREEN
@@ -90,7 +93,7 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ historial, e
               <div
                 className="mt-4 h-0.5 min-w-[30px] flex-1 rounded-full"
                 style={{
-                  background: completados.includes(estados[i + 1].key)
+                  background: estados[i + 1].keys.some(k => completados.includes(k))
                     ? GREEN
                     : 'rgba(255,255,255,0.1)',
                 }}

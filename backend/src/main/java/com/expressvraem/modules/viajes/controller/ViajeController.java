@@ -60,6 +60,7 @@ public class ViajeController {
     private final com.expressvraem.modules.empresa.service.EmpresaConfigService empresaConfigService;
     private final com.expressvraem.modules.auth.repository.UsuarioRepository usuarioRepository;
     private final com.expressvraem.modules.agencias.repository.AgenciaRepository agenciaRepository;
+    private final com.expressvraem.modules.encomiendas.service.EncomiendaService encomiendaService;
 
     /**
      * Programa un nuevo viaje y genera los asientos según la capacidad del vehículo.
@@ -463,12 +464,18 @@ public class ViajeController {
         }
 
         // Cambia todas las encomiendas pre-tránsito asignadas a este viaje
+        Long operadorSalidaId = usuarioRepository.findByEmail(auth.getName())
+                .map(u -> u.getId()).orElse(null);
         java.util.Set<String> preTransito = java.util.Set.of(
                 "REGISTRADO", "RECEPCIONADO", "ALMACENADO", "CARGADO");
         List<Encomienda> encomiendas = encomiendaRepository.findByViajeId(id);
         List<Encomienda> aActualizar = encomiendas.stream()
                 .filter(enc -> preTransito.contains(enc.getEstado()))
-                .peek(enc -> enc.setEstado("EN_TRANSITO"))
+                .peek(enc -> {
+                    encomiendaService.guardarHistorial(enc.getId(), enc.getAgenciaId(), operadorSalidaId,
+                            enc.getEstado(), "EN_TRANSITO", "Salida de viaje #" + id);
+                    enc.setEstado("EN_TRANSITO");
+                })
                 .toList();
         if (!aActualizar.isEmpty()) encomiendaRepository.saveAll(aActualizar);
 
@@ -612,13 +619,19 @@ public class ViajeController {
             for (Object o : ids) agenciasCiudadDestino.add(((Number) o).longValue());
         } catch (Exception ignored) {}
 
+        Long operadorLlegadaId = usuarioRepository.findByEmail(auth.getName())
+                .map(u -> u.getId()).orElse(null);
         List<Encomienda> todasViaje = encomiendaRepository.findByViajeId(id);
         List<Encomienda> llegadas = todasViaje.stream()
                 .filter(enc -> "EN_TRANSITO".equals(enc.getEstado()))
                 // sin agencias mapeadas para la ciudad destino, conservar el comportamiento anterior
                 .filter(enc -> agenciasCiudadDestino.isEmpty()
                         || (enc.getAgenciaDestinoId() != null && agenciasCiudadDestino.contains(enc.getAgenciaDestinoId())))
-                .peek(enc -> enc.setEstado("LLEGADO_AGENCIA"))
+                .peek(enc -> {
+                    encomiendaService.guardarHistorial(enc.getId(), enc.getAgenciaId(), operadorLlegadaId,
+                            "EN_TRANSITO", "LLEGADO_AGENCIA", "Llegó a agencia destino — viaje #" + id);
+                    enc.setEstado("LLEGADO_AGENCIA");
+                })
                 .toList();
         if (!llegadas.isEmpty()) encomiendaRepository.saveAll(llegadas);
         long pendientesRecepcion = todasViaje.stream()
