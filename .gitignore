@@ -79,3 +79,11 @@ frontend/screenshot-*.js
 
 # PDFs generados durante pruebas/UAT
 *.pdf
+
+# Documentacion y notas de uso local (no forman parte del proyecto)
+*.md
+docs/
+frontend/.interface-design/
+scripts/SIMULACION-UAT.md
+scripts/sim-*.js
+scripts/test-loops-*.ps1
